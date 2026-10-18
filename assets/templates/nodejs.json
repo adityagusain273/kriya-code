@@ -1,0 +1,23 @@
+{
+  "id": "nodejs",
+  "name": "Node.js Project",
+  "description": "A basic Node.js project with ES modules",
+  "languageId": "javascript",
+  "extension": "js",
+  "variables": {
+    "projectName": "my-node-app",
+    "description": "A Node.js application",
+    "date": "{{date}}",
+    "author": "{{author}}"
+  },
+  "files": [
+    {
+      "relativePath": "package.json",
+      "content": "{\n  \"name\": \"{{projectName}}\",\n  \"version\": \"1.0.0\",\n  \"description\": \"{{description}}\",\n  \"main\": \"index.js\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"start\": \"node index.js\",\n    \"dev\": \"node --watch index.js\",\n    \"test\": \"node --test test/*.test.js\"\n  },\n  \"keywords\": [],\n  \"author\": \"{{author}}\",\n  \"license\": \"MIT\"\n}"
+    },
+    {
+      "relativePath": "index.js",
+      "content": "/**\n * {{projectName}} - {{description}}\n * Author: {{author}}\n * Date: {{date}}\n */\n\nconsole.log('Hello from {{projectName}}!');\n\n// Your code here\nexport function greet(name) {\n  return `Hello, ${name}!`;\n}\n\nconsole.log(greet('World'));"
+    }
+  ]
+}

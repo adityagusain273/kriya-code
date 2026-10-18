@@ -1,0 +1,63 @@
+{
+  "func": {
+    "prefix": "func",
+    "body": [
+      "function ${1:name}(${2}): ${3:void} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Function declaration"
+  },
+  "afunc": {
+    "prefix": "afunc",
+    "body": [
+      "const ${1:name} = (${2}): ${3:void} => {",
+      "\t${0}",
+      "};"
+    ],
+    "description": "Arrow function"
+  },
+  "interface": {
+    "prefix": "interface",
+    "body": [
+      "interface ${1:Name} {",
+      "\t${2:property}: ${3:type};",
+      "}"
+    ],
+    "description": "Interface declaration"
+  },
+  "type": {
+    "prefix": "type",
+    "body": "type ${1:Name} = ${2:type};",
+    "description": "Type alias"
+  },
+  "class": {
+    "prefix": "class",
+    "body": [
+      "class ${1:Name} {",
+      "\tconstructor(${2}) {",
+      "\t\t${0}",
+      "\t}",
+      "}"
+    ],
+    "description": "Class declaration"
+  },
+  "for": {
+    "prefix": "for",
+    "body": [
+      "for (let ${1:i}: number = 0; ${1:i} < ${2:n}; ${1:i}++) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For loop"
+  },
+  "if": {
+    "prefix": "if",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "If statement"
+  }
+}

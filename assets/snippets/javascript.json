@@ -1,0 +1,111 @@
+{
+  "func": {
+    "prefix": "func",
+    "body": [
+      "function ${1:name}(${2}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Function declaration"
+  },
+  "afunc": {
+    "prefix": "afunc",
+    "body": [
+      "const ${1:name} = (${2}) => {",
+      "\t${0}",
+      "};"
+    ],
+    "description": "Arrow function"
+  },
+  "const": {
+    "prefix": "const",
+    "body": "const ${1:name} = ${2:value};",
+    "description": "Const declaration"
+  },
+  "let": {
+    "prefix": "let",
+    "body": "let ${1:name} = ${2:value};",
+    "description": "Let declaration"
+  },
+  "for": {
+    "prefix": "for",
+    "body": [
+      "for (let ${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For loop"
+  },
+  "foreach": {
+    "prefix": "foreach",
+    "body": [
+      "${1:array}.forEach((${2:item}) => {",
+      "\t${0}",
+      "});"
+    ],
+    "description": "ForEach loop"
+  },
+  "forof": {
+    "prefix": "forof",
+    "body": [
+      "for (const ${1:item} of ${2:array}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For-of loop"
+  },
+  "if": {
+    "prefix": "if",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "If statement"
+  },
+  "ife": {
+    "prefix": "ife",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "} else {",
+      "\t",
+      "}"
+    ],
+    "description": "If-else statement"
+  },
+  "async": {
+    "prefix": "async",
+    "body": [
+      "async function ${1:name}(${2}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Async function"
+  },
+  "await": {
+    "prefix": "await",
+    "body": "const ${1:result} = await ${2:promise};",
+    "description": "Await expression"
+  },
+  "try": {
+    "prefix": "try",
+    "body": [
+      "try {",
+      "\t${0}",
+      "} catch (${1:e}) {",
+      "\t",
+      "}"
+    ],
+    "description": "Try-catch block"
+  },
+  "promise": {
+    "prefix": "promise",
+    "body": [
+      "new Promise((${1:resolve}, ${2:reject}) => {",
+      "\t${0}",
+      "})"
+    ],
+    "description": "Promise constructor"
+  }
+}

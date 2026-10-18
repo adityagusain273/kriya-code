@@ -1,0 +1,48 @@
+import 'package:flutter/material.dart';
+
+abstract class Mdi {
+  static const folderOutline = IconData(0xf0256, fontFamily: 'Material Design Icons');
+  static const folderOpenOutline = IconData(0xf0dcf, fontFamily: 'Material Design Icons');
+  static const languagePython = IconData(0xf0320, fontFamily: 'Material Design Icons');
+  static const languageJava = IconData(0xf0b37, fontFamily: 'Material Design Icons');
+  static const languageJavascript = IconData(0xf031e, fontFamily: 'Material Design Icons');
+  static const languageTypescript = IconData(0xf06e6, fontFamily: 'Material Design Icons');
+  static const languageHtml5 = IconData(0xf031d, fontFamily: 'Material Design Icons');
+  static const languageCss3 = IconData(0xf031c, fontFamily: 'Material Design Icons');
+  static const languageCpp = IconData(0xf0672, fontFamily: 'Material Design Icons');
+  static const languageC = IconData(0xf0671, fontFamily: 'Material Design Icons');
+  static const languageKotlin = IconData(0xf1219, fontFamily: 'Material Design Icons');
+  static const languageSwift = IconData(0xf06e5, fontFamily: 'Material Design Icons');
+  static const languageGo = IconData(0xf07d3, fontFamily: 'Material Design Icons');
+  static const languageRust = IconData(0xf1617, fontFamily: 'Material Design Icons');
+  static const languageRuby = IconData(0xf0d2d, fontFamily: 'Material Design Icons');
+  static const languagePhp = IconData(0xf031f, fontFamily: 'Material Design Icons');
+  static const languageCsharp = IconData(0xf031b, fontFamily: 'Material Design Icons');
+  static const languageMarkdown = IconData(0xf0354, fontFamily: 'Material Design Icons');
+  static const languageR = IconData(0xf07d4, fontFamily: 'Material Design Icons');
+  static const applicationBracketsOutline = IconData(0xf0c8c, fontFamily: 'Material Design Icons');
+  static const bash = IconData(0xf1183, fontFamily: 'Material Design Icons');
+  static const console = IconData(0xf018d, fontFamily: 'Material Design Icons');
+  static const powershell = IconData(0xf0a0a, fontFamily: 'Material Design Icons');
+  static const codeJson = IconData(0xf0626, fontFamily: 'Material Design Icons');
+  static const codeBraces = IconData(0xf0169, fontFamily: 'Material Design Icons');
+  static const xml = IconData(0xf05c0, fontFamily: 'Material Design Icons');
+  static const cogOutline = IconData(0xf08bb, fontFamily: 'Material Design Icons');
+  static const lockOutline = IconData(0xf0341, fontFamily: 'Material Design Icons');
+  static const fileDocumentOutline = IconData(0xf09ee, fontFamily: 'Material Design Icons');
+  static const fileImageOutline = IconData(0xf0eb0, fontFamily: 'Material Design Icons');
+  static const musicNote = IconData(0xf0387, fontFamily: 'Material Design Icons');
+  static const filmstrip = IconData(0xf0230, fontFamily: 'Material Design Icons');
+  static const filePdfBox = IconData(0xf0226, fontFamily: 'Material Design Icons');
+  static const fileWordOutline = IconData(0xf103e, fontFamily: 'Material Design Icons');
+  static const fileTableOutline = IconData(0xf0c7f, fontFamily: 'Material Design Icons');
+  static const zipBoxOutline = IconData(0xf0ffa, fontFamily: 'Material Design Icons');
+  static const android = IconData(0xf0032, fontFamily: 'Material Design Icons');
+  static const database = IconData(0xf01bc, fontFamily: 'Material Design Icons');
+  static const memory = IconData(0xf035b, fontFamily: 'Material Design Icons');
+  static const elephant = IconData(0xf07c6, fontFamily: 'Material Design Icons');
+  static const fileCertificateOutline = IconData(0xf1187, fontFamily: 'Material Design Icons');
+  static const flaskOutline = IconData(0xf0096, fontFamily: 'Material Design Icons');
+  static const fileOutline = IconData(0xf0224, fontFamily: 'Material Design Icons');
+  static const git = IconData(0xf02a2, fontFamily: 'Material Design Icons');
+}

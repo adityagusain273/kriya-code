@@ -1,0 +1,210 @@
+import 'package:flutter/material.dart';
+
+import '../../core/di.dart';
+import '../runtime_catalog.dart';
+import '../runtime_download_service.dart';
+
+class DownloadsPage extends StatefulWidget {
+  final String? focusRuntimeId;
+
+  const DownloadsPage({super.key, this.focusRuntimeId});
+
+  @override
+  State<DownloadsPage> createState() => _DownloadsPageState();
+}
+
+class _DownloadsPageState extends State<DownloadsPage> {
+  RuntimeDownloadService get _downloads => sl<RuntimeDownloadService>();
+
+  @override
+  void initState() {
+    super.initState();
+    _downloads.addListener(_onChange);
+    final focus = widget.focusRuntimeId;
+    if (focus != null) {
+      final state = _downloads.stateFor(focus);
+      if (state.phase == RuntimeDownloadPhase.idle ||
+          state.phase == RuntimeDownloadPhase.failed) {
+        _downloads.download(focus);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _downloads.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() => setState(() {});
+
+  String _sizeLabel(int bytes) {
+    final mb = bytes / (1024 * 1024);
+    if (mb >= 1) return '${mb.toStringAsFixed(1)} MB';
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final specs = runtimeCatalog.values.toList();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Downloads')),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          for (final spec in specs)
+            _DownloadCard(
+              spec: spec,
+              state: _downloads.stateFor(spec.runtimeId),
+              installed: _downloads.isInstalled(spec.runtimeId),
+              onDownload: () => _downloads.download(spec.runtimeId),
+              onCancel: () => _downloads.cancel(spec.runtimeId),
+              onDelete: () => _downloads.remove(spec.runtimeId),
+              sizeLabel: _sizeLabel,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DownloadCard extends StatelessWidget {
+  final RuntimeSpec spec;
+  final RuntimeDownloadState state;
+  final bool installed;
+  final VoidCallback onDownload;
+  final VoidCallback onCancel;
+  final VoidCallback onDelete;
+  final String Function(int) sizeLabel;
+
+  const _DownloadCard({
+    required this.spec,
+    required this.state,
+    required this.installed,
+    required this.onDownload,
+    required this.onCancel,
+    required this.onDelete,
+    required this.sizeLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final phase = state.phase;
+    final downloading = phase == RuntimeDownloadPhase.downloading ||
+        phase == RuntimeDownloadPhase.resolving ||
+        phase == RuntimeDownloadPhase.installing;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(spec.title,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 15)),
+                      const SizedBox(height: 2),
+                      Text(spec.description,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.white54)),
+                    ],
+                  ),
+                ),
+                if (installed)
+                  Chip(
+                    avatar: const Icon(Icons.check_circle, size: 16),
+                    label: const Text('Installed', style: TextStyle(fontSize: 12)),
+                    visualDensity: VisualDensity.compact,
+                  )
+                else if (downloading)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else ...[
+                  if (phase == RuntimeDownloadPhase.failed)
+                    IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      tooltip: 'Retry',
+                      onPressed: onDownload,
+                    ),
+                  if (!downloading)
+                    FilledButton(
+                      onPressed: onDownload,
+                      style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact),
+                      child: Text(phase == RuntimeDownloadPhase.failed
+                          ? 'Retry'
+                          : 'Download'),
+                    ),
+                  if (downloading)
+                    TextButton(
+                      onPressed: onCancel,
+                      style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: Colors.red.shade300),
+                      child: const Text('Cancel'),
+                    ),
+                ],
+              ],
+            ),
+            if (downloading) ...[
+              const SizedBox(height: 12),
+              LinearProgressIndicator(
+                value: state.progress,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(3),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      state.totalBytes > 0
+                          ? '${state.currentPackage} — '
+                              '${sizeLabel(state.receivedBytes)} of ${sizeLabel(state.totalBytes)}'
+                              ' (${(state.progress! * 100).toStringAsFixed(0)}%)'
+                          : phase == RuntimeDownloadPhase.resolving
+                              ? 'Resolving packages…'
+                              : 'Starting download…',
+                      style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                    ),
+                  ),
+                  if (phase == RuntimeDownloadPhase.downloading)
+                    Text('↓ ${sizeLabel(state.receivedBytes)}',
+                        style: const TextStyle(
+                            fontSize: 11.5, color: Colors.white54)),
+                ],
+              ),
+            ],
+            if (phase == RuntimeDownloadPhase.failed && state.error != null) ...[
+              const SizedBox(height: 8),
+              Text('Error: ${state.error}',
+                  style: TextStyle(
+                      fontSize: 11.5, color: Colors.red.shade300)),
+            ],
+            if (installed)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: onDelete,
+                  style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: Colors.red.shade300),
+                  child: const Text('Delete'),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

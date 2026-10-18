@@ -1,0 +1,87 @@
+{
+  "main": {
+    "prefix": "main",
+    "body": [
+      "int main() {",
+      "\t${0}",
+      "\treturn 0;",
+      "}"
+    ],
+    "description": "Main function"
+  },
+  "inc": {
+    "prefix": "inc",
+    "body": "#include <${1:stdio.h}>",
+    "description": "Include header"
+  },
+  "for": {
+    "prefix": "for",
+    "body": [
+      "for (int ${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For loop"
+  },
+  "if": {
+    "prefix": "if",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "If statement"
+  },
+  "ife": {
+    "prefix": "ife",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "} else {",
+      "\t",
+      "}"
+    ],
+    "description": "If-else statement"
+  },
+  "while": {
+    "prefix": "while",
+    "body": [
+      "while (${1:condition}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "While loop"
+  },
+  "printf": {
+    "prefix": "printf",
+    "body": "printf(\"${1:%s}\\n\"${2:, arg});",
+    "description": "printf statement"
+  },
+  "switch": {
+    "prefix": "switch",
+    "body": [
+      "switch (${1:value}) {",
+      "\tcase ${2:val}:",
+      "\t\t${0}",
+      "\t\tbreak;",
+      "\tdefault:",
+      "\t\tbreak;",
+      "}"
+    ],
+    "description": "Switch statement"
+  },
+  "struct": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:Name} {",
+      "\t${2:int field;}",
+      "};"
+    ],
+    "description": "Struct definition"
+  },
+  "def": {
+    "prefix": "def",
+    "body": "#define ${1:NAME} ${2:value}",
+    "description": "Macro definition"
+  }
+}

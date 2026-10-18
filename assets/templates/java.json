@@ -1,0 +1,19 @@
+{
+  "id": "java",
+  "name": "Java Application",
+  "description": "A basic Java console application",
+  "languageId": "java",
+  "extension": "java",
+  "variables": {
+    "projectName": "MyJavaApp",
+    "description": "A Java application",
+    "date": "{{date}}",
+    "author": "{{author}}"
+  },
+  "files": [
+    {
+      "relativePath": "src/Main.java",
+      "content": "/**\n * {{projectName}} - {{description}}\n * Author: {{author}}\n * Date: {{date}}\n */\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println(\"Hello from {{projectName}}!\");\n        \n        if (args.length > 0) {\n            System.out.println(\"Arguments:\");\n            for (String arg : args) {\n                System.out.println(\"  \" + arg);\n            }\n        }\n    }\n}"
+    }
+  ]
+}

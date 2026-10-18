@@ -1,0 +1,83 @@
+{
+  "main": {
+    "prefix": "main",
+    "body": [
+      "public static void main(String[] ${1:args}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Main method"
+  },
+  "class": {
+    "prefix": "class",
+    "body": [
+      "public class ${1:Name} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Class definition"
+  },
+  "for": {
+    "prefix": "for",
+    "body": [
+      "for (int ${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For loop"
+  },
+  "foreach": {
+    "prefix": "foreach",
+    "body": [
+      "for (${1:Type} ${2:item} : ${3:list}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For-each loop"
+  },
+  "if": {
+    "prefix": "if",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "If statement"
+  },
+  "ife": {
+    "prefix": "ife",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "} else {",
+      "\t",
+      "}"
+    ],
+    "description": "If-else statement"
+  },
+  "sout": {
+    "prefix": "sout",
+    "body": "System.out.println(${1:\"text\"});",
+    "description": "System.out.println"
+  },
+  "try": {
+    "prefix": "try",
+    "body": [
+      "try {",
+      "\t${0}",
+      "} catch (${1:Exception} ${2:e}) {",
+      "\t",
+      "}"
+    ],
+    "description": "Try-catch block"
+  },
+  "interface": {
+    "prefix": "interface",
+    "body": [
+      "public interface ${1:Name} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Interface definition"
+  }
+}

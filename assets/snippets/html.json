@@ -1,0 +1,61 @@
+{
+  "html5": {
+    "prefix": "html5",
+    "body": [
+      "<!DOCTYPE html>",
+      "<html lang=\"en\">",
+      "<head>",
+      "\t<meta charset=\"UTF-8\">",
+      "\t<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
+      "\t<title>${1:Document}</title>",
+      "</head>",
+      "<body>",
+      "\t${0}",
+      "</body>",
+      "</html>"
+    ],
+    "description": "HTML5 boilerplate"
+  },
+  "div": {
+    "prefix": "div",
+    "body": [
+      "<div${1: class=\"${2}\"}>",
+      "\t${0}",
+      "</div>"
+    ],
+    "description": "Div element"
+  },
+  "script": {
+    "prefix": "script",
+    "body": [
+      "<script>",
+      "\t${0}",
+      "</script>"
+    ],
+    "description": "Script tag"
+  },
+  "link": {
+    "prefix": "link",
+    "body": "<link rel=\"stylesheet\" href=\"${1:style.css}\">",
+    "description": "Stylesheet link"
+  },
+  "img": {
+    "prefix": "img",
+    "body": "<img src=\"${1:path}\" alt=\"${2:description}\">",
+    "description": "Image tag"
+  },
+  "a": {
+    "prefix": "a",
+    "body": "<a href=\"${1:#}\">${0:text}</a>",
+    "description": "Anchor tag"
+  },
+  "form": {
+    "prefix": "form",
+    "body": [
+      "<form action=\"${1:#}\" method=\"${2:POST}\">",
+      "\t${0}",
+      "</form>"
+    ],
+    "description": "Form element"
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "main": {
+    "prefix": "main",
+    "body": [
+      "void main() {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Main function"
+  },
+  "stless": {
+    "prefix": "stless",
+    "body": [
+      "class ${1:Name} extends StatelessWidget {",
+      "\tconst ${1:Name}({super.key});",
+      "",
+      "\t@override",
+      "\tWidget build(BuildContext context) {",
+      "\t\treturn ${0:SizedBox()};",
+      "\t}",
+      "}"
+    ],
+    "description": "StatelessWidget"
+  },
+  "stful": {
+    "prefix": "stful",
+    "body": [
+      "class ${1:Name} extends StatefulWidget {",
+      "\tconst ${1:Name}({super.key});",
+      "",
+      "\t@override",
+      "\tState<${1:Name}> createState() => _${1:Name}State();",
+      "}",
+      "",
+      "class _${1:Name}State extends State<${1:Name}> {",
+      "\t@override",
+      "\tWidget build(BuildContext context) {",
+      "\t\treturn ${0:SizedBox()};",
+      "\t}",
+      "}"
+    ],
+    "description": "StatefulWidget"
+  },
+  "class": {
+    "prefix": "class",
+    "body": [
+      "class ${1:Name} {",
+      "\t${1:Name}();",
+      "}"
+    ],
+    "description": "Class definition"
+  },
+  "for": {
+    "prefix": "for",
+    "body": [
+      "for (var ${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For loop"
+  },
+  "forin": {
+    "prefix": "forin",
+    "body": [
+      "for (final ${1:item} in ${2:list}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "For-in loop"
+  },
+  "if": {
+    "prefix": "if",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "If statement"
+  },
+  "ife": {
+    "prefix": "ife",
+    "body": [
+      "if (${1:condition}) {",
+      "\t${0}",
+      "} else {",
+      "\t",
+      "}"
+    ],
+    "description": "If-else statement"
+  },
+  "async": {
+    "prefix": "async",
+    "body": [
+      "Future<${1:void}> ${2:name}() async {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Async function"
+  },
+  "try": {
+    "prefix": "try",
+    "body": [
+      "try {",
+      "\t${0}",
+      "} on ${1:Exception} catch (${2:e}) {",
+      "\t",
+      "}"
+    ],
+    "description": "Try-catch block"
+  },
+  "stream": {
+    "prefix": "stream",
+    "body": [
+      "Stream<${1:T}> ${2:name}() async* {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Async generator"
+  }
+}

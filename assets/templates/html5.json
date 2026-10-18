@@ -1,0 +1,27 @@
+{
+  "id": "html5",
+  "name": "HTML5 Boilerplate",
+  "description": "A modern HTML5 template with CSS and JavaScript",
+  "languageId": "html",
+  "extension": "html",
+  "variables": {
+    "projectName": "My Website",
+    "description": "A simple website",
+    "date": "{{date}}",
+    "author": "{{author}}"
+  },
+  "files": [
+    {
+      "relativePath": "index.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <meta name=\"description\" content=\"{{projectName}} - {{description}}\">\n  <title>{{projectName}}</title>\n  <link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n  <header>\n    <h1>{{projectName}}</h1>\n  </header>\n  <main>\n    <section>\n      <h2>Welcome</h2>\n      <p>This is a basic HTML5 template. Start building!</p>\n    </section>\n  </main>\n  <footer>\n    <p>&copy; {{date}} {{author}}. All rights reserved.</p>\n  </footer>\n  <script src=\"script.js\"></script>\n</body>\n</html>"
+    },
+    {
+      "relativePath": "style.css",
+      "content": ":root {\n  --primary-color: #2563eb;\n  --background-color: #f8fafc;\n  --text-color: #1e293b;\n  --spacing: 1rem;\n}\n\n* {\n  box-sizing: border-box;\n  margin: 0;\n  padding: 0;\n}\n\nbody {\n  font-family: system-ui, -apple-system, sans-serif;\n  line-height: 1.6;\n  color: var(--text-color);\n  background-color: var(--background-color);\n}\n\nheader {\n  background-color: var(--primary-color);\n  color: white;\n  padding: calc(var(--spacing) * 2);\n  text-align: center;\n}\n\nmain {\n  max-width: 800px;\n  margin: 0 auto;\n  padding: var(--spacing);\n}\n\nsection {\n  margin-bottom: calc(var(--spacing) * 2);\n}\n\nfooter {\n  text-align: center;\n  padding: var(--spacing);\n  color: #64748b;\n  border-top: 1px solid #e2e8f0;\n}"
+    },
+    {
+      "relativePath": "script.js",
+      "content": "// {{projectName}} - {{date}}\n// {{author}}\n\nconsole.log('{{projectName}} loaded');\n\nfunction init() {\n  console.log('App initialized');\n}\n\ndocument.addEventListener('DOMContentLoaded', init);"
+    }
+  ]
+}

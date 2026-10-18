@@ -1,0 +1,102 @@
+{
+  "main": {
+    "prefix": "main",
+    "body": [
+      "if __name__ == \"__main__\":",
+      "\t${1:main}()"
+    ],
+    "description": "Main guard"
+  },
+  "def": {
+    "prefix": "def",
+    "body": [
+      "def ${1:name}(${2:params}):",
+      "\t${0}"
+    ],
+    "description": "Function definition"
+  },
+  "class": {
+    "prefix": "class",
+    "body": [
+      "class ${1:Name}:",
+      "\tdef __init__(self${2:, args}):",
+      "\t\t${0}"
+    ],
+    "description": "Class definition"
+  },
+  "for": {
+    "prefix": "for",
+    "body": [
+      "for ${1:item} in ${2:iterable}:",
+      "\t${0}"
+    ],
+    "description": "For loop"
+  },
+  "forr": {
+    "prefix": "forr",
+    "body": [
+      "for ${1:i} in range(${2:n}):",
+      "\t${0}"
+    ],
+    "description": "Range for loop"
+  },
+  "if": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition}:",
+      "\t${0}"
+    ],
+    "description": "If statement"
+  },
+  "ife": {
+    "prefix": "ife",
+    "body": [
+      "if ${1:condition}:",
+      "\t${0}",
+      "else:",
+      "\t"
+    ],
+    "description": "If-else statement"
+  },
+  "while": {
+    "prefix": "while",
+    "body": [
+      "while ${1:condition}:",
+      "\t${0}"
+    ],
+    "description": "While loop"
+  },
+  "try": {
+    "prefix": "try",
+    "body": [
+      "try:",
+      "\t${0}",
+      "except ${1:Exception} as ${2:e}:",
+      "\t"
+    ],
+    "description": "Try-except block"
+  },
+  "with": {
+    "prefix": "with",
+    "body": [
+      "with ${1:expression} as ${2:var}:",
+      "\t${0}"
+    ],
+    "description": "With statement"
+  },
+  "print": {
+    "prefix": "print",
+    "body": "print(${1:\"text\"})",
+    "description": "Print statement"
+  },
+  "list": {
+    "prefix": "list",
+    "body": "[${1:expr} for ${2:x} in ${3:iterable}]",
+    "description": "List comprehension"
+  },
+  "dict": {
+    "prefix": "dict",
+    "body": "{${1:key}: ${2:value} for ${3:x} in ${4:iterable}}",
+    "description": "Dict comprehension"
+  }
+}

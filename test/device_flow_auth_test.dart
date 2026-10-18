@@ -1,0 +1,182 @@
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart' as http_testing;
+import 'package:b_code/github/auth/device_flow_auth.dart';
+
+void main() {
+  group('DeviceFlowAuth', () {
+    test('start sends correct request to GitHub', () async {
+      final captured = <String, String>{};
+
+      final client = http_testing.MockClient((request) async {
+        captured['url'] = request.url.toString();
+        captured['method'] = request.method;
+        return http.Response(
+          jsonEncode({
+            'device_code': 'abc123',
+            'user_code': 'ABCD-EFGH',
+            'verification_uri': 'https://github.com/login/device',
+            'interval': 5,
+          }),
+          200,
+        );
+      });
+
+      final auth = DeviceFlowAuth(clientId: 'test-client-id', client: client);
+      final session = await auth.start();
+
+      expect(session.deviceCode, 'abc123');
+      expect(session.userCode, 'ABCD-EFGH');
+      expect(session.verificationUri, 'https://github.com/login/device');
+      expect(session.intervalSeconds, 5);
+      expect(captured['url'], 'https://github.com/login/device/code');
+      expect(captured['method'], 'POST');
+
+      auth.close();
+    });
+
+    test('start throws on non-200 response', () async {
+      final client = http_testing.MockClient((_) async => http.Response('rate limited', 429));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+      expectLater(() => auth.start(), throwsA(isA<StateError>()));
+
+      auth.close();
+    });
+
+    test('pollOnce returns pending for authorization_pending', () async {
+      final client = http_testing.MockClient((_) async => http.Response(
+            jsonEncode({'error': 'authorization_pending'}),
+            200,
+          ));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+      final session = DeviceFlowSession(
+        deviceCode: 'code',
+        userCode: 'XXXX-XXXX',
+        verificationUri: 'https://github.com/login/device',
+        intervalSeconds: 5,
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+      );
+
+      final result = await auth.pollOnce(session);
+      expect(result.status, DeviceFlowStatus.pending);
+
+      auth.close();
+    });
+
+    test('pollOnce returns success with token', () async {
+      final client = http_testing.MockClient((_) async => http.Response(
+            jsonEncode({'access_token': 'ghp_real_token_123'}),
+            200,
+          ));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+      final session = DeviceFlowSession(
+        deviceCode: 'code',
+        userCode: 'XXXX-XXXX',
+        verificationUri: 'https://github.com/login/device',
+        intervalSeconds: 5,
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+      );
+
+      final result = await auth.pollOnce(session);
+      expect(result.status, DeviceFlowStatus.success);
+      expect(result.token, 'ghp_real_token_123');
+
+      auth.close();
+    });
+
+    test('pollOnce returns expired for expired_token', () async {
+      final client = http_testing.MockClient((_) async => http.Response(
+            jsonEncode({'error': 'expired_token'}),
+            200,
+          ));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+      final session = DeviceFlowSession(
+        deviceCode: 'code',
+        userCode: 'XXXX-XXXX',
+        verificationUri: 'https://github.com/login/device',
+        intervalSeconds: 5,
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+      );
+
+      final result = await auth.pollOnce(session);
+      expect(result.status, DeviceFlowStatus.expired);
+
+      auth.close();
+    });
+
+    test('pollOnce returns denied for access_denied', () async {
+      final client = http_testing.MockClient((_) async => http.Response(
+            jsonEncode({'error': 'access_denied'}),
+            200,
+          ));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+      final session = DeviceFlowSession(
+        deviceCode: 'code',
+        userCode: 'XXXX-XXXX',
+        verificationUri: 'https://github.com/login/device',
+        intervalSeconds: 5,
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+      );
+
+      final result = await auth.pollOnce(session);
+      expect(result.status, DeviceFlowStatus.denied);
+
+      auth.close();
+    });
+
+    test('pollOnce returns failed on non-200 response', () async {
+      final client = http_testing.MockClient((_) async => http.Response('error', 500));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+      final session = DeviceFlowSession(
+        deviceCode: 'code',
+        userCode: 'XXXX-XXXX',
+        verificationUri: 'https://github.com/login/device',
+        intervalSeconds: 5,
+        expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+      );
+
+      final result = await auth.pollOnce(session);
+      expect(result.status, DeviceFlowStatus.failed);
+
+      auth.close();
+    });
+
+    test('DeviceFlowSession parses interval with default', () {
+      final session1 = DeviceFlowSession.fromJson({
+        'device_code': 'd',
+        'user_code': 'u',
+        'interval': 10,
+      });
+      expect(session1.intervalSeconds, 10);
+
+      final session2 = DeviceFlowSession.fromJson({
+        'device_code': 'd',
+        'user_code': 'u',
+      });
+      expect(session2.intervalSeconds, 5);
+    });
+
+    test('DeviceFlowSession parses verification_uri with default', () {
+      final session1 = DeviceFlowSession.fromJson({
+        'device_code': 'd',
+        'user_code': 'u',
+        'verification_uri': 'https://custom.com/device',
+      });
+      expect(session1.verificationUri, 'https://custom.com/device');
+
+      final session2 = DeviceFlowSession.fromJson({
+        'device_code': 'd',
+        'user_code': 'u',
+      });
+      expect(session2.verificationUri, 'https://github.com/login/device');
+    });
+  });
+}

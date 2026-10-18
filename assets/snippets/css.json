@@ -1,0 +1,53 @@
+{
+  "rule": {
+    "prefix": "rule",
+    "body": [
+      "${1:selector} {",
+      "\t${2:property}: ${3:value};",
+      "}"
+    ],
+    "description": "CSS rule"
+  },
+  "flex": {
+    "prefix": "flex",
+    "body": [
+      "display: flex;",
+      "justify-content: ${1:center};",
+      "align-items: ${2:center};"
+    ],
+    "description": "Flexbox centering"
+  },
+  "grid": {
+    "prefix": "grid",
+    "body": [
+      "display: grid;",
+      "grid-template-columns: ${1:repeat(auto-fit, minmax(200px, 1fr))};",
+      "gap: ${2:1rem};"
+    ],
+    "description": "CSS Grid"
+  },
+  "media": {
+    "prefix": "media",
+    "body": [
+      "@media (${1:min-width: 768px}) {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Media query"
+  },
+  "keyframes": {
+    "prefix": "keyframes",
+    "body": [
+      "@keyframes ${1:name} {",
+      "\tfrom { ${2} }",
+      "\tto { ${3} }",
+      "}"
+    ],
+    "description": "Keyframes animation"
+  },
+  "var": {
+    "prefix": "var",
+    "body": "--${1:name}: ${2:value};",
+    "description": "CSS custom property"
+  }
+}

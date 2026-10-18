@@ -1,0 +1,59 @@
+name: b_code
+description: "B Code — a full-featured mobile code editor: edit, run, and ship code from your phone."
+publish_to: "none"
+version: 1.0.0+10
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.1.2
+  http: ^1.2.2
+  crypto: ^3.0.0
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  shared_preferences: ^2.3.2
+  flutter_secure_storage: ^9.2.2
+  url_launcher: ^6.3.1
+  flutter_code_editor: ^0.3.2
+  flutter_highlight: ^0.7.0
+  highlight: ^0.7.0
+  git2dart: ^0.5.4
+  webview_flutter: ^4.10.0
+  webview_flutter_android: ^4.14.0
+  flutter_pty: ^0.4.2
+  xterm: ^4.0.0
+  device_info_plus: ^11.3.3
+  flutter_secure_app: ^1.0.0
+  http_certificate_pinning: ^3.0.2
+  archive: ^4.0.0
+  image_picker: ^1.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.1
+  integration_test:
+    sdk: flutter
+
+flutter_launcher_icons:
+  image_path: "assets/icon/icon.png"
+  android: "launcher_icon"
+  adaptive_icon_background: "#101621"
+  adaptive_icon_foreground: "assets/icon/icon.png"
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: Material Design Icons
+      fonts:
+        - asset: assets/fonts/materialdesignicons-webfont.ttf
+
+  assets:
+    - assets/extensions/
+    - assets/snippets/
+    - assets/templates/

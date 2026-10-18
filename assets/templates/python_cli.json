@@ -1,0 +1,27 @@
+{
+  "id": "python-cli",
+  "name": "Python CLI App",
+  "description": "A command-line Python application with argparse",
+  "languageId": "python",
+  "extension": "py",
+  "variables": {
+    "projectName": "my_cli_app",
+    "description": "A command-line tool",
+    "date": "{{date}}",
+    "author": "{{author}}"
+  },
+  "files": [
+    {
+      "relativePath": "main.py",
+      "content": "#!/usr/bin/env python3\n\"\"\"\n{{projectName}} - {{description}}\nAuthor: {{author}}\nDate: {{date}}\n\"\"\"\n\nimport argparse\nimport sys\nfrom pathlib import Path\n\n\ndef main() -> int:\n    parser = argparse.ArgumentParser(\n        prog='{{projectName}}',\n        description='{{description}}',\n    )\n    parser.add_argument(\n        '-v', '--verbose',\n        action='store_true',\n        help='Enable verbose output',\n    )\n    parser.add_argument(\n        'input',\n        nargs='?',\n        help='Input file or directory',\n    )\n\n    args = parser.parse_args()\n\n    if args.verbose:\n        print(f'Verbose mode enabled')\n        print(f'Arguments: {args}')\n\n    if args.input:\n        path = Path(args.input)\n        if path.exists():\n            print(f'Processing: {path}')\n        else:\n            print(f'Error: {path} does not exist', file=sys.stderr)\n            return 1\n    else:\n        print('Hello from {{projectName}}!')\n        print('Use --help for usage information.')\n\n    return 0\n\n\nif __name__ == '__main__':\n    sys.exit(main())"
+    },
+    {
+      "relativePath": "requirements.txt",
+      "content": "# {{projectName}} dependencies\n# Add your dependencies here\n"
+    },
+    {
+      "relativePath": "README.md",
+      "content": "# {{projectName}}\n\n{{description}}\n\n## Installation\n\n```bash\npip install -r requirements.txt\n```\n\n## Usage\n\n```bash\npython main.py --help\n```\n\n## Author\n\n{{author}} - {{date}}"
+    }
+  ]
+}

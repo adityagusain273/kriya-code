@@ -1,0 +1,22 @@
+{
+  "id": "flutter",
+  "name": "Flutter App",
+  "description": "A basic Flutter application with Material Design",
+  "languageId": "dart",
+  "extension": "dart",
+  "variables": {
+    "projectName": "my_flutter_app",
+    "date": "{{date}}",
+    "author": "{{author}}"
+  },
+  "files": [
+    {
+      "relativePath": "pubspec.yaml",
+      "content": "name: {{projectName}}\ndescription: A new Flutter project.\npublish_to: \"none\"\nversion: 1.0.0+1\n\nenvironment:\n  sdk: \">=3.0.0 <4.0.0\"\n\ndependencies:\n  flutter:\n    sdk: flutter\n  cupertino_icons: ^1.0.6\n\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n  flutter_lints: ^4.0.0\n\nflutter:\n  uses-material-design: true\n"
+    },
+    {
+      "relativePath": "lib/main.dart",
+      "content": "import 'package:flutter/material.dart';\n\nvoid main() {\n  runApp(const MyApp());\n}\n\nclass MyApp extends StatelessWidget {\n  const MyApp({super.key});\n\n  @override\n  Widget build(BuildContext context) {\n    return MaterialApp(\n      title: '{{projectName}}',\n      theme: ThemeData(\n        colorSchemeSeed: Colors.blue,\n        useMaterial3: true,\n      ),\n      home: const MyHomePage(title: '{{projectName}}'),\n    );\n  }\n}\n\nclass MyHomePage extends StatefulWidget {\n  const MyHomePage({super.key, required this.title});\n  final String title;\n\n  @override\n  State<MyHomePage> createState() => _MyHomePageState();\n}\n\nclass _MyHomePageState extends State<MyHomePage> {\n  int _counter = 0;\n\n  void _incrementCounter() {\n    setState(() {\n      _counter++;\n    });\n  }\n\n  @override\n  Widget build(BuildContext context) {\n    return Scaffold(\n      appBar: AppBar(title: Text(widget.title)),\n      body: Center(\n        child: Column(\n          mainAxisAlignment: MainAxisAlignment.center,\n          children: [\n            const Text('You have pushed the button this many times:'),\n            Text('$_counter', style: Theme.of(context).textTheme.headlineMedium),\n          ],\n        ),\n      ),\n      floatingActionButton: FloatingActionButton(\n        onPressed: _incrementCounter,\n        tooltip: 'Increment',\n        child: const Icon(Icons.add),\n      ),\n    );\n  }\n}"
+    }
+  ]
+}

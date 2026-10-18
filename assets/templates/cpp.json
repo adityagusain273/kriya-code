@@ -1,0 +1,23 @@
+{
+  "id": "cpp",
+  "name": "C++ Application",
+  "description": "A basic C++ console application with CMake",
+  "languageId": "cpp",
+  "extension": "cpp",
+  "variables": {
+    "projectName": "MyCppApp",
+    "description": "A C++ application",
+    "date": "{{date}}",
+    "author": "{{author}}"
+  },
+  "files": [
+    {
+      "relativePath": "CMakeLists.txt",
+      "content": "cmake_minimum_required(VERSION 3.10)\nproject({{projectName}} VERSION 1.0.0 LANGUAGES CXX)\n\nset(CMAKE_CXX_STANDARD 17)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)\n\nadd_executable({{projectName}} src/main.cpp)\n\ntarget_compile_features({{projectName}} PRIVATE cxx_std_17)"
+    },
+    {
+      "relativePath": "src/main.cpp",
+      "content": "/**\n * {{projectName}} - {{description}}\n * Author: {{author}}\n * Date: {{date}}\n */\n\n#include <iostream>\n#include <string>\n#include <vector>\n\nint main(int argc, char* argv[]) {\n    std::cout << \"Hello from {{projectName}}!\" << std::endl;\n    \n    if (argc > 1) {\n        std::cout << \"Arguments:\" << std::endl;\n        for (int i = 1; i < argc; ++i) {\n            std::cout << \"  \" << argv[i] << std::endl;\n        }\n    }\n    \n    return 0;\n}"
+    }
+  ]
+}
