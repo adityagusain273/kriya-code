@@ -13,39 +13,36 @@
 </head>
 <body>
     <h1>B Code — Privacy Policy</h1>
-    <p class="date">Last updated: August 29, 2026</p>
+    <p class="date">Last updated: October 20, 2026</p>
 
     <p>B Code ("we", "our", "the app") is a mobile code editor for Android. This privacy policy explains what data the app accesses, how it is used, and your rights regarding that data.</p>
 
     <h2>Data We Collect</h2>
-    <p><strong>We do not collect any personal data.</strong> The app does not require account creation, does not track your location, and does not sell any information to third parties.</p>
+    <p><strong>We do not collect any personal data.</strong> The app does not require account creation, does not track your location, does not contain analytics or advertising SDKs, and does not sell any information to third parties.</p>
 
     <h2>Crash Reports</h2>
-    <p>B Code uses Firebase Crashlytics to collect anonymous crash reports when the app encounters an error. These reports may include:</p>
+    <p>B Code has <strong>no crash-reporting service</strong> and no server to send data to. Crash information is written to a private file on your device.</p>
     <ul>
-        <li>Device model and manufacturer</li>
-        <li>Android version and SDK level</li>
-        <li>App version</li>
-        <li>Stack traces (code execution paths that led to the crash)</li>
+        <li>If you choose <em>Settings → Report a Bug</em>, a draft email is prepared for you with the crash log and, if you attach them, screenshots. <strong>Nobody else sees it unless you press send</strong> in your own email app.</li>
+        <li>Crash logs are scrubbed of access tokens and API secrets before being written.</li>
+        <li>You can disable bug-report preparation in Settings, and clear the log at any time.</li>
     </ul>
-    <p>Crash reports are used solely to identify and fix bugs. They are stored on Firebase's servers and are not shared with third parties. You can opt out of crash reporting in the app's Settings.</p>
 
     <h2>Code You Write</h2>
-    <p>All code files you create, edit, or run in B Code are stored <strong>locally on your device</strong>. Your code is never uploaded to our servers. If you connect to GitHub, your code is handled according to <a href="https://docs.github.com/en/site-policy/privacy-p/github-privacy-statement">GitHub's privacy policy</a>.</p>
+    <p>All code files you create, edit, or run in B Code are stored in <strong>app-private storage on your device</strong>. The app asks for no storage permission and does not read shared storage. Your code is never uploaded to our servers (there are none). If you connect to GitHub, your code travels only to GitHub, under <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy policy</a>.</p>
 
     <h2>Internet Access</h2>
     <p>B Code uses internet access only for:</p>
     <ul>
-        <li>GitHub integration (authentication, clone, push, pull)</li>
-        <li>Downloading language runtimes (Termux packages)</li>
-        <li>Crash reporting (Firebase Crashlytics)</li>
-        <li>Live server preview (local network only)</li>
+        <li><strong>GitHub integration</strong> — authentication, clone, push, pull, and browsing your own repositories. Only after you explicitly connect your account. Traffic is certificate-pinned HTTPS.</li>
+        <li><strong>Language runtime downloads</strong> — only when you choose to install a runtime. Every package is verified against the published SHA-256 index before installation.</li>
+        <li><strong>Preview and live-reload server</strong> — a local server on your own device (localhost only). It never sends data over the network.</li>
     </ul>
 
     <h2>Third-Party Services</h2>
     <ul>
-        <li><strong>Firebase Crashlytics</strong> — anonymous crash reporting. <a href="https://firebase.google.com/support/privacy/">Firebase Privacy</a></li>
-        <li><strong>GitHub API</strong> — only when you explicitly connect your GitHub account.</li>
+        <li><strong>GitHub API</strong> — only when you explicitly connect your GitHub account. Disconnecting (Settings → Sign out) deletes the stored token.</li>
+        <li><strong>Termux</strong> — optional. Only if you install Termux yourself and grant it permission.</li>
     </ul>
 
     <h2>Children's Privacy</h2>
@@ -55,6 +52,6 @@
     <p>We may update this privacy policy from time to time. Changes will be reflected in the "Last updated" date above.</p>
 
     <h2>Contact</h2>
-    <p>If you have questions about this privacy policy, please open an issue at <a href="https://github.com/bcode-editor/bcode/issues">https://github.com/bcode-editor/bcode/issues</a>.</p>
+    <p>If you have questions about this privacy policy, email <a href="mailto:adityagusain273@gmail.com">adityagusain273@gmail.com</a> or open an issue at <a href="https://github.com/advaitimhatre/b-code/issues">https://github.com/advaitimhatre/b-code/issues</a>.</p>
 </body>
 </html>

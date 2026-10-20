@@ -26,7 +26,7 @@ B Code is a powerful, full-featured code editor for Android. Edit, run, and ship
 
 • **Live Server** — Preview HTML/CSS/JS projects with a built-in HTTP server and live reload.
 
-• **Extensions** — Install language packs and tools from the extensions marketplace.
+• **Extensions** — Language packs ship inside the app and activate based on the languages you pick, so nothing to install manually. An extension API with stable interfaces is documented for pack authors.
 
 • **Find & Replace** — Search across files with regex support.
 
@@ -34,7 +34,7 @@ B Code is a powerful, full-featured code editor for Android. Edit, run, and ship
 
 • **Dark Mode** — Beautiful dark theme designed for long coding sessions.
 
-• **Offline First** — Everything works offline. No internet connection required for editing or running code.
+• **Offline First** — Editing works fully offline. Runtimes download once when you choose to install them, then run completely offline.
 
 **Supported Languages:**
 Python, Java, C, C++, JavaScript, TypeScript, HTML, CSS, JSON, Markdown, Bash

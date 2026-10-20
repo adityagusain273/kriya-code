@@ -7,21 +7,18 @@
 
 ## Summary of actual network behaviour
 
-B Code makes **exactly two** categories of outbound request, both to GitHub, both
-only after the user explicitly connects their account:
+B Code makes **exactly three** categories of outbound HTTPS request, all pinned:
 
 | Destination | Purpose | Transport |
 |---|---|---|
 | `github.com/login/device/code`, `github.com/login/oauth/access_token` | OAuth device-flow token exchange | HTTPS, TLS certificate pinning |
 | `api.github.com` | List repos / branches / commits, clone, push, pull | HTTPS, TLS certificate pinning |
+| `packages.termux.dev` | Optional language-runtime downloads, user-initiated | HTTPS, TLS certificate pinning; every downloaded package is also verified against the published SHA-256 index (`lib/core/runtime_download_service.dart`) |
 
 There is no analytics SDK, no crash-reporting SDK, no advertising SDK, no
 Firebase, and no telemetry endpoint. `android/app/google-services.json` is not
 present in the repository and the `google-services` / `crashlytics` Gradle
 plugins are declared with `apply false` and never applied.
-
-The app makes **no** request at app start. The only non-GitHub network call is a
-platform reachability check that resolves a hostname via the OS resolver.
 
 ## Data collection declarations
 
@@ -62,9 +59,12 @@ uploaded anywhere except as part of a git push the user explicitly triggers.
   `127.0.0.1` / `localhost`, required by the built-in live-preview server.
 - Trust anchors: system certificate authorities only. A user-installed proxy CA
   is not trusted, so a TLS interception proxy cannot silently read traffic.
-- Certificate pinning: `api.github.com` and `github.com` are pinned to the
-  GitHub leaf and Sectigo intermediate SPKI hashes, verified during the TLS
-  handshake on the same connection that carries the request.
+- Certificate pinning: `api.github.com`, `github.com`, and `packages.termux.dev`
+  are pinned to SPKI hashes verified during the TLS handshake on the same
+  connection that carries the request. Runtime downloads additionally carry the
+  Certificate Transparency identity for `packages.termux.dev`
+  (`lib/core/pinned_http.dart`; pin values were captured live via openssl
+  during development and are committed alongside the code).
 - Secrets at rest: the GitHub token is stored in `EncryptedSharedPreferences`
   (AES-256-GCM) with the key held in the Android Keystore.
 - Backup: `android:allowBackup="false"`, `android:fullBackupContent="false"`, and

@@ -3,26 +3,15 @@
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <!--
-      Optional access to the shared volume, so the workspace can live at
-      /storage/emulated/0/BCode where Termux and file managers can also reach it.
+      No storage permission, deliberately. The workspace is app-private
+      storage, which needs none, and imports share content: URIs through SAF.
+      MANAGE_EXTERNAL_STORAGE was dropped because all-files access is a Play
+      policy exception for media apps, not a code editor, and the shared-folder
+      feature needs a revisit with a vocational reason before it ships.
 
-      Never requested at launch. The user enables "Share folder with other apps" in
-      Settings first, which sends them to the system screen for this permission.
-      It is the only way a non-SAF file path can be shared with another app: SAF
-      grants are per-app, so Termux can never open a `content://` URI that was
-      granted to B Code.
-
-      The two legacy permissions below only do anything on API 32 and below, where
-      they are how a build with a modern targetSdk still gets read/write access
-      without All-files access.
+      The Move-to-Termux channel (MainActivity openAllFilesAccessSettings)
+      therefore cannot grant anything and its Dart-side toggle is not built.
     -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
 
     <!-- Needed to see Termux and to hand text and github.com links to other apps. -->
     <queries>

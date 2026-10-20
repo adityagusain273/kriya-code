@@ -9,11 +9,12 @@ import '../core/constants.dart';
 /// device, and is what a first-time user should get without being interrupted by a
 /// permission dialog.
 ///
-/// The shared folder (`/storage/emulated/0/BCode`) is opt-in because it needs
-/// All-files access on a modern Android, which is a grant the user has to make on a
-/// system screen and can revoke later. It is worth offering because it is the only
-/// way another app such as Termux can work on the same files: SAF grants are
-/// per-app, so Termux can never open a `content://` URI that was granted to B Code.
+/// The v1 release intentionally drops the shared folder (`/storage/emulated/0/BCode`)
+/// and with it MANAGE_EXTERNAL_STORAGE: all-files access is a Play policy exception
+/// for media apps, not a code editor. [resolve] therefore always answers with the
+/// private workspace, and `WorkspaceLocation.needsAllFilesAccess` never becomes
+/// true. Reintroducing sharing means shipping the permission again with a
+/// vocational reason in the store listing.
 class WorkspaceLocation {
   /// True when files live in the shared volume and other apps can reach them.
   final bool shared;
@@ -50,40 +51,17 @@ class WorkspaceService {
 
   /// Resolves the folder to use right now.
   ///
-  /// Falls back to the app-private folder whenever the shared one is unavailable,
-  /// so refusing the permission costs the user nothing but the sharing itself.
-  Future<WorkspaceLocation> resolve(String privatePath) async {
-    if (shareRequested && await _grantAvailable()) {
-      final path = await _sharedPath();
-      if (path != null && path.isNotEmpty) {
-        return WorkspaceLocation(shared: true, path: path);
-      }
-    }
-    return WorkspaceLocation(
-      shared: false,
-      path: privatePath,
-      needsAllFilesAccess: shareRequested,
-    );
-  }
-
-  /// Current grant state, for the settings screen to describe accurately.
-  Future<WorkspaceLocation> status(String privatePath) async {
-    final granted = await _grantAvailable();
-    final sharedPath = granted ? await _sharedPath() : null;
-    return WorkspaceLocation(
-      shared: sharedPath != null && sharedPath.isNotEmpty,
-      path: (sharedPath != null && sharedPath.isNotEmpty)
-          ? sharedPath
-          : privatePath,
-      needsAllFilesAccess: shareRequested && !granted,
-    );
-  }
+  /// Always the app-private folder while the all-files grant is not declared:
+  /// the channel would ask the OS for a grant the manifest cannot provide, so
+  /// consult it only as a status display, never as the boot-time decision.
+  Future<WorkspaceLocation> resolve(String privatePath) => Future.value(
+      WorkspaceLocation(shared: false, path: privatePath));
 
   /// Opens the system screen where All-files access is granted.
   ///
   /// Returns false when there is no such screen on this device, which happens on
-  /// some heavily modified ROMs; the caller then leaves the toggle off and explains
-  /// that sharing is unavailable rather than leaving a switch that does nothing.
+  /// some heavily modified ROMs. Kept for diagnostics; callers in v1 don't expose
+  /// it because the manifest no longer declares the all-files permission.
   Future<bool> openAllFilesAccessSettings() async {
     try {
       final opened =
@@ -94,28 +72,6 @@ class WorkspaceService {
       return false;
     } on PlatformException {
       return false;
-    }
-  }
-
-  Future<bool> _grantAvailable() async {
-    try {
-      final status = await _channel
-          .invokeMapMethod<Object?, Object?>('sharedWorkspaceStatus');
-      return status?['granted'] == true;
-    } on MissingPluginException {
-      return false;
-    } on PlatformException {
-      return false;
-    }
-  }
-
-  Future<String?> _sharedPath() async {
-    try {
-      return await _channel.invokeMethod<String>('sharedWorkspacePath');
-    } on MissingPluginException {
-      return null;
-    } on PlatformException {
-      return null;
     }
   }
 }
