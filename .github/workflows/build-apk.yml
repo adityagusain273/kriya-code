@@ -1,12 +1,12 @@
-name: Build Android APK
+name: Android CI — analyze, test, signed build
 
 on:
   workflow_dispatch:
     inputs:
       build_mode:
-        description: 'Build Mode'
+        description: 'Build artifacts even when signing secrets are absent'
         required: true
-        default: 'debug'
+        default: 'release'
         type: choice
         options:
           - debug
@@ -21,40 +21,145 @@ on:
       - '.github/workflows/build-apk.yml'
 
 jobs:
-  build:
-    name: Build B Code APK
+  gate:
+    name: Analyze + tests
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Flutter 3.47.1
+      - name: Flutter 3.47.1
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.1'
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
+      - name: pub get
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze
 
-      - name: Build APK
+      - name: Tests
+        run: flutter test
+
+      - name: Debug build (compile gate)
+        run: flutter build apk --debug
+
+  release:
+    name: Signed release artifacts (aab + apk)
+    runs-on: ubuntu-latest
+    needs: gate
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    env:
+      HAS_SECRETS: ${{ secrets.BCODE_UPLOAD_KEYSTORE_B64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Flutter 3.47.1
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: 'stable'
+          cache: true
+
+      - name: pub get
+        run: flutter pub get
+
+      - name: Restore release signing key
+        if: ${{ env.HAS_SECRETS == 'true' }}
         run: |
-          MODE="${{ github.event.inputs.build_mode || 'debug' }}"
-          flutter build apk --$MODE
+          echo "${{ secrets.BCODE_UPLOAD_KEYSTORE_B64 }}" | base64 -d > android/key.jks
+          cat > android/key.properties <<'EOF'
+          storeFile=key.jks
+          storePassword=
+          keyAlias=
+          keyPassword=
+          EOF
+          sed -i "s/^storePassword=$/storePassword=${{ secrets.BCODE_KEYSTORE_PASSWORD }}/" android/key.properties
+          sed -i "s/^keyAlias=$/keyAlias=${{ secrets.BCODE_KEY_ALIAS }}/" android/key.properties
+          sed -i "s/^keyPassword=$/keyPassword=${{ secrets.BCODE_KEY_PASSWORD }}/" android/key.properties
 
-      - name: Upload APK artifact
+      - name: Build app bundle (Play)
+        if: ${{ env.HAS_SECRETS == 'true' }}
+        run: flutter build appbundle --release --dart-define=GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }}
+
+      - name: Build APK (direct distribution)
+        if: ${{ env.HAS_SECRETS == 'true' }}
+        run: flutter build apk --release --dart-define=GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }}
+
+      - name: Unsigned debug build (no secrets yet)
+        if: ${{ env.HAS_SECRETS != 'true' }}
+        run: flutter build apk --debug
+
+      - name: Report 16 KB page-size alignment
+        if: ${{ env.HAS_SECRETS == 'true' }}
+        run: |
+          status=0
+          for so in "$HOME"/.pub-cache/hosted/pub.dev/git2dart_binaries-*/android/src/main/jniLibs/{arm64-v8a,x86_64}/lib*.so; do
+            for a in $(readelf -lW "$so" | awk '/LOAD/{gsub(/.* align /,""); print $NF}'); do
+              case "$a" in
+                0x4000|2**14) echo "ALIGNED   ${so##*jniLibs/}: $a" ;;
+                *) echo "UNALIGNED ${so##*jniLibs/}: $a"; status=1 ;;
+              esac
+            done
+          done
+          if [ "$status" -ne 0 ]; then
+            echo
+            echo "Some prebuilt libs are 4 KB-aligned — an upstream problem in"
+            echo "git2dart_binaries (its own published .so files, not our build)."
+            echo "16 KB backcompat mode keeps them functional; the policy debt"
+            echo "status is documented in store/16kb.md."
+          fi
+
+      - name: Upload bundle
+        if: ${{ env.HAS_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: b-code-${{ github.event.inputs.build_mode || 'debug' }}-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          name: b-code-release-bundle
+          path: build/app/outputs/bundle/release/*.aab
           retention-days: 14
+
+      - name: Upload APK
+        if: ${{ env.HAS_SECRETS == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: b-code-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+
+      - name: Upload unsigned debug APK
+        if: ${{ env.HAS_SECRETS != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: b-code-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+
+      - name: Release note (how to publish)
+        if: ${{ env.HAS_SECRETS != 'true' }}
+        run: |
+          {
+            echo "## No signing secrets configured"
+            echo "Only analyze/test/debug artifacts were produced."
+            echo ""
+            echo "To produce the Play bundle, add these repository secrets:"
+            echo "- \`BCODE_UPLOAD_KEYSTORE_B64\` — base64 of \`android/key.jks\` (\`base64 -w0 android/key.jks\`)"
+            echo "- \`BCODE_KEYSTORE_PASSWORD\`"
+            echo "- \`BCODE_KEY_ALIAS\`  (bcode)"
+            echo "- \`BCODE_KEY_PASSWORD\`"
+            echo "- \`GITHUB_CLIENT_ID\` — OAuth app client id (device flow)"
+          } > NOTE.md
+          cat NOTE.md

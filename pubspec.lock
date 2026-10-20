@@ -358,18 +358,18 @@ packages:
     dependency: "direct main"
     description:
       name: git2dart
-      sha256: "0797b5fe23ad433ac55d1660637d396a3be7770a6e94b985a593970e7f40f0a8"
+      sha256: bc4cec5b9c00048e52f269b14a0f89b4fb1a486aa538217a032cb9729ba26fa7
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.4"
+    version: "0.5.6"
   git2dart_binaries:
     dependency: transitive
     description:
       name: git2dart_binaries
-      sha256: "2814008a06f32a89628dc87fe7436cd00b1b7a9895e58f3caa8bdb7bcc290981"
+      sha256: d876a7a48170a53a7b50fc65de42b8ab5e1b8a7e1902747e5ceb308b054c887d
       url: "https://pub.dev"
     source: hosted
-    version: "1.12.1"
+    version: "1.14.0"
   highlight:
     dependency: "direct main"
     description:
