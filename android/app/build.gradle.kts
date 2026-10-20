@@ -40,7 +40,7 @@ val missingKeystoreEntries = listOf("storeFile", "storePassword", "keyAlias", "k
 
 val storeFileRef = (keystoreProperties["storeFile"] as String?)
     ?.takeIf { it.isNotBlank() }
-    ?.let { file(it) }
+    ?.let { rootProject.file(it) }
 
 val storeFileMissing = storeFileRef != null && !storeFileRef.exists()
 val storeFileUnresolved = storeFileRef == null && missingKeystoreEntries.none { it == "storeFile" }
@@ -104,7 +104,7 @@ android {
         create("release") {
             val storeFilePath = keystoreProperties["storeFile"] as String?
             if (storeFilePath != null) {
-                storeFile = file(storeFilePath)
+                storeFile = rootProject.file(storeFilePath)
                 storePassword = keystoreProperties["storePassword"] as String
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String

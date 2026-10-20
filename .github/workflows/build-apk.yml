@@ -2,18 +2,9 @@ name: Android CI — analyze, test, signed build
 
 on:
   workflow_dispatch:
-    inputs:
-      build_mode:
-        description: 'Build artifacts even when signing secrets are absent'
-        required: true
-        default: 'release'
-        type: choice
-        options:
-          - debug
-          - release
   push:
     branches:
-      - master
+      - main
     paths:
       - 'lib/**'
       - 'android/**'
