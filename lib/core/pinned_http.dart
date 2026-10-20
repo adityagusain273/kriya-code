@@ -6,7 +6,9 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
-/// Certificate-pinned HTTP client for GitHub traffic.
+/// Certificate-pinned HTTP client for GitHub traffic and the runtime
+/// repository (the two channels that carry trust-relevant payloads: the OAuth
+/// token, and native executables).
 ///
 /// Why this exists
 /// ---------------
@@ -49,14 +51,24 @@ class PinnedHttpClient {
     'github.com': {
       '46B601EE08B418CF8A3A1EBFE670BA5CE43BB05A917FA8B2DD087A30471CFC63',
     },
+    'packages.termux.dev': {
+      'CD1A25F33DC112582C5EE244E5A856491AE8D58615D3B609F4D23ECB5F5DABA2',
+    },
   };
 
   static Set<String>? pinsFor(String host) => pins[host.toLowerCase()];
 
-  /// Builds a client that pins [host] and applies the standard timeouts.
+  /// Builds a client that pins the configured hosts and applies the standard
+  /// timeouts.
   ///
   /// Throws [HandshakeException] if the presented certificate is not pinned.
-  static http.Client create() {
+  /// [maxBytes] raises the body cap for download-heavy callers (a runtime
+  /// package can exceed the default 32 MB); [timeout] only bounds
+  /// time-to-response-headers, so it does not abort a slow body stream.
+  static http.Client create({
+    Duration timeout = _requestTimeout,
+    int maxBytes = TimeoutClient.defaultMaxBytes,
+  }) {
     final inner = HttpClient()
       ..connectionFactory = _pinnedConnectionFactory
       // A proxy would terminate TLS somewhere this code cannot see, which
@@ -67,7 +79,7 @@ class PinnedHttpClient {
       ..connectionTimeout = _connectTimeout
       ..idleTimeout = const Duration(seconds: 30);
 
-    return TimeoutClient(IOClient(inner), timeout: _requestTimeout);
+    return TimeoutClient(IOClient(inner), timeout: timeout, maxBytes: maxBytes);
   }
 
   static Future<ConnectionTask<Socket>> _pinnedConnectionFactory(
@@ -133,7 +145,7 @@ class PinnedHttpClient {
       if (!expected.contains(actual)) {
         throw HandshakeException(
           'Certificate pin mismatch for $host. Either the connection was '
-          'intercepted, or GitHub rotated its certificate and the pins in '
+          'intercepted, or the host rotated its certificate and the pins in '
           'PinnedHttpClient need refreshing. Refusing the connection rather '
           'than continuing unpinned.',
         );
@@ -153,10 +165,11 @@ class PinnedHttpClient {
 /// body that trickles slowly would otherwise keep a request alive past any
 /// reasonable bound.
 class TimeoutClient extends http.BaseClient {
-  TimeoutClient(this._inner, {required this.timeout});
+  TimeoutClient(this._inner, {required this.timeout, this.maxBytes = defaultMaxBytes});
 
   final http.BaseClient _inner;
   final Duration timeout;
+  final int maxBytes;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -174,7 +187,7 @@ class TimeoutClient extends http.BaseClient {
   }
 
   /// Refuses to buffer more than [maxBytes] of a response body.
-  static const int maxBytes = 32 * 1024 * 1024;
+  static const int defaultMaxBytes = 32 * 1024 * 1024;
 
   Stream<List<int>> _capBody(Stream<List<int>> body, int? contentLength) async* {
     if (contentLength != null && contentLength > maxBytes) {
@@ -201,7 +214,7 @@ class TimeoutClient extends http.BaseClient {
 /// Convenience wrapper for reading a small JSON body with a size ceiling.
 Future<dynamic> decodeJsonBody(http.Response response) async {
   final length = response.bodyBytes.length;
-  if (length > TimeoutClient.maxBytes) {
+  if (length > TimeoutClient.defaultMaxBytes) {
     throw HttpException('Response too large: $length bytes');
   }
   return jsonDecode(utf8.decode(response.bodyBytes));

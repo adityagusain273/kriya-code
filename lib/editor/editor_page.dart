@@ -871,15 +871,16 @@ class _EditorPageState extends State<EditorPage>
     final tab = sl<TabManager>().active;
     if (tab == null) return;
     await sl<TabManager>().save();
-    final baseUrl = await _previewServer.start();
+    await _previewServer.start();
     final rel = p.relative(tab.filePath, from: sl<FsService>().rootPath);
-    if (!mounted) return;
+    final url = _previewServer.urlFor(rel);
+    if (url == null || !mounted) return;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PreviewPage(
-          baseUrl: baseUrl,
-          relativePath: rel,
+          baseUrl: url,
+          relativePath: '',
           title: tab.name,
         ),
       ),

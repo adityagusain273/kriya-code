@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_app/flutter_secure_app.dart';
 import 'package:git2dart/git2dart.dart' as git;
-import 'package:http/http.dart' as http;
+
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -144,8 +144,10 @@ Future<void> _initCrashReporterAndRasp() async {
     // Compares Build.ID, which rotates with OS updates. It detects nothing and
     // breaks the app after the first system update.
     checkDeviceIdSpoofing: false,
+    // SHA-256 of android/key.jks (the release signing certificate), also used
+    // by the CI workflow's signature gate.
     validAndroidSignatures: const [
-      '8C8BA3228E40E50B6448D98AF99D5C1854A8CFF81047171D8CD7728AE042277D',
+      '97246D05F97C2BF1C4A839884849487FB0951D21CCFB03FACB1C1D33035251AE',
     ],
     onThreatDetected: (threat) {
       CrashReporter.recordZoneError(
@@ -238,8 +240,10 @@ Future<void> _bootstrap() async {
   final docsSupportDir = await getApplicationSupportDirectory();
   final localRunner = LocalRunner();
   sl.registerSingleton<LocalRunner>(localRunner);
+  // Native executables arrive over this channel, so it pins TLS exactly like
+  // the GitHub traffic. A runtime .deb can far exceed the default body cap.
   final runtimeDownloads = RuntimeDownloadService(
-    client: http.Client(),
+    client: PinnedHttpClient.create(maxBytes: 512 * 1024 * 1024),
     prefs: prefs,
     extractor: localRunner.extractRuntime,
     runtimesRootResolver: () async =>

@@ -178,7 +178,11 @@ object ExecPlugin {
             when (call.method) {
                 "hasRuntime" -> {
                     val runtimeId = call.argument<String>("runtimeId") ?: ""
-                    result.success(runtimeDir(runtimeId).exists())
+                    // runtimeDir throws on malformed ids; an invalid id just has
+                    // no runtime installed, so report false instead of letting
+                    // the exception escape the channel handler.
+                    val has = try { runtimeDir(runtimeId).exists() } catch (_: IllegalArgumentException) { false }
+                    result.success(has)
                 }
                 "runtimesDir" -> {
                     result.success(runtimesRoot().absolutePath)

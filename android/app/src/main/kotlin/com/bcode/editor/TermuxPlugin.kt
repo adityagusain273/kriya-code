@@ -23,7 +23,19 @@ object TermuxPlugin {
     private lateinit var appContext: Context
     private var activityContext: android.app.Activity? = null
     private var resultReceiver: BroadcastReceiver? = null
-    private var pendingResult: MethodChannel.Result? = null
+
+    /// One slot per in-flight command keyed by request_id. A single slot was
+    /// overwritten by every concurrent runCommand, and the receiver ignored
+    /// request_id, so a stale broadcast could deliver one command's output to
+    /// another. Termux may also deliver stdout/stderr bundles of arbitrary
+    /// size, which are capped before they enter the Dart channel.
+    private val pendingResults = java.util.concurrent.ConcurrentHashMap<Int, MethodChannel.Result>()
+    private const val MAX_RESULT_BYTES = 1_048_576
+
+    private fun bounded(text: String?): String {
+        if (text == null) return ""
+        return if (text.length > MAX_RESULT_BYTES) text.substring(0, MAX_RESULT_BYTES) else text
+    }
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var permissionLatch = java.util.concurrent.CountDownLatch(0)
     @Volatile private var permissionGrantedForUi: Boolean = false
@@ -138,11 +150,12 @@ object TermuxPlugin {
         }
 
         executor.submit {
+            var requestId: Int? = null
             try {
                 val intent = createRunIntent(command, args.toTypedArray(), stdin, workDir)
 
                 if (useResult) {
-                    val requestId = System.currentTimeMillis().toInt()
+                    requestId = System.currentTimeMillis().toInt()
                     val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
                     } else {
@@ -157,7 +170,7 @@ object TermuxPlugin {
                     )
                     intent.putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pendingIntent)
 
-                    pendingResult = result
+                    pendingResults[requestId] = result
                     registerResultReceiver()
                 }
 
@@ -174,6 +187,7 @@ object TermuxPlugin {
                     }
                 }
             } catch (e: Exception) {
+                requestId?.let { pendingResults.remove(it) }
                 runOnMain { result.error("TERMUX_ERROR", e.message, null) }
             }
         }
@@ -208,18 +222,21 @@ object TermuxPlugin {
         resultReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 val requestId = intent.getIntExtra("request_id", -1)
+                val res = pendingResults.remove(requestId) ?: return
                 val exitCode = intent.getIntExtra("exit_code", -1)
-                val stdout = intent.getStringExtra("stdout") ?: ""
-                val stderr = intent.getStringExtra("stderr") ?: ""
+                val stdout = bounded(intent.getStringExtra("stdout"))
+                val stderr = bounded(intent.getStringExtra("stderr"))
 
                 runOnMain {
-                    pendingResult?.success(mapOf(
+                    res.success(mapOf(
                         "success" to (exitCode == 0),
                         "stdout" to stdout,
                         "stderr" to stderr,
                         "exitCode" to exitCode
                     ))
-                    pendingResult = null
+                }
+                if (pendingResults.isEmpty()) {
+                    runOnMain { unregister() }
                 }
             }
         }

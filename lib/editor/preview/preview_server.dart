@@ -1,26 +1,42 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'static_file_handler.dart';
 
 /// Read-only server backing the in-app preview pane.
 ///
-/// The URL is never shown to the user and the WebView is the only client, so
-/// there is no session token here — Host and Origin validation plus path
-/// containment still apply. Request handling is delegated to
-/// [StaticFileHandler] so the preview and the live server cannot drift apart
-/// again.
+/// Binds loopback only and delegates every request to [StaticFileHandler]
+/// (Host/Origin validation, path containment). Like [LiveServer] it mints a
+/// per-session token: the port is ephemeral and therefore enumerable, and a URL
+/// alone cannot stop a hostile page from pulling the workspace in through
+/// `<img src>`/`<script src>`, which send no `Origin` header that the CORS
+/// checks could reject.
 class PreviewServer {
-  PreviewServer(this.rootPath);
+  PreviewServer(this.rootPath, {Random? random}) : _random = random ?? Random.secure();
 
   final String rootPath;
+  final Random _random;
 
   HttpServer? _server;
   Future<String>? _starting;
   StaticFileHandler? _handler;
+  String? _token;
 
   String? get baseUrl =>
       _server == null ? null : 'http://127.0.0.1:${_server!.port}';
+
+  /// A URL for a specific resource path, with the session token in the query
+  /// component of the final path. The first authorised request exchanges it for
+  /// an HttpOnly cookie, so subsequent subresource requests stay authorised.
+  String? urlFor(String relativePath) {
+    final port = _server?.port;
+    final token = _token;
+    if (port == null || token == null) return null;
+    final path = relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+    return 'http://127.0.0.1:$port/$path?bct=$token';
+  }
 
   Future<String> start() => _starting ??= _doStart().whenComplete(() => _starting = null);
 
@@ -28,8 +44,10 @@ class PreviewServer {
     if (_server != null) return baseUrl!;
 
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final token = _randomToken();
     _server = server;
-    _handler = StaticFileHandler(rootPath: rootPath);
+    _token = token;
+    _handler = StaticFileHandler(rootPath: rootPath, sessionToken: token);
 
     server.listen(
       (request) async {
@@ -51,5 +69,11 @@ class PreviewServer {
     await _server?.close(force: true);
     _server = null;
     _handler = null;
+    _token = null;
+  }
+
+  String _randomToken() {
+    final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
+    return base64Url.encode(bytes).replaceAll('=', '');
   }
 }
