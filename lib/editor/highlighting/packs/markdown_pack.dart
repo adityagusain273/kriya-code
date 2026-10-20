@@ -1,7 +1,6 @@
 import 'package:highlight/highlight_core.dart';
 import 'package:highlight/languages/markdown.dart';
 
-import '../../../plugins/api/run_config.dart';
 import '../language_pack.dart';
 
 class MarkdownPack implements LanguagePack {
@@ -19,7 +18,4 @@ class MarkdownPack implements LanguagePack {
 
   @override
   IndentRules get indentRules => const IndentRules(indentWidth: 2);
-
-  @override
-  RunConfig get runConfig => const RunConfig();
 }

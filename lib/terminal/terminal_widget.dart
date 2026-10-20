@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -28,6 +29,8 @@ class _TerminalWidgetState extends State<TerminalWidget> {
   bool _useTermux = false;
   bool _useStandalone = false;
   String? _standalonePath;
+  StreamSubscription<String>? _outputSub;
+  bool _disposed = false;
 
   static const _termuxBash = '/data/data/com.termux/files/usr/bin/bash';
 
@@ -66,6 +69,7 @@ class _TerminalWidgetState extends State<TerminalWidget> {
   }
 
   void _startShell() {
+    if (_disposed) return;
     final shellPath = _findShell();
     final env = Map<String, String>.from(Platform.environment);
     env['TERM'] = 'xterm-256color';
@@ -106,15 +110,33 @@ class _TerminalWidgetState extends State<TerminalWidget> {
 
     setState(() => _isRunning = true);
 
-    pty!.output.cast<List<int>>().transform(const Utf8Decoder()).listen(
-      (data) => terminal.write(data),
+    // allowMalformed is essential. A chunked PTY stream routinely splits a
+    // multi-byte UTF-8 sequence across two reads; the strict decoder threw
+    // FormatException, the subscription had no onError, and the terminal simply
+    // stopped updating.
+    _outputSub?.cancel();
+    _outputSub = pty!.output
+        .cast<List<int>>()
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .listen(
+      (data) {
+        if (_disposed) return;
+        terminal.write(data);
+      },
       onDone: () {
+        if (_disposed) return;
         setState(() => _isRunning = false);
         terminal.write('\r\n[process exited]\r\n');
+      },
+      onError: (_) {
+        if (_disposed) return;
+        setState(() => _isRunning = false);
+        terminal.write('\r\n[stream error]\r\n');
       },
     );
 
     pty!.exitCode.then((code) {
+      if (_disposed) return;
       setState(() => _isRunning = false);
       terminal.write('\r\n[exited with code $code]\r\n');
     });
@@ -139,6 +161,8 @@ class _TerminalWidgetState extends State<TerminalWidget> {
 
   @override
   void dispose() {
+    _disposed = true;
+    _outputSub?.cancel();
     pty?.kill();
     super.dispose();
   }

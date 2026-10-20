@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/di.dart';
+import '../api_client.dart';
 import '../auth/device_flow_auth.dart';
 import '../auth/token_store.dart';
 
@@ -53,7 +54,9 @@ class _LoginPageState extends State<LoginPage> {
       await Clipboard.setData(ClipboardData(text: session.userCode));
       _schedulePoll();
     } catch (e) {
-      if (mounted) setState(() => _status = 'Failed to start login: $e');
+      // `$e` on a StateError prefixes the useful sentence with "Bad state: ", and
+      // a bare status code told the user nothing they could act on.
+      if (mounted) setState(() => _status = _readable(e));
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -64,11 +67,28 @@ class _LoginPageState extends State<LoginPage> {
     if (session == null) return;
     try {
       final result = await _auth.pollOnce(session);
+      if (!mounted) return;
       switch (result.status) {
         case DeviceFlowStatus.success:
           _pollTimer?.cancel();
+          setState(() => _status = 'Verifying…');
+
+          // Confirm the token actually works before it is persisted. A 200 with
+          // an access_token is the only thing the exchange guarantees, and the
+          // token carries `repo` scope, so storing an unverified one means the
+          // app treats the user as signed in against an unusable credential.
+          final verified = await sl<GitHubApiClient>().getUser(result.token!);
+          if (!mounted) return;
+          if (!verified.isOk) {
+            setState(() =>
+                _status = 'GitHub rejected that sign-in: ${verified.errorOrNull}');
+            return;
+          }
+          final user = verified.valueOrNull;
           await sl<TokenStore>().write(result.token!);
-          if (mounted) widget.onAuthenticated(result.token!);
+          if (!mounted) return;
+          setState(() => _status = 'Signed in as ${user?.login ?? 'GitHub user'}.');
+          widget.onAuthenticated(result.token!);
           break;
         case DeviceFlowStatus.pending:
           _schedulePoll();
@@ -77,12 +97,43 @@ class _LoginPageState extends State<LoginPage> {
         case DeviceFlowStatus.denied:
         case DeviceFlowStatus.failed:
           _pollTimer?.cancel();
-          if (mounted) setState(() => _status = 'Login ${result.status.name}. Try again.');
+          setState(() {
+            _status = result.message?.isNotEmpty == true
+                ? result.message!
+                : 'Login ${result.status.name}. Try again.';
+          });
           break;
       }
     } catch (e) {
       _pollTimer?.cancel();
-      if (mounted) setState(() => _status = 'Polling error: $e');
+      if (mounted) setState(() => _status = _readable(e));
+    }
+  }
+
+  /// Strips the `Bad state: ` noise Dart adds when a StateError's message is used
+  /// as the display string.
+  static String _readable(Object error) {
+    final text = error.toString();
+    return text.startsWith('Bad state: ') ? text.substring(11) : text;
+  }
+
+  /// `verification_uri` is a server-supplied string that used to be handed
+  /// straight to the system launcher. Only https://github.com is allowed, so a
+  /// hostile or compromised response cannot hand the user an `intent://` or
+  /// `file://` URI to approve.
+  Future<void> _openVerificationPage(DeviceFlowSession session) async {
+    if (!DeviceFlowAuth.isSafeVerificationUri(session.verificationUri)) {
+      setState(() => _status =
+          'GitHub returned an unexpected sign-in URL. Open github.com/login/device manually.');
+      return;
+    }
+    final launched = await launchUrl(
+      Uri.parse(session.verificationUri),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && mounted) {
+      setState(() => _status = 'Could not open a browser. '
+          'Visit github.com/login/device and enter the code above.');
     }
   }
 
@@ -137,8 +188,7 @@ class _LoginPageState extends State<LoginPage> {
                 OutlinedButton.icon(
                   icon: const Icon(Icons.open_in_new),
                   label: const Text('Open github.com/login/device'),
-                  onPressed: () =>
-                      launchUrl(Uri.parse(session.verificationUri), mode: LaunchMode.externalApplication),
+                  onPressed: () => _openVerificationPage(session),
                 ),
               ],
               const SizedBox(height: 16),

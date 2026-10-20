@@ -46,6 +46,101 @@ void main() {
       auth.close();
     });
 
+    test('a 404 from the device endpoint is explained, not just numbered', () async {
+      // A proxy or egress filter serving github.com's sign-in paths returns 404
+      // while api.github.com keeps working, which looks like a broken app rather
+      // than a blocked network. The message has to say so.
+      final client = http_testing.MockClient((_) async =>
+          http.Response('{"error":"Not Found"}', 404,
+              headers: {'content-type': 'application/json'}));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+
+      await expectLater(
+        auth.start,
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('network'),
+            contains('works without signing in'),
+          ),
+        )),
+      );
+
+      auth.close();
+    });
+
+    test('a 404 still reports what the server actually said', () async {
+      final client = http_testing.MockClient((_) async =>
+          http.Response('{"error":"Not Found"}', 404,
+              headers: {'content-type': 'application/json'}));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+
+      await expectLater(
+        auth.start,
+        throwsA(isA<StateError>()
+            .having((e) => e.message, 'message', contains('Not Found'))),
+      );
+
+      auth.close();
+    });
+
+    test('a GitHub error_description is surfaced instead of discarded', () async {
+      // 429 and a rejected client id are GitHub talking, and its own wording is
+      // the actionable part.
+      final client = http_testing.MockClient((_) async => http.Response(
+          '{"error":"incorrect_client_credentials",'
+          '"error_description":"client id is invalid"}',
+          401,
+          headers: {'content-type': 'application/json'}));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+
+      await expectLater(
+        auth.start,
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('401'), contains('client id is invalid')),
+        )),
+      );
+
+      auth.close();
+    });
+
+    test('a non-JSON body is truncated to one line', () async {
+      // A proxy can answer with a whole HTML page; dumping it into the UI is noise.
+      final client = http_testing.MockClient((_) async =>
+          http.Response('<html><body>${'x' * 400}</body></html>', 502));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+
+      await expectLater(
+        auth.start,
+        throwsA(isA<StateError>()
+            .having((e) => e.message, 'message', contains('502'))),
+      );
+
+      auth.close();
+    });
+
+    test('an empty body does not leave a dangling separator', () async {
+      final client =
+          http_testing.MockClient((_) async => http.Response('', 500));
+
+      final auth = DeviceFlowAuth(clientId: 'id', client: client);
+
+      await expectLater(
+        auth.start,
+        throwsA(isA<StateError>()
+            .having((e) => e.message, 'message', isNot(contains(': 500:')))),
+      );
+
+      auth.close();
+    });
+
     test('pollOnce returns pending for authorization_pending', () async {
       final client = http_testing.MockClient((_) async => http.Response(
             jsonEncode({'error': 'authorization_pending'}),

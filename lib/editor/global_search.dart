@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -57,14 +58,25 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     _focusNode.requestFocus();
   }
 
+  int _searchGen = 0;
+  Timer? _debounce;
+
   @override
   void dispose() {
+    _debounce?.cancel();
     _queryCtrl.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
+  void _onQueryChanged(String v) {
+    _debounce?.cancel();
+    setState(() => _results = []);
+    _debounce = Timer(const Duration(milliseconds: 300), () => _search(v));
+  }
+
   Future<void> _search(String query) async {
+    final gen = ++_searchGen;
     if (query.isEmpty) {
       setState(() => _results = []);
       return;
@@ -93,8 +105,8 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
         }
       }
 
-      await _searchDir(Directory(root), root, query, results, regex);
-      if (mounted) {
+      await _searchDir(Directory(root), root, query, results, regex, gen);
+      if (mounted && gen == _searchGen) {
         setState(() {
           _results = results;
           _searching = false;
@@ -116,15 +128,20 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     String query,
     List<SearchResult> results,
     RegExp? regex,
-  ) async {
+    int gen, {
+    int depth = 0,
+  }) async {
+    if (gen != _searchGen) return;
+    if (depth > 12) return;
     if (!await dir.exists()) return;
 
     await for (final entity in dir.list(followLinks: false)) {
+      if (gen != _searchGen) return;
       if (results.length > 500) return;
       if (entity is Directory) {
         final name = p.basename(entity.path);
         if (_ignoreDirs.contains(name) || name.startsWith('.')) continue;
-        await _searchDir(entity, root, query, results, regex);
+        await _searchDir(entity, root, query, results, regex, gen, depth: depth + 1);
       } else if (entity is File) {
         final name = p.basename(entity.path);
         if (name.startsWith('.')) continue;
@@ -155,6 +172,10 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     RegExp? regex,
   ) async {
     try {
+      // Do not index a file this app cannot open in the editor either. Reading
+      // unbounded content froze the UI isolate and can OOM on a multi-hundred-MB
+      // file.
+      if (file.lengthSync() > 2 * 1024 * 1024) return;
       final content = await file.readAsString();
       final lines = content.split('\n');
       final relativePath = p.relative(file.path, from: root);
@@ -190,11 +211,34 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     } catch (_) {}
   }
 
-  void _openResult(SearchResult result) {
+  /// Opens the matched file and puts the cursor on the match.
+  ///
+  /// Opening the file alone was the bug this replaces: with a long file the user
+  /// still had to find the line they had just searched for.
+  Future<void> _openResult(SearchResult result) async {
     final fs = sl<FsService>();
     final fullPath = p.join(fs.rootPath, result.filePath);
-    sl<TabManager>().open(fullPath);
-    Navigator.pop(context);
+    final tabs = sl<TabManager>();
+    final tab = await tabs.open(fullPath);
+    final offset = _offsetOf(result);
+    if (offset != null) tab.revealAt(offset);
+    if (mounted) Navigator.pop(context);
+  }
+
+  /// Character offset of the match, counted across the file's lines.
+  int? _offsetOf(SearchResult result) {
+    final fs = sl<FsService>();
+    final file = File(p.join(fs.rootPath, result.filePath));
+    if (!file.existsSync()) return null;
+    final lines = file.readAsLinesSync();
+    final index = result.lineNumber - 1;
+    if (index < 0 || index >= lines.length) return null;
+    var offset = 0;
+    for (var i = 0; i < index; i++) {
+      offset += lines[i].length + 1;
+    }
+    final column = result.matchStart.clamp(0, lines[index].length);
+    return offset + column;
   }
 
   @override
@@ -222,9 +266,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                     suffixText: _results.isNotEmpty ? '${_results.length} results' : null,
                   ),
                   style: const TextStyle(fontSize: 14),
-                  onChanged: (v) {
-                    _search(v);
-                  },
+                  onChanged: _onQueryChanged,
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -234,6 +276,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                       selected: _caseSensitive,
                       onSelected: (v) {
                         setState(() => _caseSensitive = v);
+                        _searchGen++;
                         _search(_queryCtrl.text);
                       },
                       visualDensity: VisualDensity.compact,
@@ -244,6 +287,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                       selected: _regexMode,
                       onSelected: (v) {
                         setState(() => _regexMode = v);
+                        _searchGen++;
                         _search(_queryCtrl.text);
                       },
                       visualDensity: VisualDensity.compact,

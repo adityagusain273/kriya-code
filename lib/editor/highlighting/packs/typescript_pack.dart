@@ -1,7 +1,6 @@
 import 'package:highlight/highlight_core.dart';
 import 'package:highlight/languages/typescript.dart';
 
-import '../../../plugins/api/run_config.dart';
 import '../language_pack.dart';
 
 class TypeScriptPack implements LanguagePack {
@@ -23,7 +22,4 @@ class TypeScriptPack implements LanguagePack {
         blockOpeners: ['{', '[', '('],
         blockClosers: ['}', ')', ']'],
       );
-
-  @override
-  RunConfig get runConfig => const RunConfig();
 }

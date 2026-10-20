@@ -23,9 +23,9 @@ class CppExtension extends BCodeExtension {
           '-std=c++17',
           '{file}',
           '-o',
-          '{dir}/{name}.out',
+          '{outDir}/{name}.out',
         ],
-        runArgv: ['{dir}/{name}.out'],
+        runArgv: ['{outDir}/{name}.out'],
       ),
     ),
   );

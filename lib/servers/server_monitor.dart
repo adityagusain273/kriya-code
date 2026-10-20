@@ -16,6 +16,8 @@ class ServerMonitor extends ChangeNotifier {
   final SharedPreferences _prefs;
   final _servers = <int, DevServer>{};
   Timer? _probeTimer;
+  Timer? _initialTimer;
+  bool _disposed = false;
 
   ServerMonitor(this._prefs) {
     _load();
@@ -70,7 +72,7 @@ class ServerMonitor extends ChangeNotifier {
 
   void _startProbing() {
     _probeTimer = Timer.periodic(_probeInterval, (_) => _probeAll());
-    Timer(const Duration(seconds: 2), _initialProbe);
+    _initialTimer = Timer(const Duration(seconds: 2), _initialProbe);
   }
 
   Future<void> _initialProbe() async {
@@ -83,16 +85,19 @@ class ServerMonitor extends ChangeNotifier {
     bool changed = false;
     for (final server in _servers.values.toList()) {
       final alive = await _isPortOpen(server.port);
+      if (_disposed) return;
       if (alive != server.isAlive) {
         server.isAlive = alive;
         changed = true;
       }
     }
+    if (_disposed) return;
     if (changed) notifyListeners();
   }
 
   Future<void> _probeOne(DevServer server) async {
     final alive = await _isPortOpen(server.port);
+    if (_disposed) return;
     if (alive != server.isAlive) {
       server.isAlive = alive;
       notifyListeners();
@@ -130,7 +135,9 @@ class ServerMonitor extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _probeTimer?.cancel();
+    _initialTimer?.cancel();
     super.dispose();
   }
 }

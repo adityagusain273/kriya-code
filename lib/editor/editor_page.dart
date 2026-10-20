@@ -1,11 +1,10 @@
-import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
-import '../core/constants.dart';
 import '../core/di.dart';
 import '../core/haptics.dart';
 import '../core/network_helper.dart';
@@ -33,10 +32,13 @@ import 'preview/preview_server.dart';
 import 'preview/live_server.dart';
 import 'recent_files_service.dart';
 import 'tab_manager.dart';
+import '../workspace/import_actions.dart';
 import '../workspace/file_explorer.dart';
 import '../workspace/file_icons.dart';
 import '../workspace/fs_service.dart';
 import 'command_palette.dart';
+import 'line_commands.dart';
+import 'zoom_viewer.dart';
 import 'global_search.dart';
 import 'quick_open.dart';
 import 'shortcut_bar.dart';
@@ -48,18 +50,66 @@ class EditorPage extends StatefulWidget {
   State<EditorPage> createState() => _EditorPageState();
 }
 
-class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
+class _EditorPageState extends State<EditorPage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _showFind = false;
   TabController? _tabController;
   int _tabControllerLength = -1;
   final AutocompleteEngine _autocomplete = AutocompleteEngine();
 
+  /// Attached to the visible editor so a global-search result can pull focus and
+  /// let the field scroll its caret into view.
+  final FocusNode _editorFocus = FocusNode();
+  final FileExplorerController _explorerController = FileExplorerController();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     setRunWithArgsCallback(_showRunWithArgsDialog);
     setRunCallback(_run);
+    setEditCallback(const Key('find_replace'), () {
+      final tab = sl<TabManager>().active;
+      if (tab != null) setState(() => _showFind = true);
+    });
+    setEditCallback(const Key('goto_line'), () {
+      _goToLine();
+    });
+    setEditCallback(const Key('toggle_comment'), () {
+      final tab = sl<TabManager>().active;
+      if (tab != null) _toggleComment(tab.controller, tab.languageId);
+    });
+    setEditCallback(const Key('duplicate_line'), () {
+      final tab = sl<TabManager>().active;
+      if (tab != null) _duplicateLine(tab.controller);
+    });
+    // Registered as palette commands, not just shortcuts: Alt+arrow is unreachable
+    // without a hardware keyboard, which most people editing on a phone do not have.
+    setEditCallback(const Key('move_line_up'), () {
+      final tab = sl<TabManager>().active;
+      if (tab != null && tab.controller.moveLine(-1)) Haptics.selection();
+    });
+    setEditCallback(const Key('move_line_down'), () {
+      final tab = sl<TabManager>().active;
+      if (tab != null && tab.controller.moveLine(1)) Haptics.selection();
+    });
+    setEditCallback(const Key('copy_line'), () {
+      sl<TabManager>().active?.controller.copyLines();
+      Haptics.selection();
+    });
+    setEditCallback(const Key('cut_line'), () {
+      sl<TabManager>().active?.controller.cutLines();
+      Haptics.selection();
+    });
+    setEditCallback(const Key('open_explorer'), () {
+      _scaffoldKey.currentState?.openDrawer();
+    });
+    setEditCallback(const Key('close_tab'), () {
+      final tabs = sl<TabManager>();
+      if (tabs.activeIndex >= 0) _closeTabWithConfirm(tabs.activeIndex);
+    });
+    setEditCallback(const Key('close_all'), _closeAllWithConfirm);
     sl<TabManager>().addListener(_onTabsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       sl<TabManager>().restoreSession();
@@ -77,6 +127,11 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
       _autocomplete.dismiss();
     }
     setState(() {});
+    // A search result can arrive while its tab is already the active one, so the
+    // tab-index listener is not the only place this has to be honoured.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _revealPendingMatch();
+    });
   }
 
   void _syncTabController(int length) {
@@ -93,6 +148,23 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
     }
   }
 
+  /// Brings a pending search match into view once the tab is on screen.
+  ///
+  /// The reveal is requested by a different screen (global search) and consumed
+  /// here, after the frame that lays the editor out, because scrolling a field that
+  /// has not been measured yet does nothing.
+  void _revealPendingMatch() {
+    final tab = sl<TabManager>().active;
+    if (tab == null) return;
+    final offset = tab.takePendingReveal();
+    if (offset == null) return;
+    _editorFocus.requestFocus();
+    // The caret position is already set on the controller; giving the field focus
+    // makes it scroll that caret into view, which is the behaviour the user expects
+    // from a search result.
+    tab.controller.selection = TextSelection.collapsed(offset: offset);
+  }
+
   void _onTabTapped() {
     if (_tabController!.indexIsChanging) return;
     final manager = sl<TabManager>();
@@ -100,16 +172,37 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
     if (i >= 0 && i < manager.tabs.length && i != manager.activeIndex) {
       manager.activate(i);
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _revealPendingMatch();
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _editorFocus.dispose();
+    _explorerController.dispose();
     sl<TabManager>().removeListener(_onTabsChanged);
+    clearRunCallbacks();
     _tabController?.dispose();
     _autocomplete.dispose();
-    _previewServer.stop();
-    _liveServer?.stop();
+    unawaited(_previewServer.stop().catchError((Object _) {}));
+    final liveServer = _liveServer;
+    if (liveServer != null) {
+      unawaited(liveServer.stop().catchError((Object _) {}));
+    }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Autosave used to fire only on the timer; process-kill mid-debounce left a
+    // truncated file. Flush on every pause so no dirty buffer outlives the UI.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      unawaited(sl<TabManager>().saveAll());
+    }
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
@@ -118,6 +211,23 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
     }
     final ctrl = HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
+    final alt = HardwareKeyboard.instance.isAltPressed;
+
+    // Checked before the bare-key navigation below, which would otherwise swallow
+    // the arrow keys before a modifier ever got a look in.
+    if (alt && !ctrl) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown) {
+        final tab = sl<TabManager>().active;
+        if (tab == null) return KeyEventResult.ignored;
+        final moved = tab.controller.moveLine(
+          key == LogicalKeyboardKey.arrowUp ? -1 : 1,
+        );
+        if (moved) Haptics.selection();
+        return moved ? KeyEventResult.handled : KeyEventResult.ignored;
+      }
+    }
+
     if (!ctrl) {
       final key = event.logicalKey;
       if (key == LogicalKeyboardKey.f5) {
@@ -251,14 +361,23 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
       _deleteCurrentLine(controller);
       Haptics.selection();
     } else if (key == LogicalKeyboardKey.keyC) {
+      // With a selection this is a plain copy; without one it copies the caret's
+      // whole line, which is what every editor does and what a bare cursor
+      // otherwise makes impossible.
       final sel = controller.selection;
-      if (!sel.isCollapsed && sel.start >= 0) {
+      if (sel.isCollapsed) {
+        controller.copyLines();
+        Haptics.selection();
+      } else if (sel.start >= 0) {
         Clipboard.setData(ClipboardData(
             text: controller.text.substring(sel.start, sel.end)));
       }
     } else if (key == LogicalKeyboardKey.keyX) {
       final sel = controller.selection;
-      if (!sel.isCollapsed && sel.start >= 0) {
+      if (sel.isCollapsed) {
+        controller.cutLines();
+        Haptics.selection();
+      } else if (sel.start >= 0) {
         Clipboard.setData(ClipboardData(
             text: controller.text.substring(sel.start, sel.end)));
         _deleteSelection(controller);
@@ -309,61 +428,28 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
   }
 
   Future<void> _createNewFile() async {
-    final ctrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New File'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'filename.dart',
-            border: OutlineInputBorder(),
+    final name = await _promptForNewFileName(context);
+    if (name == null || !mounted) return;
+
+    final relative = _safeRelativeFileName(name);
+    if (relative == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'That is not a valid file name. Use a plain name with no path separators.',
           ),
-          onSubmitted: (_) => Navigator.pop(ctx, ctrl.text.trim()),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('Create')),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (name != null && name.isNotEmpty) {
-      final fs = sl<FsService>();
-      final path = '${fs.rootPath}/$name';
-      await fs.writeFile(path, '');
-      await sl<TabManager>().open(path);
+      );
+      return;
     }
+
+    await sl<FsService>().writeFile(relative, '');
+    if (!mounted) return;
+    await sl<TabManager>().open(relative);
   }
 
   void _duplicateLine(CodeController ctrl) {
-    final text = ctrl.text;
-    final selection = ctrl.selection;
-    if (selection.start < 0) return;
-    final lines = text.split('\n');
-    int lineIndex = 0;
-    int pos = 0;
-    for (int i = 0; i < lines.length; i++) {
-      final end = pos + lines[i].length;
-      if (end >= selection.start || i == lines.length - 1) {
-        lineIndex = i;
-        break;
-      }
-      pos = end + 1;
-    }
-    final line = lines[lineIndex];
-    final insertAt = pos + line.length;
-    final suffix = insertAt >= text.length ? '' : '\n';
-    final newText = text.replaceRange(insertAt, insertAt, '$suffix$line');
-    ctrl.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(
-          offset: insertAt + suffix.length + line.length),
-    );
+    ctrl.duplicateLine();
   }
 
   void _deleteSelection(CodeController ctrl) {
@@ -429,6 +515,10 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
       case 'xml':
       case 'svg':
         return '-->';
+      case 'css':
+      case 'scss':
+      case 'less':
+        return '*/';
       default:
         return '';
     }
@@ -483,112 +573,7 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
   }
 
   void _toggleComment(CodeController ctrl, String? languageId) {
-    final text = ctrl.text;
-    final sel = ctrl.selection;
-    if (sel.start < 0) return;
-
-    final prefix = _commentPrefix(languageId);
-    final suffix = _commentSuffix(languageId);
-
-    // Handle block comments (CSS, HTML, etc.)
-    final isBlockComment = suffix.isNotEmpty;
-
-    if (isBlockComment) {
-      _toggleBlockComment(ctrl, text, sel, prefix, suffix);
-      return;
-    }
-
-    // Line comment logic (existing)
-    final lines = text.split('\n');
-    int lineStart = 0;
-    int lineIdx = 0;
-    for (int i = 0; i < lines.length; i++) {
-      final lineEnd = lineStart + lines[i].length;
-      if (sel.start <= lineEnd || i == lines.length - 1) {
-        lineIdx = i;
-        break;
-      }
-      lineStart = lineEnd + 1;
-    }
-
-    final line = lines[lineIdx];
-    final trimmed = line.trimLeft();
-    final leading = line.substring(0, line.length - trimmed.length);
-
-    if (trimmed.startsWith('$prefix ') || trimmed.startsWith(prefix)) {
-      final stripped = trimmed.startsWith('$prefix ')
-          ? trimmed.substring(prefix.length + 1)
-          : trimmed.substring(prefix.length);
-      lines[lineIdx] = '$leading$stripped';
-    } else {
-      lines[lineIdx] = '$leading$prefix $trimmed';
-    }
-
-    final newText = lines.join('\n');
-    ctrl.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: sel.start),
-    );
-  }
-
-  void _toggleBlockComment(CodeController ctrl, String text, TextSelection sel, String prefix, String suffix) {
-    // If there's a selection, wrap it
-    if (!sel.isCollapsed && sel.start >= 0 && sel.end <= text.length) {
-      final selectedText = text.substring(sel.start, sel.end);
-      final trimmed = selectedText.trim();
-      
-      // Check if already wrapped
-      if (trimmed.startsWith(prefix) && trimmed.endsWith(suffix)) {
-        // Unwrap
-        final unwrapped = trimmed.substring(prefix.length, trimmed.length - suffix.length);
-        final newText = text.replaceRange(sel.start, sel.end, unwrapped);
-        ctrl.value = TextEditingValue(
-          text: newText,
-          selection: TextSelection.collapsed(offset: sel.start + unwrapped.length),
-        );
-      } else {
-        // Wrap
-        final wrapped = '$prefix $trimmed $suffix';
-        final newText = text.replaceRange(sel.start, sel.end, wrapped);
-        ctrl.value = TextEditingValue(
-          text: newText,
-          selection: TextSelection.collapsed(offset: sel.start + wrapped.length),
-        );
-      }
-      return;
-    }
-
-    // No selection - toggle comment on current line
-    final lines = text.split('\n');
-    int lineStart = 0;
-    int lineIdx = 0;
-    for (int i = 0; i < lines.length; i++) {
-      final lineEnd = lineStart + lines[i].length;
-      if (sel.start <= lineEnd || i == lines.length - 1) {
-        lineIdx = i;
-        break;
-      }
-      lineStart = lineEnd + 1;
-    }
-
-    final line = lines[lineIdx];
-    final trimmed = line.trim();
-    final leading = line.substring(0, line.length - trimmed.length);
-
-    if (trimmed.startsWith(prefix) && trimmed.endsWith(suffix)) {
-      // Uncomment
-      final unwrapped = trimmed.substring(prefix.length, trimmed.length - suffix.length).trim();
-      lines[lineIdx] = '$leading$unwrapped';
-    } else {
-      // Comment
-      lines[lineIdx] = '$leading$prefix $trimmed $suffix';
-    }
-
-    final newText = lines.join('\n');
-    ctrl.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: sel.start),
-    );
+    ctrl.toggleComment(_commentPrefix(languageId), _commentSuffix(languageId));
   }
 
   Future<void> _goToLine() async {
@@ -777,7 +762,14 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
 
   Widget _buildCodeView(dynamic tab) {
     return ListenableBuilder(
-      listenable: sl<SettingsStore>(),
+      // Installed extensions matter here: pinch-to-zoom is switched on by installing
+      // an extension, and without listening to that store the editor was never
+      // rebuilt, so installing it appeared to do nothing until some unrelated
+      // settings change or a restart.
+      listenable: Listenable.merge([
+        sl<SettingsStore>(),
+        sl<ExtensionInstallStore>(),
+      ]),
       builder: (context, _) {
         final settings = sl<SettingsStore>();
         final fontFamily = settings.fontFamily;
@@ -815,6 +807,7 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
           data: CodeThemeData(styles: syntaxTheme),
           child: CodeField(
             controller: tab.controller,
+            focusNode: _editorFocus,
             wrap: wordWrap,
             expands: true,
             background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
@@ -846,13 +839,12 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
         );
 
         if (sl<ExtensionInstallStore>().isInstalled('bcode.zoom')) {
-          return InteractiveViewer(
+          // Wraps `combined`, not `editor`: the syntax-highlighting overlay is a
+          // sibling of the text field, and returning only the editor dropped it, so
+          // turning the extension on made the file lose all its colours.
+          return BCodeZoomView(
             key: ValueKey('zoom_${tab.filePath}'),
-            minScale: 0.5,
-            maxScale: 4.0,
-            boundaryMargin: const EdgeInsets.all(double.infinity),
-            clipBehavior: Clip.none,
-            child: editor,
+            child: combined,
           );
         }
 
@@ -927,7 +919,7 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
   }
 
   void _openLivePreview() {
-    final url = _liveServer?.baseUrl;
+    final url = _liveServer?.urlFor('');
     if (url == null) return;
     Navigator.push(
       context,
@@ -941,152 +933,59 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _openFileBrowser({bool pickFolder = false}) async {
-    const safChannel = MethodChannel(AppConstants.safChannel);
-    const storageChannel = MethodChannel(AppConstants.storageChannel);
-    try {
-      final granted = await safChannel.invokeMethod<bool>('requestStoragePermission');
-      if (granted != true) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Storage permission required to browse files.')),
-          );
-        }
-        return;
-      }
-    } catch (e) {
-      debugPrint('Permission error: $e');
+  /// Opens a file from anywhere on the device by importing it into the
+  /// workspace first.
+  ///
+  /// The workspace is app-private and B Code requests no storage permission, so there
+  /// is nothing to browse directly: the Storage Access Framework hands us a stream,
+  /// and the copy lands inside the workspace where the explorer can see it.
+  Future<void> _importAndOpenFile() async {
+    final imported = await importFileFromDevice(context);
+    if (imported == null || !mounted) return;
+    await sl<TabManager>().open(imported.path);
+  }
+
+  /// Copies a whole project folder off the device into the workspace, then shows the
+  /// explorer with that folder opened.
+  Future<void> _importFolder() async {
+    final imported = await importFolderFromDevice(context);
+    if (imported == null || !mounted) return;
+    _revealImported(imported.path);
+  }
+
+  /// Picks an archive off the device, copies it in, and unpacks it.
+  Future<void> _importAndExtractArchive() async {
+    final imported = await importArchiveFromDevice(context);
+    if (imported == null || !mounted) return;
+    _revealImported(imported.path);
+  }
+
+  /// Opens the explorer with [absolutePath] expanded, so a freshly imported folder is
+  /// not left collapsed at the root behind a row the user has to go and find.
+  void _revealImported(String absolutePath) {
+    final relative = sl<FsService>().relativeToRoot(absolutePath);
+    if (relative.isNotEmpty && relative != '.') {
+      _explorerController.reveal(relative);
     }
+    _scaffoldKey.currentState?.openDrawer();
+  }
 
-    String current;
-    try {
-      current = await storageChannel.invokeMethod<String>('getExternalStorageDirectory') ?? '/storage/emulated/0';
-    } catch (_) {
-      current = '/storage/emulated/0';
+  String? _indentLangId;
+  Future<int>? _indentFuture;
+
+  /// Cached so the shortcut bar's indent width is not rebuilt from scratch on every
+  /// keystroke.
+  ///
+  /// The future used to be constructed inline in `build`. A `FutureBuilder` handed a
+  /// brand new future restarts in `ConnectionState.none`, so its `data` was null —
+  /// and the bar fell back to a hardcoded 2 — for at least one frame on every
+  /// rebuild, and the lookup was reissued each time the user typed.
+  Future<int> _indentFutureFor(String? languageId) {
+    if (_indentLangId != languageId) {
+      _indentLangId = languageId;
+      _indentFuture = sl<HighlightService>().indentWidthFor(languageId);
     }
-    List<FileSystemEntity> entries = [];
-
-    void loadEntries() {
-      try {
-        entries = Directory(current).listSync()
-          ..sort((a, b) {
-            if (a is Directory && b is! Directory) return -1;
-            if (a is! Directory && b is Directory) return 1;
-            return p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
-          });
-      } catch (_) {
-        entries = [];
-      }
-    }
-
-    loadEntries();
-
-    if (!mounted) return;
-
-    // Get external storage directory for comparison in dialog
-    String externalStorageRoot;
-    try {
-      externalStorageRoot = await storageChannel.invokeMethod<String>('getExternalStorageDirectory') ?? '/storage/emulated/0';
-    } catch (_) {
-      externalStorageRoot = '/storage/emulated/0';
-    }
-
-    if (!mounted) return;
-
-    final path = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, ss) => AlertDialog(
-          contentPadding: EdgeInsets.zero,
-          title: Row(
-            children: [
-              if (current != externalStorageRoot)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, size: 20),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () {
-                    final parent = p.dirname(current);
-                    if (parent != current) {
-                      ss(() {
-                        current = parent;
-                        loadEntries();
-                      });
-                    }
-                  },
-                ),
-              Expanded(
-                child: Text(
-                  p.basename(current).isEmpty ? 'Storage' : p.basename(current),
-                  style: const TextStyle(fontSize: 16),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: 320,
-            height: 420,
-            child: entries.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Empty or no permission',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: entries.length,
-                    itemBuilder: (ctx, i) {
-                      final e = entries[i];
-                      final name = p.basename(e.path);
-                      final isDir = e is Directory;
-                      return ListTile(
-                        dense: true,
-                        leading: Icon(
-                          isDir
-                              ? Icons.folder_rounded
-                              : Icons.insert_drive_file_outlined,
-                          color: isDir ? const Color(0xFFFFCA28) : null,
-                          size: 22,
-                        ),
-                        title: Text(name, style: const TextStyle(fontSize: 14)),
-                        onTap: () {
-                          if (isDir) {
-                            ss(() {
-                              current = e.path;
-                              loadEntries();
-                            });
-                          } else {
-                            Navigator.pop(ctx, e.path);
-                          }
-                        },
-                      );
-                    },
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            if (pickFolder)
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, current),
-                child: const Text('Select Folder'),
-              ),
-          ],
-        ),
-      ),
-    );
-
-    if (path != null && mounted) {
-      if (pickFolder) {
-        await sl<FsService>().setCustomRoot(path);
-        setState(() {});
-      } else {
-        sl<TabManager>().open(path);
-      }
-    }
+    return _indentFuture!;
   }
 
   @override
@@ -1193,38 +1092,7 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
                   await tabs.saveAll();
                   break;
                 case 'close_all':
-                  final hasUnsaved = tabs.hasUnsavedChanges;
-                  if (hasUnsaved) {
-                    final result = await showDialog<String>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Unsaved changes'),
-                        content: const Text('Some files have unsaved changes. Save all before closing?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, 'discard'),
-                            child: const Text('Discard all'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, 'cancel'),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(ctx, 'save'),
-                            child: const Text('Save all'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (result == 'save') {
-                      await tabs.saveAll();
-                      await tabs.closeAll();
-                    } else if (result == 'discard') {
-                      await tabs.closeAll();
-                    }
-                  } else {
-                    await tabs.closeAll();
-                  }
+                  await _closeAllWithConfirm();
                   break;
                 case 'go_to_line':
                   _goToLine();
@@ -1235,8 +1103,14 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
                 case 'global_search':
                   GlobalSearchPage.show(context);
                   break;
+                case 'open_file':
+                  _importAndOpenFile();
+                  break;
                 case 'open_folder':
-                  _openFileBrowser(pickFolder: true);
+                  _importFolder();
+                  break;
+                case 'extract_archive':
+                  _importAndExtractArchive();
                   break;
                 case 'terminal':
                   ConsolePanel.show(context);
@@ -1270,8 +1144,16 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
               const PopupMenuItem(value: 'settings', child: Text('Settings')),
               const PopupMenuDivider(),
               const PopupMenuItem(
+                value: 'open_file',
+                child: Text('Open File...'),
+              ),
+              const PopupMenuItem(
                 value: 'open_folder',
-                child: Text('Open Folder'),
+                child: Text('Open Folder...'),
+              ),
+              const PopupMenuItem(
+                value: 'extract_archive',
+                child: Text('Extract Project Archive...'),
               ),
               const PopupMenuItem(
                 value: 'global_search',
@@ -1304,6 +1186,7 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
           key: ValueKey(sl<FsService>().rootPath),
           fs: sl(),
           prefs: sl<ExplorerPrefs>(),
+          controller: _explorerController,
           onFileTap: (path) {
             Navigator.pop(context);
             sl<TabManager>().open(path);
@@ -1347,9 +1230,11 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
             FindReplaceBar(controller: tab.findController),
           Expanded(
             child: tab == null
-                ? _EmptyState(onOpenFile: (pickFolder) {
-                    _openFileBrowser(pickFolder: pickFolder);
-                  })
+                ? _EmptyState(
+                    onOpenFile: _importAndOpenFile,
+                    onOpenFolder: _importFolder,
+                    onExtractArchive: _importAndExtractArchive,
+                  )
                 : Focus(
                     onKeyEvent: _onKeyEvent,
                     child: _buildCodeView(tab),
@@ -1364,7 +1249,7 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
             ),
           if (tab != null)
             FutureBuilder<int>(
-              future: sl<HighlightService>().indentWidthFor(tab.languageId),
+              future: _indentFutureFor(tab.languageId),
               builder: (context, snapshot) => EditorShortcutBar(
                 controller: tab.controller,
                 indentWidth: snapshot.data ?? 2,
@@ -1384,8 +1269,42 @@ class _EditorPageState extends State<EditorPage> with TickerProviderStateMixin {
     return FileTypeIcon(spec: fileSpec(path), size: 14);
   }
 
-  Future<void> _closeTabWithConfirm(int index) async {
-    Haptics.onTabClose();
+  Future<void> _closeAllWithConfirm() async {
+    final tabs = sl<TabManager>();
+    if (tabs.hasUnsavedChanges) {
+      final result = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Unsaved changes'),
+          content: const Text('Some files have unsaved changes. Save all before closing?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'discard'),
+              child: const Text('Discard all'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'cancel'),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, 'save'),
+              child: const Text('Save all'),
+            ),
+          ],
+        ),
+      );
+      if (result == 'save') {
+        await tabs.saveAll();
+        await tabs.closeAll();
+      } else if (result == 'discard') {
+        await tabs.closeAll();
+      }
+    } else {
+      await tabs.closeAll();
+    }
+  }
+
+  Future<void> _closeTabWithConfirm(int index) async {    Haptics.onTabClose();
     final tabs = sl<TabManager>();
     final tab = tabs.tabs[index];
     if (tab.dirty) {
@@ -1432,11 +1351,19 @@ class _StatusBar extends StatefulWidget {
 }
 
 class _StatusBarState extends State<_StatusBar> {
-  String _encoding = 'UTF-8';
-  static const _encodings = ['UTF-8', 'UTF-16', 'ISO-8859-1', 'Windows-1252'];
 
   @override
   Widget build(BuildContext context) {
+    // ListenableBuilder: rebuild when the document or selection actually
+    // changes. Previously the status bar only re-ran when the dirty flag flipped,
+    // so the Ln/Col and line/word counts froze for the whole editing session.
+    return ListenableBuilder(
+      listenable: widget.tab.controller,
+      builder: (context, _) => _buildStatus(context),
+    );
+  }
+
+  Widget _buildStatus(BuildContext context) {
     final tab = widget.tab;
     final sel = tab.controller.selection;
     final text = tab.controller.text;
@@ -1477,22 +1404,16 @@ class _StatusBarState extends State<_StatusBar> {
             Flexible(child: Text('$wordCount words', overflow: TextOverflow.ellipsis)),
             const SizedBox(width: 12),
             Flexible(child: Text('$charCount chars', overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 12),
-            PopupMenuButton<String>(
-              initialValue: _encoding,
-              onSelected: (value) => setState(() => _encoding = value),
-              itemBuilder: (_) => _encodings.map((e) => PopupMenuItem(value: e, child: Text(e))).toList(),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_encoding),
-                  const SizedBox(width: 4),
-                  Icon(Icons.keyboard_arrow_down, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-                ],
-              ),
-            ),
             const SizedBox(width: 16),
-            _LineEndingSelector(),
+            // Read-only, because there is nothing to change: files are read and
+            // written as UTF-8, and the line ending in use is whatever the file
+            // already contains. These used to be dropdowns that looked editable and
+            // silently did nothing, which is worse than not offering the choice --
+            // picking a different encoding gave no hint that the bytes on disk were
+            // still UTF-8.
+            Text(detectLineEnding(widget.tab.controller.text)),
+            const SizedBox(width: 12),
+            const Text('UTF-8'),
           ],
         ),
       ),
@@ -1500,36 +1421,15 @@ class _StatusBarState extends State<_StatusBar> {
   }
 }
 
-class _LineEndingSelector extends StatefulWidget {
-  @override
-  State<_LineEndingSelector> createState() => _LineEndingSelectorState();
-}
-
-class _LineEndingSelectorState extends State<_LineEndingSelector> {
-  String _lineEnding = 'LF';
-  static const _endings = ['LF', 'CRLF', 'CR'];
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      initialValue: _lineEnding,
-      onSelected: (value) => setState(() => _lineEnding = value),
-      itemBuilder: (_) => _endings.map((e) => PopupMenuItem(value: e, child: Text(e))).toList(),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(_lineEnding),
-          const SizedBox(width: 4),
-          Icon(Icons.keyboard_arrow_down, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
-        ],
-      ),
-    );
-  }
-}
-
 class _EmptyState extends StatefulWidget {
-  final void Function(bool pickFolder) onOpenFile;
-  const _EmptyState({required this.onOpenFile});
+  final VoidCallback onOpenFile;
+  final VoidCallback onOpenFolder;
+  final VoidCallback onExtractArchive;
+  const _EmptyState({
+    required this.onOpenFile,
+    required this.onOpenFolder,
+    required this.onExtractArchive,
+  });
 
   @override
   State<_EmptyState> createState() => _EmptyStateState();
@@ -1570,7 +1470,7 @@ class _EmptyStateState extends State<_EmptyState> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Open a file to start editing',
+              'Open a file or folder to start editing',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: cs.onSurface.withValues(alpha: 0.4),
               ),
@@ -1582,44 +1482,38 @@ class _EmptyStateState extends State<_EmptyState> {
               alignment: WrapAlignment.center,
               children: [
                 FilledButton.icon(
-                  onPressed: () => widget.onOpenFile(false),
+                  onPressed: widget.onOpenFile,
                   icon: const Icon(Icons.file_open_rounded, size: 18),
                   label: const Text('Open File'),
                 ),
-                FilledButton.icon(
-                  onPressed: () => widget.onOpenFile(true),
+                FilledButton.tonalIcon(
+                  onPressed: widget.onOpenFolder,
                   icon: const Icon(Icons.folder_open_rounded, size: 18),
                   label: const Text('Open Folder'),
                 ),
                 OutlinedButton.icon(
+                  onPressed: widget.onExtractArchive,
+                  icon: const Icon(Icons.folder_zip_outlined, size: 18),
+                  label: const Text('Unzip Project'),
+                ),
+                OutlinedButton.icon(
                   onPressed: () async {
-                    final ctrl = TextEditingController();
-                    final name = await showDialog<String>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('New File'),
-                        content: TextField(
-                          controller: ctrl,
-                          autofocus: true,
-                          decoration: const InputDecoration(
-                            hintText: 'filename.dart',
-                            border: OutlineInputBorder(),
+                    final name = await _promptForNewFileName(context);
+                    if (name == null || !context.mounted) return;
+                    final relative = _safeRelativeFileName(name);
+                    if (relative == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'That is not a valid file name. Use a plain name with no path separators.',
                           ),
-                          onSubmitted: (_) => Navigator.pop(ctx, ctrl.text.trim()),
                         ),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Create')),
-                        ],
-                      ),
-                    );
-                    ctrl.dispose();
-                    if (name != null && name.isNotEmpty) {
-                      final fs = sl<FsService>();
-                      final path = '${fs.rootPath}/$name';
-                      await fs.writeFile(path, '');
-                      await tabs.open(path);
+                      );
+                      return;
                     }
+                    await sl<FsService>().writeFile(relative, '');
+                    if (!context.mounted) return;
+                    await tabs.open(relative);
                   },
                   icon: const Icon(Icons.add_rounded, size: 18),
                   label: const Text('New File'),
@@ -1671,3 +1565,95 @@ class _EmptyStateState extends State<_EmptyState> {
   }
 }
 
+
+/// Prompts for a new file name. Shared by the editor toolbar and the empty state
+/// so both validate identically.
+Future<String?> _promptForNewFileName(BuildContext context) {
+  return showDialog<String>(
+    context: context,
+    builder: (_) => const _NewFileDialog(),
+  );
+}
+
+/// Owns its own [TextEditingController].
+///
+/// The controller cannot be disposed by the caller as soon as `showDialog`
+/// returns: the route is still animating out and the [TextField] still has a
+/// dependency on it, which trips a framework assertion
+/// (`'_dependents.isEmpty': is not true`). Disposing inside the dialog's own
+/// `dispose` happens after the subtree is gone.
+class _NewFileDialog extends StatefulWidget {
+  const _NewFileDialog();
+
+  @override
+  State<_NewFileDialog> createState() => _NewFileDialogState();
+}
+
+class _NewFileDialogState extends State<_NewFileDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.of(context).pop(_controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('New File'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: 'filename.dart',
+          border: OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Create')),
+      ],
+    );
+  }
+}
+
+/// Reduces user input to a single, safe path component.
+///
+/// The New File dialog used to build `'${fs.rootPath}/$name'` and hand that to
+/// `writeFile`. Because the result is an *absolute* path, it bypassed the
+/// workspace containment check, so typing `../../databases/app.db` created and
+/// truncated a file outside the workspace. Returning a bare name and letting
+/// `FsService.resolve` treat it as workspace-relative closes that.
+///
+/// Returns null when the input is not a plain file name.
+String? _safeRelativeFileName(String raw) {
+  final name = raw.trim();
+  if (name.isEmpty) return null;
+  if (name == '.' || name == '..') return null;
+  if (name.contains('/') || name.contains('\\')) return null;
+  if (name.contains('\u0000')) return null;
+  return name;
+}
+
+/// Reports the line ending a buffer actually uses.
+///
+/// Mixed files report `Mixed`: claiming LF for a file that also contains CRLF would
+/// send the reader hunting for a problem that is not there.
+String detectLineEnding(String text) {
+  final crlf = '\r\n'.allMatches(text).length;
+  final lf = RegExp(r'(?<!\r)\n').allMatches(text).length;
+  final cr = RegExp(r'\r(?!\n)').allMatches(text).length;
+  final kinds = [crlf, lf, cr].where((n) => n > 0).length;
+  if (kinds == 0) return 'LF';
+  if (kinds > 1) return 'Mixed';
+  if (crlf > 0) return 'CRLF';
+  if (cr > 0) return 'CR';
+  return 'LF';
+}

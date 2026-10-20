@@ -6,6 +6,8 @@ import 'package:flutter_highlight/themes/dracula.dart' as dracula;
 import 'package:flutter_highlight/themes/github.dart' as github;
 import 'package:flutter_highlight/themes/androidstudio.dart' as android_studio;
 
+import 'bcode_theme.dart';
+
 class SyntaxTheme {
   final String id;
   final String name;
@@ -24,30 +26,30 @@ class SyntaxThemes {
   static final monokaiSublime = SyntaxTheme(
     id: 'monokai_sublime',
     name: 'Monokai Sublime',
-    styles: {
+    styles: completeHighlightStyles({
       ...monokai_sublime.monokaiSublimeTheme,
       'string': const TextStyle(color: Color(0xffff6b6b)),
       'built_in': const TextStyle(color: Color(0xffa6e22e)),
       'builtin-name': const TextStyle(color: Color(0xffa6e22e)),
       'function': const TextStyle(color: Color(0xffa6e22e)),
-    },
+    }),
   );
 
   static final draculaTheme = SyntaxTheme(
     id: 'dracula',
     name: 'Dracula',
-    styles: {
+    styles: completeHighlightStyles({
       ...dracula.draculaTheme,
       'string': const TextStyle(color: Color(0xfff1fa8c)),
       'built_in': const TextStyle(color: Color(0xff8be9fd)),
       'function': const TextStyle(color: Color(0xff50fa7b)),
-    },
+    }),
   );
 
   static final githubDark = SyntaxTheme(
     id: 'github_dark',
     name: 'GitHub Dark',
-    styles: {
+    styles: completeHighlightStyles({
       ...github.githubTheme,
       'keyword': const TextStyle(color: Color(0xffff7b72)),
       'string': const TextStyle(color: Color(0xffa5d6ff)),
@@ -56,25 +58,25 @@ class SyntaxThemes {
       'number': const TextStyle(color: Color(0xff79c0ff)),
       'built_in': const TextStyle(color: Color(0xffffa657)),
       'type': const TextStyle(color: Color(0xffffa657)),
-    },
+    }),
   );
 
   static final androidStudioTheme = SyntaxTheme(
     id: 'android_studio',
     name: 'Android Studio',
-    styles: android_studio.androidstudioTheme,
+    styles: completeHighlightStyles(android_studio.androidstudioTheme),
   );
 
   static final vs2015Theme = SyntaxTheme(
     id: 'vs2015',
     name: 'VS 2015',
-    styles: vs2015.vs2015Theme,
+    styles: completeHighlightStyles(vs2015.vs2015Theme),
   );
 
   static final monokaiTheme = SyntaxTheme(
     id: 'monokai',
     name: 'Monokai',
-    styles: monokai.monokaiTheme,
+    styles: completeHighlightStyles(monokai.monokaiTheme),
   );
 
   static final all = [

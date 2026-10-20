@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/constants.dart';
 import '../../plugins/api/run_config.dart';
@@ -7,6 +10,29 @@ import '../models.dart';
 
 class LocalRunner {
   static const _channel = MethodChannel(AppConstants.execChannel);
+
+  /// App-private directory that compiled output is written to.
+  ///
+  /// Compiled programs must never be written next to the source when the workspace
+  /// is on shared storage: `/storage/emulated` is mounted `noexec`, so a binary
+  /// built there cannot be started, and the run fails with a permission error that
+  /// looks unrelated to where the file went. Keeping build output app-private also
+  /// stops `.out` files littering the user's project.
+  static const _buildDirName = 'build-output';
+
+  String? _buildDirOverride;
+
+  /// Overrides the build directory. Tests use this to stay off the real filesystem.
+  set buildDir(String value) => _buildDirOverride = value;
+
+  Future<String> _resolveBuildDir() async {
+    final override = _buildDirOverride;
+    if (override != null) return override;
+    final support = await getApplicationSupportDirectory();
+    final dir = Directory('${support.path}/$_buildDirName');
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    return dir.path;
+  }
 
   Future<bool> hasRuntime(String runtimeId) async {
     try {
@@ -47,12 +73,14 @@ class LocalRunner {
     }
     final sw = Stopwatch()..start();
     try {
+      _buildDirOverride ??= await _resolveBuildDir();
+      final buildDir = _buildDirOverride!;
       final runtimePath = p.join(runtimeDir, target.runtimeId);
       String buildStdout = '';
       String buildStderr = '';
 
       if (target.buildArgv != null && target.buildArgv!.isNotEmpty) {
-        final buildArgv = _substitute(target.buildArgv!, runtimeDir, runtimePath, request, workDir);
+        final buildArgv = _substitute(target.buildArgv!, runtimeDir, runtimePath, buildDir, request, workDir);
         final buildRaw = await _channel
             .invokeMethod<Map<Object?, Object?>>('exec', {
               'argv': buildArgv,
@@ -78,7 +106,7 @@ class LocalRunner {
         }
       }
 
-      final runArgv = _substitute(target.runArgv, runtimeDir, runtimePath, request, workDir);
+      final runArgv = _substitute(target.runArgv, runtimeDir, runtimePath, buildDir, request, workDir);
       runArgv.addAll(request.args);
 
       final runRaw = await _channel
@@ -105,6 +133,14 @@ class LocalRunner {
       );
     } on MissingPluginException {
       return RunResult.failure('Local execution not supported on this platform');
+    } on PlatformException catch (e) {
+      // A platform denial already carries a ready-to-read explanation from the
+      // native side; anything else is prefixed so the output panel distinguishes
+      // "your code failed" from "the app could not start your code".
+      if (e.code == 'EXEC_DENIED_BY_PLATFORM') {
+        return RunResult.failure(e.message ?? 'Android refused to run this program');
+      }
+      return RunResult.failure('Local execution failed: ${e.message ?? e.code}');
     } catch (e) {
       return RunResult.failure('Local execution failed: $e');
     }
@@ -114,6 +150,7 @@ class LocalRunner {
     List<String> template,
     String runtimeDir,
     String runtimePath,
+    String buildDir,
     RunRequest request,
     String workDir,
   ) {
@@ -127,6 +164,7 @@ class LocalRunner {
           .replaceAll('{runtimePath}', runtimePath)
           .replaceAll('{file}', filePath)
           .replaceAll('{dir}', p.dirname(filePath))
+          .replaceAll('{outDir}', buildDir)
           .replaceAll('{name}', baseName);
     }).toList();
   }

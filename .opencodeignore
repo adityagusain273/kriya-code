@@ -1,0 +1,9 @@
+android/local-engine-repo/
+android/.gradle/
+build/
+.dart_tool/
+.flutter-plugins-dependencies
+.idea/
+coverage/
+*.iml
+.DS_Store

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!--
+      B Code never participates in cloud backup or device-to-device transfer.
+
+      Rationale: app-private storage holds the GitHub OAuth token
+      (shared_prefs/FlutterSecureStorage.xml), the RSA-wrapped storage key
+      (shared_prefs/FlutterSecureKeyStorage.xml), the local crash log, and
+      downloaded language runtimes under files/app_flutter/runtimes.
+
+      The Android Keystore keys backing that token do NOT migrate, so a
+      restored copy would contain an undecryptable token that fails every read.
+    -->
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

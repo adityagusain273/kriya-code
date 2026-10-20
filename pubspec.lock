@@ -403,7 +403,7 @@ packages:
     source: hosted
     version: "1.6.0"
   http_certificate_pinning:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: http_certificate_pinning
       sha256: a7803cdca6cb5e676dc621e92dc95bd8b3d0ae84a8b0520e5e0b52693a95da1e
@@ -648,7 +648,7 @@ packages:
     source: hosted
     version: "3.0.0"
   package_info_plus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: package_info_plus
       sha256: "468c26b4254ab01979fa5e4a98cb343ea3631b9acee6f21028997419a80e1a20"

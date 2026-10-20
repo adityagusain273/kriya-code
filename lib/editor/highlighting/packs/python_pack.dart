@@ -1,7 +1,6 @@
 import 'package:highlight/highlight_core.dart';
 import 'package:highlight/languages/python.dart';
 
-import '../../../plugins/api/run_config.dart';
 import '../language_pack.dart';
 
 class PythonPack implements LanguagePack {
@@ -22,14 +21,6 @@ class PythonPack implements LanguagePack {
   @override
   IndentRules get indentRules =>
       const IndentRules(indentWidth: 4, blockOpeners: [':']);
-
-  @override
-  RunConfig get runConfig => const RunConfig(
-        local: LocalTarget(
-          runtimeId: 'cpython',
-          runArgv: ['{runtimePath}/bin/python3', '{file}'],
-        ),
-      );
 
   Mode _patchGrammar() {
     final kw = python.keywords as Map<String, String>;

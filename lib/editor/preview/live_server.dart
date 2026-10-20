@@ -47,6 +47,19 @@ class LiveServer {
     return 'http://127.0.0.1:$port/?bct=$token';
   }
 
+  /// A URL for a specific resource path, with the session token appended
+  /// correctly. `PreviewPage` used to receive `baseUrl` (which embeds the token
+  /// as a *query* string) and concatenate `/relative/path`, producing
+  /// `.../?bct=tok/path`, which invalidated the token. Keep the token in the
+  /// query component of the final path here.
+  String? urlFor(String relativePath) {
+    final port = _port;
+    final token = _token;
+    if (_server == null || port == null || token == null) return null;
+    final path = relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+    return 'http://127.0.0.1:$port/$path?bct=$token';
+  }
+
   int get clientCount => _clients.length;
 
   Future<String> start() => _starting ??= _doStart().whenComplete(() => _starting = null);

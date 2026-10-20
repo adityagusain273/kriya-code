@@ -7,12 +7,69 @@ class FindReplaceController extends ChangeNotifier {
   bool caseSensitive = false;
   bool useRegex = false;
   bool wholeWord = false;
-  int currentIndex = -1;
+  int _currentIndex = -1;
   final List<Match> _matches = [];
 
-  FindReplaceController(this.source);
+  /// The buffer the current matches were computed against, or null when they are
+  /// stale.
+  ///
+  /// `Match.start`/`Match.end` are offsets, so they only mean anything against the
+  /// exact text they were computed from. The find bar can be closed while the user
+  /// keeps typing and reopened afterwards, and nothing recomputed the offsets in
+  /// between — pressing Replace then spliced the replacement in at the stale
+  /// position and mangled the file. Recomputing is deferred rather than done per
+  /// keystroke so an open find bar over a large buffer costs nothing while it is
+  /// not being used.
+  ///
+  /// Keyed on the text rather than on "something changed": moving the caret, which
+  /// the bar itself does after every match, leaves the offsets perfectly valid and
+  /// must not throw them away.
+  String? _matchedText;
 
-  int get matchCount => _matches.length;
+  bool get _stale => _matchedText != source.text;
+
+  FindReplaceController(this.source) {
+    source.addListener(_onSourceChanged);
+  }
+
+  void _onSourceChanged() {
+    if (!_stale) return;
+    notifyListeners();
+  }
+
+  int get currentIndex {
+    _ensureFresh();
+    return _currentIndex;
+  }
+
+  int get matchCount {
+    _ensureFresh();
+    return _matches.length;
+  }
+
+  void _ensureFresh() {
+    if (!_stale) return;
+    _recompute();
+  }
+
+  void _recompute() {
+    final text = source.text;
+    _matchedText = text;
+    _matches
+      ..clear()
+      ..addAll(_computeMatches(text));
+    if (_matches.isEmpty) {
+      _currentIndex = -1;
+    } else if (_currentIndex >= _matches.length) {
+      _currentIndex = _matches.length - 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    source.removeListener(_onSourceChanged);
+    super.dispose();
+  }
 
   List<Match> _computeMatches(String haystack) {
     if (query.isEmpty || haystack.isEmpty) return const [];
@@ -34,39 +91,44 @@ class FindReplaceController extends ChangeNotifier {
   }
 
   void search({bool jumpToFirst = false}) {
-    _matches
-      ..clear()
-      ..addAll(_computeMatches(source.text));
+    _recompute();
     if (_matches.isEmpty) {
-      currentIndex = -1;
+      _currentIndex = -1;
     } else {
-      currentIndex = jumpToFirst
+      _currentIndex = jumpToFirst
           ? 0
-          : (currentIndex + 1).clamp(0, _matches.length - 1);
+          : (_currentIndex + 1).clamp(0, _matches.length - 1);
       _selectMatch();
     }
     notifyListeners();
   }
 
   void previous() {
+    _ensureFresh();
     if (_matches.isEmpty) return;
-    currentIndex = (currentIndex - 1) % _matches.length;
-    if (currentIndex < 0) currentIndex = _matches.length - 1;
+    _currentIndex = (_currentIndex - 1) % _matches.length;
+    if (_currentIndex < 0) _currentIndex = _matches.length - 1;
     _selectMatch();
     notifyListeners();
   }
 
   void next() {
+    _ensureFresh();
     if (_matches.isEmpty) return;
-    currentIndex = (currentIndex + 1) % _matches.length;
+    _currentIndex = (_currentIndex + 1) % _matches.length;
     _selectMatch();
     notifyListeners();
   }
 
   void replaceCurrent() {
-    if (currentIndex < 0 || currentIndex >= _matches.length) return;
-    final match = _matches[currentIndex];
+    _ensureFresh();
+    if (_currentIndex < 0 || _currentIndex >= _matches.length) return;
+    final match = _matches[_currentIndex];
     final text = source.text;
+    if (match.start < 0 || match.end > text.length || match.start > match.end) {
+      search(jumpToFirst: true);
+      return;
+    }
     final updated = text.substring(0, match.start) +
         replacement +
         text.substring(match.end);
@@ -76,10 +138,10 @@ class FindReplaceController extends ChangeNotifier {
           offset: (match.start + replacement.length).clamp(0, updated.length)),
     );
     search();
-    notifyListeners();
   }
 
   void replaceAll() {
+    _ensureFresh();
     if (query.isEmpty || _matches.isEmpty) return;
     final matches = _computeMatches(source.text);
     if (matches.isEmpty) return;
@@ -96,12 +158,11 @@ class FindReplaceController extends ChangeNotifier {
       selection: TextSelection.collapsed(offset: 0),
     );
     search(jumpToFirst: true);
-    notifyListeners();
   }
 
   void _selectMatch() {
-    if (currentIndex < 0 || currentIndex >= _matches.length) return;
-    final match = _matches[currentIndex];
+    if (_currentIndex < 0 || _currentIndex >= _matches.length) return;
+    final match = _matches[_currentIndex];
     source.selection = TextSelection(
       baseOffset: match.start,
       extentOffset: match.end,

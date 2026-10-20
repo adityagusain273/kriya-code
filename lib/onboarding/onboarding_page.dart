@@ -1,19 +1,15 @@
-import 'dart:io';
 
-import 'package:archive/archive_io.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../core/constants.dart';
 import '../core/di.dart';
+import '../workspace/import_actions.dart';
+
 import '../editor/editor_page.dart';
 
 import '../github/auth/device_flow_auth.dart';
 import '../github/auth/token_store.dart';
 import '../settings/settings_store.dart';
-import '../workspace/fs_service.dart';
 import '../execution/runtime_download_service.dart';
 import '../execution/runtime_catalog.dart';
 
@@ -44,8 +40,6 @@ class _OnboardingPageState extends State<OnboardingPage>
 
   final Set<String> _selectedLanguages = {};
 
-  String? _customStoragePath;
-  bool _pickingFolder = false;
 
   static const int _totalSteps = 6;
 
@@ -93,22 +87,15 @@ class _OnboardingPageState extends State<OnboardingPage>
   void _skip() => _finish();
 
   void _finish() {
+    // Setting the flag rebuilds the app shell, which swaps `home` to the editor.
+    // Pushing a route as well used to stack a second EditorPage on top of it,
+    // leaving two file explorers and two TabManager listeners alive.
     sl<SettingsStore>().onboardingComplete = true;
-    if (_customStoragePath != null && _customStoragePath!.isNotEmpty) {
-      _setCustomStorage(_customStoragePath!);
-    }
+    if (mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const EditorPage()),
     );
   }
-
-  Future<void> _setCustomStorage(String path) async {
-    final fs = sl<FsService>();
-    await fs.setCustomRoot(path);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('custom_storage_path', path);
-  }
-
 
 
   Future<void> _connectGitHub() async {
@@ -152,139 +139,15 @@ class _OnboardingPageState extends State<OnboardingPage>
     }
   }
 
-  Future<void> _pickStorageFolder() async {
-    final channel = MethodChannel(AppConstants.safChannel);
-    try {
-      final granted = await channel.invokeMethod<bool>('requestStoragePermission');
-      if (granted != true) return;
-    } catch (_) {}
-    setState(() => _pickingFolder = true);
-    try {
-      final result = await channel.invokeMethod<String>('pickDirectory');
-      if (result != null && mounted) {
-        setState(() => _customStoragePath = result);
-      }
-    } finally {
-      if (mounted) setState(() => _pickingFolder = false);
-    }
-  }
-
-
+  /// Unpacks a project archive the user picks off the device.
+  ///
+  /// This used to open a bespoke browser hardcoded to
+  /// `/storage/emulated/0/Download`, which needs a storage permission the app does not
+  /// hold and so listed nothing on most devices, and it only recognised `.zip`. It now
+  /// goes through the same system picker as the editor's "Unzip Project" action and
+  /// handles tar and gzip too.
   Future<void> _extractZip() async {
-    try {
-      final result = await _showZipPicker();
-      if (result != null && mounted) {
-        final zipFile = File(result);
-        final extractDir =
-            '${sl<FsService>().rootPath}/${p.basenameWithoutExtension(result)}';
-        await _extractZipFile(zipFile, extractDir);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Extracted to $extractDir')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Failed to extract: $e'),
-              backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  Future<String?> _showZipPicker() async {
-    String current = '/storage/emulated/0/Download';
-    List<FileSystemEntity> entries = [];
-    try {
-      entries = Directory(current)
-          .listSync()
-          .whereType<File>()
-          .where((e) => e.path.endsWith('.zip'))
-          .toList();
-    } catch (_) {}
-
-    return await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Select ZIP File'),
-          content: SizedBox(
-            width: 300,
-            height: 400,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(current, style: Theme.of(ctx).textTheme.bodySmall),
-                const Divider(),
-                Expanded(
-                  child: ListView(
-                    children: [
-                      if (current != '/storage/emulated/0')
-                        ListTile(
-                          leading: const Icon(Icons.arrow_upward, size: 18),
-                          dense: true,
-                          title: const Text('.. (Parent)'),
-                          onTap: () {
-                            final parent = p.dirname(current);
-                            if (parent != current) {
-                              setState(() => current = parent);
-                              try {
-                                entries = Directory(current)
-                                    .listSync()
-                                    .whereType<File>()
-                                    .where((e) => e.path.endsWith('.zip'))
-                                    .toList();
-                              } catch (_) {}
-                            }
-                          },
-                        ),
-                      for (final e in entries)
-                        ListTile(
-                          leading:
-                              const Icon(Icons.file_present, size: 18),
-                          dense: true,
-                          title: Text(p.basename(e.path)),
-                          onTap: () => Navigator.pop(ctx, e.path),
-                        ),
-                      if (entries.isEmpty)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(32),
-                            child: Text('No .zip files found in this folder'),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _extractZipFile(File zipFile, String extractDir) async {
-    final bytes = await zipFile.readAsBytes();
-    final archive = ZipDecoder().decodeBytes(bytes);
-    for (final file in archive) {
-      final filePath = '$extractDir/${file.name}';
-      if (file.isFile) {
-        final outFile = File(filePath);
-        await outFile.create(recursive: true);
-        await outFile.writeAsBytes(file.content as List<int>);
-      } else {
-        await Directory(filePath).create(recursive: true);
-      }
-    }
+    await importArchiveFromDevice(context);
   }
 
   Widget _buildDots(ColorScheme cs) {
@@ -784,29 +647,6 @@ class _OnboardingPageState extends State<OnboardingPage>
                   color: cs.onSurfaceVariant,
                 ),
           ),
-          const SizedBox(height: 24),
-          Card(
-            elevation: 0,
-            color: cs.surfaceContainerHighest,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            child: ListTile(
-              leading: Icon(Icons.storage_rounded, color: cs.primary),
-              title: const Text('Custom Storage Folder'),
-              subtitle: Text(
-                _customStoragePath ?? 'App private folder (default)',
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-              ),
-              trailing: _pickingFolder
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
-              onTap: _pickingFolder ? null : _pickStorageFolder,
-            ),
-          ),
-          const SizedBox(height: 12),
           Card(
             elevation: 0,
             color: cs.surfaceContainerHighest,

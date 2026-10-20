@@ -29,6 +29,13 @@ class _GitWorkspacePageState extends State<GitWorkspacePage> {
   List<GitDiffEntry> _changes = [];
   Repository? _repo;
 
+  /// Set before the native handle is released.
+  ///
+  /// `dispose` called `Repository.free()` while an in-flight `workingDirDiff`
+  /// could still be reading from it, which is a libgit2 use-after-free and
+  /// crashes the process rather than raising a catchable Dart error.
+  bool _disposed = false;
+
   GitService get _git => sl<GitService>();
 
   @override
@@ -39,9 +46,15 @@ class _GitWorkspacePageState extends State<GitWorkspacePage> {
 
   Future<void> _openRepo() async {
     try {
-      _repo = await _openImpl();
+      final repo = await _openImpl();
+      if (_disposed) {
+        repo.free();
+        return;
+      }
+      _repo = repo;
       await _refreshDiff();
     } catch (e) {
+      if (_disposed || !mounted) return;
       setState(() => _status = 'Failed to open repository: $e');
     }
   }
@@ -51,9 +64,10 @@ class _GitWorkspacePageState extends State<GitWorkspacePage> {
   }
 
   Future<void> _refreshDiff() async {
-    if (_repo == null) return;
-    final result = await _git.workingDirDiff(_repo!);
-    if (!mounted) return;
+    final repo = _repo;
+    if (repo == null || _disposed) return;
+    final result = await _git.workingDirDiff(repo);
+    if (_disposed || !mounted) return;
     setState(() {
       result.fold(
         (list) => _changes = list,
@@ -78,16 +92,41 @@ class _GitWorkspacePageState extends State<GitWorkspacePage> {
     }
   }
 
+  /// Gates `pull`, which is `fetch` plus `reset --hard`.
+  ///
+  /// The hard reset rewinds HEAD to `origin/<branch>`, so anything only present
+  /// locally is destroyed. Two distinct things can be lost and both must be
+  /// called out: uncommitted working-tree changes, and commits that were never
+  /// pushed. The previous check looked only at the working tree, so "commit
+  /// locally, then pull" discarded the commits with no prompt at all.
   Future<void> _pullWithDirtyCheck() async {
+    final repo = _repo;
+    if (repo == null || _disposed) return;
+
+    final unpushed =
+        await _git.unpushedCommitCount(repo, widget.defaultBranch);
+    final unpushedCount = unpushed.isOk ? unpushed.valueOrNull ?? 0 : 0;
+    if (_disposed || !mounted) return;
+
+    final warnings = <String>[];
     if (_changes.isNotEmpty) {
+      warnings.add(
+        '${_changes.length} uncommitted change(s) will be discarded.',
+      );
+    }
+    if (unpushedCount > 0) {
+      warnings.add(
+        '$unpushedCount commit(s) that were never pushed will be lost. '
+        'Push them first if you want to keep them.',
+      );
+    }
+
+    if (warnings.isNotEmpty) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Uncommitted changes'),
-          content: Text(
-            'You have ${_changes.length} uncommitted change(s). '
-            'Pulling will discard all local changes. Continue?',
-          ),
+          title: const Text('Discard local work?'),
+          content: Text(warnings.join('\n\n')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -95,15 +134,17 @@ class _GitWorkspacePageState extends State<GitWorkspacePage> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Pull anyway'),
+              child: const Text('Discard and pull'),
             ),
           ],
         ),
       );
       if (confirmed != true) return;
     }
+
+    if (_disposed || !mounted) return;
     await _action('Pull',
-        () => _git.pull(_repo!, widget.token, branch: widget.defaultBranch));
+        () => _git.pull(repo, widget.token, branch: widget.defaultBranch));
   }
 
   Future<void> _commitDialog() async {
@@ -223,7 +264,10 @@ class _GitWorkspacePageState extends State<GitWorkspacePage> {
 
   @override
   void dispose() {
-    _repo?.free();
+    _disposed = true;
+    final repo = _repo;
+    _repo = null;
+    repo?.free();
     super.dispose();
   }
 }

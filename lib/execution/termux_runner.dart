@@ -53,13 +53,16 @@ class TermuxRunner {
 
     final sw = Stopwatch()..start();
     try {
+      // useResult: true is what makes Termux send the stdout/stderr/exit-code
+      // broadcast back. With false it fires and returns immediately, so the
+      // console always came back empty.
       final raw = await _channel.invokeMethod<Map<Object?, Object?>>('runCommand', {
         'command': command,
         'args': args,
         'stdin': stdin,
         'workDir': workDir,
-        'useResult': false,
-      });
+        'useResult': true,
+      }).timeout(const Duration(minutes: 2));
       sw.stop();
       final result = raw?.cast<String, Object?>() ?? {};
       return TermuxResult(
@@ -86,51 +89,6 @@ class TermuxRunner {
     }
   }
 
-  static Future<TermuxResult> runScript({
-    required String script,
-    String? workDir,
-  }) async {
-    if (!_available) {
-      return TermuxResult(
-        success: false,
-        stdout: '',
-        stderr: 'Termux is not available',
-        exitCode: -1,
-      );
-    }
-
-    final sw = Stopwatch()..start();
-    try {
-      final raw = await _channel.invokeMethod<Map<Object?, Object?>>('runScript', {
-        'script': script,
-        'workDir': workDir,
-        'useResult': false,
-      });
-      sw.stop();
-      final result = raw?.cast<String, Object?>() ?? {};
-      return TermuxResult(
-        success: result['success'] == true,
-        stdout: (result['stdout'] as String?) ?? '',
-        stderr: (result['stderr'] as String?) ?? '',
-        exitCode: (result['exitCode'] as num?)?.toInt() ?? -1,
-        durationMs: sw.elapsedMilliseconds,
-      );
-    } on MissingPluginException {
-      return TermuxResult(
-        success: false,
-        stdout: '',
-        stderr: 'Termux plugin not available',
-        exitCode: -1,
-      );
-    } catch (e) {
-      return TermuxResult(
-        success: false,
-        stdout: '',
-        stderr: 'Termux error: $e',
-        exitCode: -1,
-      );
-    }
-  }
 }
 
 class TermuxResult {

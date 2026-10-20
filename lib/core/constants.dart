@@ -15,6 +15,21 @@ class AppConstants {
   /// unknown app.
   static const githubClientId = String.fromEnvironment('GITHUB_CLIENT_ID');
 
+  /// Stand-in used when no real client id was injected, so a debug build still
+  /// starts.
+  ///
+  /// The alternative — throwing at startup — meant that `flutter run`, a plain
+  /// `flutter build apk --debug` and therefore every adb install produced an app
+  /// that died on launch with "B Code could not start", so the only way to try
+  /// the editor was to remember a build flag. Release builds still refuse to
+  /// start without a real id (see `_bootstrap`), because shipping a build that
+  /// cannot sign in should fail at build time rather than at the login screen.
+  static const unconfiguredClientId = 'bcode-unconfigured-client';
+
+  /// Whether a real GitHub client id was compiled in.
+  static bool get githubConfigured =>
+      githubClientId.isNotEmpty && githubClientId != unconfiguredClientId;
+
   /// When true, the RASP layer must not kill sideloaded/F-Droid builds.
   /// Set with `--dart-define=ALLOW_SIDELOAD=true`.
   static const allowSideload = bool.fromEnvironment('ALLOW_SIDELOAD');

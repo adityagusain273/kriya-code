@@ -142,27 +142,31 @@ class SnippetService {
 
   static Future<void> loadAssets() async {
     if (_assetsLoaded) return;
-    final manifest = await rootBundle.loadString('AssetManifest.json');
-    final Map<String, dynamic> manifestMap = jsonDecode(manifest);
-    
-    for (final key in manifestMap.keys) {
-      if (key.startsWith('assets/snippets/') && key.endsWith('.json')) {
-        final languageId = key.split('/').last.replaceAll('.json', '');
-        try {
-          final content = await rootBundle.loadString(key);
-          final Map<String, dynamic> json = jsonDecode(content);
-          final snippets = <Snippet>[];
-          
-          for (final entry in json.entries) {
-            final snippetData = Map<String, dynamic>.from(entry.value);
-            snippetData['prefix'] = entry.key;
-            snippets.add(Snippet.fromJson(snippetData));
-          }
-          
-          _loadedSnippets[languageId] = snippets;
-        } catch (e) {
-          log('Failed to load snippets for $languageId: $e');
+    // The languages that ship snippet files. Enumerated here rather than read from
+    // the asset manifest because Flutter no longer ships AssetManifest.json, which
+    // is why this function had never been called successfully and every file in
+    // assets/snippets/ was dead weight.
+    const languages = [
+      'c', 'cpp', 'css', 'dart', 'html', 'java', 'javascript', 'python',
+      'typescript',
+    ];
+
+    for (final languageId in languages) {
+      try {
+        final content = await rootBundle.loadString('assets/snippets/$languageId.json');
+        final decoded = jsonDecode(content) as Map<String, dynamic>;
+        final snippets = <Snippet>[];
+        for (final entry in decoded.entries) {
+          final snippetData = Map<String, dynamic>.from(entry.value as Map);
+          // The JSON is keyed by the trigger, so the key is the prefix.
+          snippetData['prefix'] = entry.key;
+          snippets.add(Snippet.fromJson(snippetData));
         }
+        _loadedSnippets[languageId] = snippets;
+      } catch (e) {
+        // A missing or malformed snippet file must not stop the editor starting;
+        // the built-in snippets for that language still apply.
+        log('Failed to load snippets for $languageId: $e');
       }
     }
     _assetsLoaded = true;

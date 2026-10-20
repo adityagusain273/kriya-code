@@ -9,6 +9,77 @@ class BCodeController extends CodeController {
     super.params,
   });
 
+  /// Pairs whose closing half the editor inserts automatically, mapped to the
+  /// character the user has to type to move past it.
+  static const _closers = <String, String>{
+    ')': '(',
+    ']': '[',
+    '}': '{',
+    '"': '"',
+    "'": "'",
+    '`': '`',
+  };
+
+  /// Steps over an auto-inserted closing character rather than duplicating it.
+  ///
+  /// Typing `(` already produces `()` with the caret between them. Typing the `)`
+  /// next is the natural keystroke, and without this it produced `())` — unbalanced
+  /// code that then failed to run, which is a poor first experience on a phone.
+  ///
+  /// Done here rather than through the editor's [CodeModifier] hook because that
+  /// table is keyed by character: registering a handler for `"` replaces the
+  /// package's own quote insertion, and adding one for `)` ran into assumptions in
+  /// the package's read-only range check that a shrinking edit violates.
+  @override
+  set value(TextEditingValue newValue) {
+    final adjusted = _stepOverClosingCharacter(newValue);
+    super.value = adjusted ?? newValue;
+  }
+
+  TextEditingValue? _stepOverClosingCharacter(TextEditingValue incoming) {
+    final current = super.value;
+    if (incoming.text.length != current.text.length + 1) return null;
+    final sel = current.selection;
+    if (!sel.isCollapsed || sel.start < 0) return null;
+    if (sel.start >= current.text.length) return null;
+
+    // The character that was just typed sits immediately before the caret in the
+    // incoming text; the caret itself has already moved past it.
+    final typed = incoming.text[sel.start];
+    final opener = _closers[typed];
+    if (opener == null) return null;
+
+    // There must be an identical closer already sitting at the caret, and it must
+    // belong to a pair that is still open. Otherwise this keystroke is genuine,
+    // such as the bracket in `print(1) + 2)`.
+    if (current.text[sel.start] != typed) return null;
+    if (!_isPairPending(current.text, sel.start, opener, typed)) return null;
+
+    return TextEditingValue(
+      text: current.text,
+      selection: TextSelection.collapsed(offset: sel.start + 1),
+    );
+  }
+
+  /// Whether a pair opened by [opener] is still open before [caret].
+  static bool _isPairPending(
+    String text,
+    int caret,
+    String opener,
+    String closer,
+  ) {
+    var open = 0;
+    var close = 0;
+    for (var i = 0; i < caret; i++) {
+      final ch = text[i];
+      if (ch == opener) open++;
+      // Quotes are their own opener and closer, so they must not cancel themselves
+      // out or an empty string would look unclosed.
+      if (ch == closer && closer != opener) close++;
+    }
+    return open > close;
+  }
+
   @override
   TextSpan buildTextSpan({
     required BuildContext context,

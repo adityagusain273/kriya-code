@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -7,64 +5,45 @@ import 'package:path/path.dart' as p;
 import 'explorer_prefs.dart';
 import 'file_icons.dart';
 import 'fs_service.dart';
+import 'import_actions.dart';
 import '../../editor/templates/template_selector_dialog.dart';
 import '../core/di.dart';
+import '../core/archive_extractor.dart';
 import '../editor/tab_manager.dart';
 import '../plugins/host/extension_install_store.dart';
 
-Future<void> _extractZipFile(
-  String zipPath,
+/// Unpacks the archive at [path] into a sibling folder, then refreshes the tree.
+///
+/// Shares its implementation with the "Unzip Project" flow on the empty state, which
+/// is what let this one drift into offering itself on files that were never archives.
+Future<bool> _extractArchive(
+  String path,
   FsService fs,
   BuildContext context,
   VoidCallback onReload,
 ) async {
-  try {
-    final zipFile = File(zipPath);
-    if (!zipFile.existsSync()) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ZIP file not found'), backgroundColor: Colors.red),
-        );
-      }
-      return;
-    }
+  final result = await unpackArchive(context, path);
+  if (result == null) return false;
+  if (context.mounted) onReload();
+  return true;
+}
 
-    final extractDir = p.join(
-      p.dirname(zipPath),
-      p.basenameWithoutExtension(zipPath),
-    );
+/// Lets the page ask the explorer to expand down to a freshly imported path.
+///
+/// The import happens on another screen, so the folder that just arrived is otherwise
+/// collapsed at the root behind a row the user has to find themselves.
+class FileExplorerController extends ChangeNotifier {
+  String? _pending;
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Extracting to $extractDir...')),
-      );
-    }
+  String? takePending() {
+    final value = _pending;
+    _pending = null;
+    return value;
+  }
 
-    final bytes = await zipFile.readAsBytes();
-    final archive = ZipDecoder().decodeBytes(bytes);
-
-    for (final file in archive) {
-      final outPath = p.join(extractDir, file.name);
-      if (file.isFile) {
-        await File(outPath).create(recursive: true);
-        await File(outPath).writeAsBytes(file.content as List<int>);
-      } else if (file.isDirectory) {
-        await Directory(outPath).create(recursive: true);
-      }
-    }
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Extracted to $extractDir')),
-      );
-      onReload();
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to extract: $e'), backgroundColor: Colors.red),
-      );
-    }
+  void reveal(String relativePath) {
+    _pending = relativePath;
+    notifyListeners();
   }
 }
 
@@ -74,6 +53,7 @@ class FileExplorer extends StatefulWidget {
   final VoidCallback onChanged;
   final String? activeFile;
   final ExplorerPrefs? prefs;
+  final FileExplorerController? controller;
 
   const FileExplorer({
     super.key,
@@ -82,6 +62,7 @@ class FileExplorer extends StatefulWidget {
     required this.onChanged,
     this.activeFile,
     this.prefs,
+    this.controller,
   });
 
   @override
@@ -94,6 +75,47 @@ class _FileExplorerState extends State<FileExplorer> {
   String? _selectedDir;
   int _reloadGen = 0;
   final _refreshKey = GlobalKey<RefreshIndicatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller?.addListener(_onRevealRequested);
+  }
+
+  @override
+  void didUpdateWidget(FileExplorer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_onRevealRequested);
+      widget.controller?.addListener(_onRevealRequested);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_onRevealRequested);
+    super.dispose();
+  }
+
+  void _onRevealRequested() {
+    final path = widget.controller?.takePending();
+    if (path == null) return;
+    _expandAncestorsOf(path);
+  }
+
+  /// Opens every folder between the root and [relativePath].
+  void _expandAncestorsOf(String relativePath) {
+    final segments = relativePath.split('/')..removeLast();
+    var acc = '';
+    var changed = false;
+    for (final segment in segments) {
+      if (segment.isEmpty) continue;
+      acc = acc.isEmpty ? segment : '$acc/$segment';
+      changed |= _expandedDirs.add(acc);
+    }
+    if (changed) widget.prefs?.saveExpanded(_expandedDirs);
+    _reload();
+  }
 
   Future<List<FsEntry>> _loadRoot() async {
     _pruneMissing();
@@ -143,7 +165,10 @@ class _FileExplorerState extends State<FileExplorer> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: sl<ExtensionInstallStore>(),
+      listenable: Listenable.merge([
+        sl<ExtensionInstallStore>(),
+        if (widget.controller != null) widget.controller!,
+      ]),
       builder: (context, _) {
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -242,7 +267,8 @@ class _FileExplorerState extends State<FileExplorer> {
                         depth: 0,
                         onFileTap: widget.onFileTap,
                         onChanged: _reload,
-                        onExtractZip: (path) => _extractZipFile(path, widget.fs, context, _reload),
+                        onExtractArchive: (path) =>
+                            _extractArchive(path, widget.fs, context, _reload),
                         activeFile: widget.activeFile,
                         expandedDirs: _expandedDirs,
                         onToggleDir: _onToggleDir,
@@ -413,7 +439,7 @@ class _EntryTile extends StatefulWidget {
   final int depth;
   final ValueChanged<String> onFileTap;
   final VoidCallback onChanged;
-  final Future<void> Function(String) onExtractZip;
+  final Future<bool> Function(String) onExtractArchive;
   final String? activeFile;
   final Set<String> expandedDirs;
   final void Function(String relativePath, bool expanded) onToggleDir;
@@ -428,7 +454,7 @@ class _EntryTile extends StatefulWidget {
     required this.depth,
     required this.onFileTap,
     required this.onChanged,
-    required this.onExtractZip,
+    required this.onExtractArchive,
     required this.expandedDirs,
     required this.onToggleDir,
     required this.onSelectDir,
@@ -496,6 +522,8 @@ class _EntryTileState extends State<_EntryTile> {
   @override
   Widget build(BuildContext context) {
     final selected = widget.activeFile == entry.path;
+    final isArchive =
+        !entry.isDirectory && ArchiveExtractor.isArchiveName(entry.name);
     final isSelectedTarget =
         entry.isDirectory && widget.selectedDir == _relativePath;
     return Column(
@@ -531,12 +559,14 @@ class _EntryTileState extends State<_EntryTile> {
           trailing: PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 18),
             onSelected: (action) => _handleAction(context, action),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'copy_path', child: Text('Copy Path')),
-              PopupMenuItem(value: 'extract_zip', child: Text('Extract ZIP')),
-              PopupMenuItem(value: 'rename', child: Text('Rename')),
-              PopupMenuItem(value: 'move', child: Text('Move…')),
-              PopupMenuItem(value: 'delete', child: Text('Delete')),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'copy_path', child: Text('Copy Path')),
+              if (isArchive)
+                const PopupMenuItem(
+                    value: 'extract_archive', child: Text('Extract Archive')),
+              const PopupMenuItem(value: 'rename', child: Text('Rename')),
+              const PopupMenuItem(value: 'move', child: Text('Move…')),
+              const PopupMenuItem(value: 'delete', child: Text('Delete')),
             ],
           ),
         ),
@@ -555,7 +585,7 @@ class _EntryTileState extends State<_EntryTile> {
                       depth: widget.depth + 1,
                       onFileTap: widget.onFileTap,
                       onChanged: _reloadSubtree,
-                      onExtractZip: widget.onExtractZip,
+                      onExtractArchive: widget.onExtractArchive,
                       activeFile: widget.activeFile,
                       expandedDirs: widget.expandedDirs,
                       onToggleDir: widget.onToggleDir,
@@ -582,8 +612,8 @@ class _EntryTileState extends State<_EntryTile> {
             );
           }
           break;
-        case 'extract_zip':
-          await widget.onExtractZip(entry.path);
+        case 'extract_archive':
+          await widget.onExtractArchive(entry.path);
           break;
         case 'rename':
           String text = entry.name;
@@ -692,6 +722,7 @@ class _FolderPickerDialogState extends State<FolderPickerDialog> {
     try {
       final relPath = current == widget.fs.rootPath ? '.' : widget.fs.relativeToRoot(current);
       final list = (await widget.fs.list(relPath)).where((e) => e.isDirectory).toList();
+      if (!mounted) return;
       setState(() => entries = list);
     } catch (e) {
       if (mounted) {

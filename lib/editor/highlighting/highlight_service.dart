@@ -28,9 +28,4 @@ class HighlightService {
 
   Future<int> indentWidthFor(String? languageId) async =>
       (await engine.indentRulesFor(languageId)).indentWidth;
-
-  Future<String?> runtimeIdFor(String? languageId) async {
-    final pack = languageId == null ? null : await engine.forId(languageId);
-    return pack?.runConfig.local?.runtimeId;
-  }
 }

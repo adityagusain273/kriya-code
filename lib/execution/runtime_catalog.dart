@@ -7,14 +7,20 @@ class RuntimeSpec {
   final String runtimeId;
   final String title;
   final String description;
-  final String extensionId;
+  /// Language packs this runtime makes usable.
+  ///
+  /// A list because one runtime can serve several languages: the C/C++ toolchain is
+  /// the same runtime for both `c` and `cpp`. A single id here could only ever
+  /// enable one of them, which is how `bcode.lang.c_cpp` came to refer to a language
+  /// pack that does not exist.
+  final List<String> extensionIds;
   final List<String> packages;
 
   const RuntimeSpec({
     required this.runtimeId,
     required this.title,
     required this.description,
-    required this.extensionId,
+    required this.extensionIds,
     required this.packages,
   });
 }
@@ -24,35 +30,35 @@ const runtimeCatalog = <String, RuntimeSpec>{
     runtimeId: 'cpython',
     title: 'Python Runtime',
     description: 'Run .py files offline on your device',
-    extensionId: 'bcode.lang.python',
+    extensionIds: ['bcode.lang.python'],
     packages: ['python', 'libandroid-support', 'ncurses', 'openssl', 'libffi'],
   ),
   'clang': RuntimeSpec(
     runtimeId: 'clang',
     title: 'C / C++ Runtime',
     description: 'Compile and run .c and .cpp files offline',
-    extensionId: 'bcode.lang.c_cpp',
+    extensionIds: ['bcode.lang.c', 'bcode.lang.cpp'],
     packages: ['clang', 'binutils', 'ncurses', 'zlib', 'libc++'],
   ),
   'openjdk': RuntimeSpec(
     runtimeId: 'openjdk',
     title: 'Java Runtime',
     description: 'Run .java files offline on your device',
-    extensionId: 'bcode.lang.java',
+    extensionIds: ['bcode.lang.java'],
     packages: ['openjdk-17'],
   ),
   'nodejs': RuntimeSpec(
     runtimeId: 'nodejs',
     title: 'Node.js Runtime',
     description: 'Run JavaScript files offline on your device',
-    extensionId: 'bcode.lang.javascript',
+    extensionIds: ['bcode.lang.javascript', 'bcode.lang.typescript'],
     packages: ['nodejs'],
   ),
   'bash': RuntimeSpec(
     runtimeId: 'bash',
     title: 'Bash Shell',
     description: 'Full bash shell for terminal, npm, pip, git',
-    extensionId: 'bcode.termux',
+    extensionIds: [],
     packages: ['bash', 'coreutils', 'findutils', 'grep', 'sed', 'gawk', 'curl', 'wget', 'git', 'openssh'],
   ),
 };

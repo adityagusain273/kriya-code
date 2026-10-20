@@ -1,7 +1,6 @@
 import 'package:highlight/highlight_core.dart';
 import 'package:highlight/languages/css.dart';
 
-import '../../../plugins/api/run_config.dart';
 import '../language_pack.dart';
 
 class CssPack implements LanguagePack {
@@ -19,7 +18,4 @@ class CssPack implements LanguagePack {
 
   @override
   IndentRules get indentRules => const IndentRules(indentWidth: 2);
-
-  @override
-  RunConfig get runConfig => const RunConfig();
 }

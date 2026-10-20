@@ -100,6 +100,66 @@ class GitService {
     }
   }
 
+  /// Commits on `branch` that the remote does not have.
+  ///
+  /// Callers must check this before a hard reset. `reset --hard` rewinds HEAD to
+  /// `origin/<branch>`, which discards every local commit made since the fork
+  /// point. The confirmation dialog used to gate on the working tree only, so
+  /// "commit locally, then pull" lost the commits with no prompt at all.
+  Future<Result<int>> unpushedCommitCount(
+    Repository repo,
+    String branch,
+  ) async {
+    // Reference.lookup throws when the ref does not exist rather than returning
+    // null, so a missing tracking ref has to be probed for.
+    try {
+      final localRef = Reference.lookup(repo: repo, name: 'refs/heads/$branch');
+      final localOid = localRef.target;
+
+      final remoteOid = _tryRefTarget(repo, 'refs/remotes/origin/$branch');
+
+      if (remoteOid == null) {
+        // No tracking ref yet, so everything reachable from the branch is local.
+        return Ok(_countCommits(repo, localOid, null));
+      }
+
+      final counts = repo.aheadBehind(local: localOid, upstream: remoteOid);
+      return Ok(counts.isNotEmpty ? counts.first : 0);
+    } catch (e) {
+      return Err('Could not compare with the remote: $e');
+    }
+  }
+
+  /// Target of [refName], or null when the ref does not exist.
+  ///
+  /// `Reference.lookup` throws for a missing ref rather than returning null, so
+  /// callers that treat "absent" as a normal outcome need this.
+  static Oid? _tryRefTarget(Repository repo, String refName) {
+    try {
+      return Reference.lookup(repo: repo, name: refName).target;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Counts commits reachable from [from] but not from [exclude].
+  int _countCommits(Repository repo, Oid from, Oid? exclude) {
+    final walk = RevWalk(repo);
+    try {
+      walk.push(from);
+      if (exclude != null) walk.hide(exclude);
+      final commits = walk.walk();
+      var count = 0;
+      for (final commit in commits) {
+        commit.free();
+        count++;
+      }
+      return count;
+    } finally {
+      walk.free();
+    }
+  }
+
   Future<Result<void>> pull(
     Repository repo,
     String token, {
@@ -111,9 +171,14 @@ class GitService {
         refspecs: ['refs/heads/$branch'],
         callbacks: _callbacks(token),
       );
-      final remoteRef =
-          Reference.lookup(repo: repo, name: 'refs/remotes/origin/$branch');
-      repo.reset(oid: remoteRef.target, resetType: GitReset.hard);
+      final remoteOid = _tryRefTarget(repo, 'refs/remotes/origin/$branch');
+      if (remoteOid == null) {
+        // Must not fall through to a reset here: resetting to a missing target
+        // discarded the local branch outright.
+        return Err('The remote branch $branch does not exist. Nothing was changed.');
+      }
+
+      repo.reset(oid: remoteOid, resetType: GitReset.hard);
       return const Ok(null);
     } catch (e) {
       return Err('Pull failed: $e');
@@ -126,27 +191,37 @@ class GitService {
       final head = repo.head;
       tree = Commit.lookup(repo: repo, oid: head.target).tree;
     } catch (_) {}
+
+    Diff? diff;
+    List<Patch> patches = const [];
     try {
-      final diff = Diff.treeToWorkdirWithIndex(repo: repo, tree: tree);
+      diff = Diff.treeToWorkdirWithIndex(repo: repo, tree: tree);
       final entries = <GitDiffEntry>[];
       final deltas = diff.deltas;
-      final patches = diff.patches;
+      patches = diff.patches;
       for (var i = 0; i < deltas.length; i++) {
         final delta = deltas[i];
         entries.add(GitDiffEntry(
-          path: delta.newFile.path,
+          // For a deletion the "new" side is the absent one, and reading its
+          // path is either empty or a null dereference. Use the old side.
+          path: delta.status == GitDelta.deleted
+              ? delta.oldFile.path
+              : delta.newFile.path,
           isNew: delta.status == GitDelta.added,
           isDeleted: delta.status == GitDelta.deleted,
           patch: i < patches.length ? patches[i].text : '',
         ));
       }
-      for (final p in patches) {
-        p.free();
-      }
-      diff.free();
       return Ok(entries);
     } catch (e) {
       return Err('Diff failed: $e');
+    } finally {
+      // Previously every free() was skipped when an exception was thrown
+      // mid-loop, leaking a native object per failed refresh.
+      for (final patch in patches) {
+        patch.free();
+      }
+      diff?.free();
     }
   }
 

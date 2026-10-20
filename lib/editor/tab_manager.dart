@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:highlight/highlight_core.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'highlighting/bcode_controller.dart';
@@ -21,6 +24,31 @@ class EditorTab {
   String? languageId;
   String _savedContent;
   late final FindReplaceController findController;
+
+  /// Offset the editor should scroll to and select once this tab is on screen.
+  ///
+  /// Global search opens the file that matched, but opening it is not the same as
+  /// showing the match: the user used search to find a line, and landing at the top
+  /// of a long file means scrolling to find it again by hand. The offset is held
+  /// here because the search result is produced on one screen and consumed on
+  /// another.
+  int? pendingRevealOffset;
+
+  /// Selects [offset] and requests the editor bring it into view.
+  void revealAt(int offset) {
+    pendingRevealOffset = offset;
+    controller.selection = TextSelection(
+      baseOffset: offset,
+      extentOffset: offset,
+    );
+  }
+
+  /// Consumes a pending reveal, so it only happens once.
+  int? takePendingReveal() {
+    final offset = pendingRevealOffset;
+    pendingRevealOffset = null;
+    return offset;
+  }
 
   EditorTab({
     required this.filePath,
@@ -56,8 +84,8 @@ class EditorTab {
   }
 
   void dispose() {
-    controller.dispose();
     findController.dispose();
+    controller.dispose();
   }
 }
 
@@ -82,11 +110,18 @@ class TabManager extends ChangeNotifier {
     _settings = settings;
   }
 
-  void _scheduleAutoSave() {
+  /// Debounced autosave for the tab that was actually edited.
+  ///
+  /// This used to call a bare `save()`, which resolves to the *active* tab. Typing
+  /// in a background tab therefore saved whatever happened to be in front instead,
+  /// and the edit stayed dirty on disk indefinitely. The tab is also re-checked for
+  /// membership at fire time: the debounce can outlive the tab, and writing through
+  /// a disposed controller would throw.
+  void _scheduleAutoSave(EditorTab tab) {
     _autoSaveTimer?.cancel();
     if (_settings == null || !_settings!.autoSave) return;
     _autoSaveTimer = Timer(Duration(milliseconds: _settings!.autoSaveDelayMs), () {
-      save();
+      if (tabs.contains(tab)) save(tab);
     });
   }
 
@@ -97,7 +132,11 @@ class TabManager extends ChangeNotifier {
       _prefs = await SharedPreferences.getInstance();
       final saved = _prefs?.getStringList('open_tabs') ?? const [];
       for (final path in saved) {
-        if (fs.exists(path)) await open(path);
+        try {
+          if (fs.exists(path)) await open(path);
+        } catch (e) {
+          debugPrint('TabManager: skipped restoring tab "$path": $e');
+        }
       }
       final activePath = _prefs?.getString('active_tab');
       if (activePath != null) {
@@ -129,12 +168,34 @@ class TabManager extends ChangeNotifier {
     }
     final languageId = await highlight.languageIdFor(path);
     final grammar = await engine.grammarFor(languageId);
-    final content = fs.exists(path) ? await fs.readFile(path) : '';
+
+    // A multi-hundred-MB file would be decoded, highlighted in full, and then
+    // duplicated in memory by EditorTab. Refuse rather than OOM.
+    var content = '';
+    if (fs.exists(path)) {
+      try {
+        final entity = File(path);
+        final length = await entity.length();
+        if (length > 5 * 1024 * 1024) {
+          throw StateError(
+              'File is too large to edit (${length ~/ (1024 * 1024)} MB).');
+        }
+      } catch (e) {
+        if (e is StateError) rethrow;
+      }
+      content = await fs.readFile(path);
+    }
+    // Syntax highlighting runs synchronously on the UI isolate on every edit.
+    // Several bundled grammars are pathological on adversarial input (the Java
+    // one has a nested quantifier that freezes the editor permanently), so
+    // large buffers are served unhighlighted rather than risking a freeze.
+    final effectiveGrammar = content.length > 256000 ? null : grammar;
+
     final tab = EditorTab(
       filePath: path,
       content: content,
       languageId: languageId,
-      language: grammar,
+      language: effectiveGrammar,
     );
     tab.controller.addListener(_makeTabListener(tab));
     tabs.add(tab);
@@ -200,18 +261,29 @@ class TabManager extends ChangeNotifier {
   }
 
   void handleFileRenamed(String oldPath, String newPath) {
-    final index = tabs.indexWhere((t) => t.filePath == oldPath);
-    if (index != -1) {
-      tabs[index].filePath = newPath;
+    // A rename can target a directory: every tab inside it must follow, or its
+    // next save silently recreates the file at the stale path.
+    var changed = false;
+    for (final tab in tabs) {
+      if (tab.filePath == oldPath) {
+        tab.filePath = newPath;
+        changed = true;
+      } else if (p.isWithin(oldPath, tab.filePath)) {
+        tab.filePath = p.join(newPath, p.relative(tab.filePath, from: oldPath));
+        changed = true;
+      }
+    }
+    if (changed) {
       notifyListeners();
       _persist();
     }
   }
 
   Future<void> handleFileDeleted(String path) async {
-    final index = tabs.indexWhere((t) => t.filePath == path);
-    if (index != -1) {
-      await close(index);
+    for (var i = tabs.length - 1; i >= 0; i--) {
+      if (tabs[i].filePath == path || p.isWithin(path, tabs[i].filePath)) {
+        await close(i);
+      }
     }
   }
 
@@ -230,7 +302,7 @@ class TabManager extends ChangeNotifier {
       if (tab.dirty != wasDirty) {
         notifyListeners();
       }
-      _scheduleAutoSave();
+      _scheduleAutoSave(tab);
     };
   }
 }

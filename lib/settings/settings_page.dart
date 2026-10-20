@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../core/di.dart';
 import '../core/crash_reporter.dart';
 import '../editor/highlighting/syntax_themes.dart';
 import '../execution/termux_runner.dart';
+import '../workspace/fs_root.dart';
+import '../workspace/workspace_service.dart';
 import 'settings_store.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -28,11 +32,65 @@ class _SettingsPageState extends State<SettingsPage> {
   late String _fontFamily = widget.store.fontFamily;
   bool _termuxInstalled = false;
   bool _termuxChecking = true;
+  String _workspacePath = '';
+  bool _sharedWorkspace = false;
+  bool _shareRequested = false;
+  bool _needsAllFilesAccess = false;
+  String _version = '';
 
   @override
   void initState() {
     super.initState();
     _checkTermux();
+    _loadWorkspacePath();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    setState(() => _version = '${info.version}+${info.buildNumber}');
+  }
+
+  Future<void> _loadWorkspacePath() async {
+    final root = sl.get<FsRoot>().path;
+    final service = sl.get<WorkspaceService>();
+    final location = await service.status(root);
+    if (!mounted) return;
+    setState(() {
+      _workspacePath = location.path;
+      _sharedWorkspace = location.shared;
+      _needsAllFilesAccess = location.needsAllFilesAccess;
+      _shareRequested = service.shareRequested;
+    });
+  }
+
+  Future<void> _toggleSharedWorkspace(bool value) async {
+    final service = sl.get<WorkspaceService>();
+    if (value) {
+      // All-files access cannot be granted from a dialog, so the user is sent to
+      // the system screen. If the toggle cannot be satisfied the preference is not
+      // stored, otherwise it would promise something the app cannot deliver.
+      final opened = await service.openAllFilesAccessSettings();
+      if (!opened) {
+        _toast('This device has no screen for granting access to all files.');
+        return;
+      }
+    }
+    await service.setShareRequested(value);
+    await _loadWorkspacePath();
+    if (!mounted) return;
+    if (value && !_sharedWorkspace) {
+      _toast('Grant access, then reopen B Code to move your files.');
+    } else if (value) {
+      _toast('Reopen B Code to switch to the shared folder.');
+    }
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _checkTermux() async {
@@ -257,13 +315,18 @@ class _SettingsPageState extends State<SettingsPage> {
             ListTile(
               leading: const Icon(Icons.check_circle, color: Colors.green),
               title: const Text('Termux detected'),
-              subtitle: const Text('Terminal and code execution use Termux runtimes'),
+              subtitle: const Text(
+                'Optional. B Code runs code itself; Termux is only used for the '
+                'built-in terminal and as a fallback runtime source.',
+              ),
             )
           else
             ListTile(
               leading: const Icon(Icons.info_outline),
               title: const Text('Termux not installed'),
-              subtitle: const Text('Install Termux for more runtimes (Python, Node, GCC)'),
+              subtitle: const Text(
+                'Not required. Install it for the shell terminal and extra packages.',
+              ),
               trailing: FilledButton.tonal(
                 onPressed: () => _showTermuxSetupDialog(context),
                 style: FilledButton.styleFrom(
@@ -273,8 +336,31 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           const Divider(height: 8),
+          _sectionHeader('Workspace'),
+          SwitchListTile(
+            secondary: Icon(
+              _sharedWorkspace ? Icons.folder_shared : Icons.folder_outlined,
+              color: _sharedWorkspace ? Colors.green : null,
+            ),
+            title: const Text('Share folder with other apps'),
+            subtitle: Text(
+              _sharedWorkspace
+                  ? 'Files live in $_workspacePath. Termux and file managers can '
+                      'open them, once those apps are allowed access to all files.'
+                  : _needsAllFilesAccess
+                      ? 'Waiting for permission. Your files stay in '
+                          '$_workspacePath until you grant access to all files '
+                          'and reopen B Code.'
+                      : 'Files live in a private folder on this phone. Turn this '
+                          'on to keep them where Termux can reach them too.',
+            ),
+            isThreeLine: true,
+            value: _shareRequested,
+            onChanged: _toggleSharedWorkspace,
+          ),
+          const Divider(height: 8),
           _sectionHeader('About'),
-          const ListTile(title: Text('B Code'), subtitle: Text('Version 1.0.0 · com.bcode.editor')),
+          ListTile(title: const Text('B Code'), subtitle: Text('Version ${_version.isEmpty ? '' : _version.split('+').first} · com.bcode.editor')),
           ListTile(
             leading: const Icon(Icons.bug_report_outlined),
             title: const Text('Report a Bug'),
@@ -372,11 +458,18 @@ class _SettingsPageState extends State<SettingsPage> {
     );
 
     if (confirmed == true && mounted) {
-      await CrashReporter.submitBugReport(userMessage: controller.text);
+      await CrashReporter.submitBugReport(
+        userMessage: controller.text,
+        screenshotNames: attachedScreenshots,
+      );
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Feedback submitted with ${attachedScreenshots.length} screenshots. Thank you!'),
+          content: Text(
+            attachedScreenshots.isEmpty
+                ? 'Opening your email app…'
+                : 'Opening your email app — attach the screenshots you picked.',
+          ),
           duration: const Duration(seconds: 3),
         ),
       );

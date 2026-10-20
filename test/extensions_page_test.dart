@@ -35,10 +35,14 @@ void main() {
 
     await tester.tap(find.widgetWithText(FilledButton, 'Install').first);
     await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
 
-    // SnackBar should appear since client throws
-    expect(find.textContaining('Failed to download runtime'), findsOneWidget);
+    // RuntimeDownloadService.download() catches its own errors and records them
+    // on the state object, so the page reports via state rather than by
+    // rethrowing. The snackbar therefore comes from the non-installed branch.
+    expect(find.textContaining('Download failed'), findsOneWidget);
 
     // Extension NOT marked installed because download failed
     expect(sl<ExtensionInstallStore>().isInstalled('bcode.lang.python'), isFalse);
@@ -69,7 +73,9 @@ void main() {
     await tester.tap(
         find.descendant(of: githubCard, matching: find.widgetWithText(FilledButton, 'Install')));
     await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
 
     expect(find.text('Run GitHub offline?'), findsNothing);
     expect(sl<ExtensionInstallStore>().isInstalled('bcode.github'), isTrue);

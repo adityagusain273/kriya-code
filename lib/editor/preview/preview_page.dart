@@ -53,9 +53,12 @@ class _PreviewPageState extends State<PreviewPage> {
 
     _hardenWebView(_controller);
 
-    _controller.loadRequest(
-      Uri.parse('${widget.baseUrl}/${widget.relativePath}'),
-    );
+    final rel = widget.relativePath.isEmpty
+        ? ''
+        : (widget.relativePath.startsWith('/')
+            ? widget.relativePath.substring(1)
+            : widget.relativePath);
+    _controller.loadRequest(Uri.parse(rel.isEmpty ? widget.baseUrl : '${widget.baseUrl}/$rel'));
   }
 
   /// `allowFileAccess` defaults to true below API 30 and false from API 30.

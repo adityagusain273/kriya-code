@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -122,12 +123,16 @@ class CrashReporter {
         info['os'] = 'iOS ${ios.systemVersion}';
       }
     } catch (_) {}
-    info['app_version'] = '1.0.0';
+    final packageInfo = await PackageInfo.fromPlatform();
+    info['app_version'] = '${packageInfo.version}+${packageInfo.buildNumber}';
     info['platform'] = Platform.operatingSystem;
     return info;
   }
 
-  static Future<String> buildBugReport({String? userMessage}) async {
+  static Future<String> buildBugReport({
+    String? userMessage,
+    List<String> screenshotNames = const [],
+  }) async {
     final buffer = StringBuffer();
     buffer.writeln('=== B Code Bug Report ===');
     buffer.writeln('Time: ${DateTime.now().toIso8601String()}');
@@ -135,6 +140,14 @@ class CrashReporter {
 
     if (userMessage != null && userMessage.isNotEmpty) {
       buffer.writeln('User Description: $userMessage');
+      buffer.writeln();
+    }
+
+    if (screenshotNames.isNotEmpty) {
+      buffer.writeln('Screenshots picked by the user (attach to this email):');
+      for (final name in screenshotNames) {
+        buffer.writeln('- $name');
+      }
       buffer.writeln();
     }
 
@@ -155,9 +168,15 @@ class CrashReporter {
     return buffer.toString();
   }
 
-  static Future<void> submitBugReport({String? userMessage}) async {
-    final reportBody = await buildBugReport(userMessage: userMessage);
-    
+  static Future<void> submitBugReport({
+    String? userMessage,
+    List<String> screenshotNames = const [],
+  }) async {
+    final reportBody = await buildBugReport(
+      userMessage: userMessage,
+      screenshotNames: screenshotNames,
+    );
+
     final Uri emailLaunchUri = Uri(
       scheme: 'mailto',
       path: 'adityagusain273@gmail.com',
@@ -165,8 +184,6 @@ class CrashReporter {
     );
 
     try {
-      // Note: requires import 'package:url_launcher/url_launcher.dart'; 
-      // We will add the import at the top of the file
       await launchUrl(emailLaunchUri);
     } catch (e) {
       _log('EMAIL ERROR', 'Could not launch email client: $e');

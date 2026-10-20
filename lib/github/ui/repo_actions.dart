@@ -22,12 +22,25 @@ class _RepoActionsPageState extends State<RepoActionsPage> {
   bool _busy = false;
   String? _message;
 
+  static final RegExp _repoNameChars = RegExp(r'[^A-Za-z0-9._\-/]');
+
+  /// The API-provided name is joined into filesystem paths; keep it on the safe
+  /// form `owner/repo` so nothing can turn a repo name into a traversal.
+  String get _safeFullName =>
+      widget.repo.fullName.replaceAll(_repoNameChars, '_');
+
   String get _cloneDir {
     final root = sl<FsService>().rootPath;
-    return '$root/repos/${widget.repo.fullName}';
+    return '$root/repos/$_safeFullName';
   }
 
-  bool get _alreadyCloned => sl<FsService>().exists('repos/${widget.repo.fullName}/.git');
+  bool get _alreadyCloned {
+    try {
+      return sl<FsService>().exists('repos/$_safeFullName/.git');
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> _clone() async {
     setState(() {
@@ -41,9 +54,10 @@ class _RepoActionsPageState extends State<RepoActionsPage> {
         token: widget.token,
         destinationPath: _cloneDir,
       );
+      if (!mounted) return;
       setState(() => _message = result.fold((_) => 'Cloned successfully', (e) => e));
     } finally {
-      setState(() => _busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 

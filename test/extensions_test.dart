@@ -93,15 +93,59 @@ void main() {
     });
 
     test('rejects relative path escape', () {
-      // Relative paths that escape workspace should be rejected
       expect(() => fs.resolve('../outside'), throwsArgumentError);
       expect(() => fs.resolve('../../etc/passwd'), throwsArgumentError);
     });
 
-    test('allows absolute paths for SAF access', () {
-      // Absolute paths are allowed (for SAF file access)
-      final result = fs.resolve('/etc/passwd');
-      expect(result, '/etc/passwd');
+    test('resolves the workspace root itself', () {
+      // Every directory listing goes through this. p.isWithin(root, root) is
+      // false, so this used to throw and the explorer rendered nothing.
+      expect(fs.resolve('.'), fs.rootPath);
+      expect(fs.resolve(''), fs.rootPath);
+    });
+
+    test('rejects absolute paths outside the workspace', () {
+      // An absolute path used to bypass containment entirely, which is how the
+      // New File dialog could create and truncate files anywhere on the device.
+      expect(() => fs.resolve('/etc/passwd'), throwsArgumentError);
+      expect(
+        () => fs.resolve('/data/data/com.bcode.editor/shared_prefs/x.xml'),
+        throwsArgumentError,
+      );
+    });
+
+    test('rejects absolute paths that traverse out of the workspace', () {
+      expect(() => fs.resolve('${fs.rootPath}/../secrets'), throwsArgumentError);
+    });
+
+    test('rejects symlinked path components', () async {
+      final outside = await Directory.systemTemp.createTemp('bcode_outside');
+      addTearDown(() => outside.delete(recursive: true));
+      await File('${outside.path}/secret.txt').writeAsString('nope');
+
+      final link = Link('${fs.rootPath}/escape');
+      await link.create(outside.path);
+
+      expect(() => fs.resolve('escape/secret.txt'), throwsArgumentError);
+    });
+
+    test('resolveExternal refuses paths outside the workspace', () {
+      expect(() => fs.resolveExternal('/etc/passwd'), throwsArgumentError);
+      expect(fs.resolveExternal('${fs.rootPath}/a.txt'), '${fs.rootPath}/a.txt');
+    });
+
+    test('writeFile replaces atomically and leaves no temp file', () async {
+      await fs.writeFile('atomic.txt', 'hello');
+      expect(await fs.readFile('atomic.txt'), 'hello');
+
+      await fs.writeFile('atomic.txt', 'goodbye');
+      expect(await fs.readFile('atomic.txt'), 'goodbye');
+
+      final leftovers = await Directory(fs.rootPath)
+          .list()
+          .where((e) => e.path.endsWith('.bcode-tmp'))
+          .toList();
+      expect(leftovers, isEmpty);
     });
   });
 }

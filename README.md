@@ -3,7 +3,7 @@
 A full-featured code editor for Android — edit, run, and ship code entirely from your phone.
 Built with Flutter for a future path to iOS and desktop.
 
-**Package:** `com.bcode.editor` · **Version:** 0.1.0 · **License:** proprietary (TBD)
+**Package:** `com.bcode.editor` · **Version:** 1.0.0 · **License:** proprietary (TBD)
 
 ## Phase 1 feature set
 
@@ -12,9 +12,10 @@ Built with Flutter for a future path to iOS and desktop.
 | Editor core | Syntax highlighting (100+ grammars via `highlight`), line numbers, auto-indent, find/replace, multi-tab editing with session restore |
 | File explorer | Create / rename / delete / move files & folders, path-escape protection, SAF import/export bridge |
 | Extension system | Stable plugin API (`BCodeExtension`, `LanguageContribution`, `RunConfig`) with a central registry; 4 builtin language packs: Python, C, C++, Java |
-| Code execution | Local-first runner (bundled runtimes via Android exec bridge and Termux). Every run uses local processing. |
+| Code execution | Local-first runner. Runtimes are installed on demand like a VS Code extension, SHA256-verified, with version and size shown first. Termux is an optional fallback. See [docs/ON_DEVICE_EXECUTION.md](docs/ON_DEVICE_EXECUTION.md). |
 | GitHub | OAuth Device Flow login (no secret embedded), repo browser, commit history, clone → edit → pull / commit / push / view diffs via `git2dart` (libgit2) |
-| Deploy-readiness | Release signing config (`android/key.properties.example`), minSdk 24, only `INTERNET` permission, privacy policy placeholder, monetization seam (`EntitlementService`) with no paid SDKs |
+| Shared workspace | Optional: `/storage/emulated/0/BCode` so Termux and other apps can edit the same files. Off by default, no permission on first launch, app-private workspace otherwise |
+| Deploy-readiness | Release signing config (`android/key.properties.example`), minSdk 24, targetSdk 36, store-compliant, execution via the system linker, privacy policy placeholder, monetization seam (`EntitlementService`) with no paid SDKs |
 
 ## Architecture
 
@@ -29,7 +30,7 @@ lib/
 │   ├── api/             public extension interfaces
 │   ├── host/            registries + event bus
 │   └── builtin/         python / c / cpp / java packs
-├── execution/           RunnerService facade, Piston client, local bridge, console UI
+├── execution/           RunnerService facade, runtime downloads, local bridge, console UI
 ├── github/              device-flow auth, REST client, git2dart ops, UI
 ├── settings/            persisted prefs + page
 └── monetization/        EntitlementService interface + free stub

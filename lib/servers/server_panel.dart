@@ -76,16 +76,15 @@ class _ServerPanelState extends State<ServerPanel> {
         ],
       ),
     );
+    // Read before disposing. `TextEditingController.text` throws once the
+    // controller is disposed, so this crashed every time a dev server was added.
+    final port = int.tryParse(portCtrl.text.trim());
+    final name = nameCtrl.text.trim();
     portCtrl.dispose();
     nameCtrl.dispose();
-    if (result == true) {
-      final port = int.tryParse(portCtrl.text.trim());
-      if (port != null && port > 0 && port < 65536) {
-        sl<ServerMonitor>().addServer(
-          port,
-          name: nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
-        );
-      }
+
+    if (result == true && port != null && port > 0 && port < 65536) {
+      sl<ServerMonitor>().addServer(port, name: name.isEmpty ? null : name);
     }
   }
 

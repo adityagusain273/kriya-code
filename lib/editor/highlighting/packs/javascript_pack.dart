@@ -1,7 +1,6 @@
 import 'package:highlight/highlight_core.dart';
 import 'package:highlight/languages/javascript.dart';
 
-import '../../../plugins/api/run_config.dart';
 import '../language_pack.dart';
 
 class JavascriptPack implements LanguagePack {
@@ -22,13 +21,5 @@ class JavascriptPack implements LanguagePack {
         indentWidth: 2,
         blockOpeners: ['{', '[', '('],
         blockClosers: ['}', ')', ']'],
-      );
-
-  @override
-  RunConfig get runConfig => const RunConfig(
-        local: LocalTarget(
-          runtimeId: 'nodejs',
-          runArgv: ['{runtimePath}/bin/node', '{file}'],
-        ),
       );
 }

@@ -16,10 +16,13 @@ class DownloadsPage extends StatefulWidget {
 class _DownloadsPageState extends State<DownloadsPage> {
   RuntimeDownloadService get _downloads => sl<RuntimeDownloadService>();
 
+  final Map<String, RuntimePreview?> _previews = {};
+
   @override
   void initState() {
     super.initState();
     _downloads.addListener(_onChange);
+    _loadPreviews();
     final focus = widget.focusRuntimeId;
     if (focus != null) {
       final state = _downloads.stateFor(focus);
@@ -37,6 +40,17 @@ class _DownloadsPageState extends State<DownloadsPage> {
   }
 
   void _onChange() => setState(() {});
+
+  /// Asks the repository what each runtime currently is, so the list can show a
+  /// version and a download size before anything is fetched.
+  Future<void> _loadPreviews() async {
+    for (final spec in runtimeCatalog.values) {
+      if (_previews.containsKey(spec.runtimeId)) continue;
+      final preview = await _downloads.inspect(spec.runtimeId);
+      if (!mounted) return;
+      setState(() => _previews[spec.runtimeId] = preview);
+    }
+  }
 
   String _sizeLabel(int bytes) {
     final mb = bytes / (1024 * 1024);
@@ -61,6 +75,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
               onCancel: () => _downloads.cancel(spec.runtimeId),
               onDelete: () => _downloads.remove(spec.runtimeId),
               sizeLabel: _sizeLabel,
+              preview: _previews[spec.runtimeId],
             ),
         ],
       ),
@@ -72,10 +87,14 @@ class _DownloadCard extends StatelessWidget {
   final RuntimeSpec spec;
   final RuntimeDownloadState state;
   final bool installed;
+
   final VoidCallback onDownload;
   final VoidCallback onCancel;
   final VoidCallback onDelete;
   final String Function(int) sizeLabel;
+
+  /// Repository state for this runtime, when it could be read.
+  final RuntimePreview? preview;
 
   const _DownloadCard({
     required this.spec,
@@ -85,7 +104,17 @@ class _DownloadCard extends StatelessWidget {
     required this.onCancel,
     required this.onDelete,
     required this.sizeLabel,
+    this.preview,
   });
+
+  /// Version and download weight, so installing a runtime is an informed choice.
+  String _previewLabel(RuntimePreview preview) {
+    final parts = <String>[];
+    if (preview.version != null) parts.add('v${preview.version}');
+    parts.add(sizeLabel(preview.sizeBytes));
+    parts.add('${preview.packageCount} packages');
+    return parts.join(' · ');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,6 +143,14 @@ class _DownloadCard extends StatelessWidget {
                       Text(spec.description,
                           style: const TextStyle(
                               fontSize: 12, color: Colors.white54)),
+                      if (preview case final preview? when !installed) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _previewLabel(preview),
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.white38),
+                        ),
+                      ],
                     ],
                   ),
                 ),

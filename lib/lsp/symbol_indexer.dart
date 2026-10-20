@@ -134,8 +134,11 @@ class SymbolIndexer {
 
   static const _javaKeywords = {'if', 'else', 'for', 'while', 'do', 'switch', 'try', 'catch', 'new', 'return', 'class', 'void', 'int', 'long', 'double', 'boolean', 'String'};
 
+  // `[^;]*` between the name and `)`, retried from every start position, is
+  // O(n^2) on a long `;`-free line. The bounded repetition is enough to capture
+  // a parameter list and parses in linear time.
   static final _cFn = RegExp(
-      r'(?:int|void|char|float|double|long|short|unsigned|auto|[\w*]+)\s+(\w+)\s*\([^;]*\)\s*\{',
+      r'(?:int|void|char|float|double|long|short|unsigned|auto|[\w*]+)\s+(\w+)\s*\([^;]{0,120}\)\s*\{',
       multiLine: true);
 
   static Set<AutocompleteItem> _extractC(String text) {

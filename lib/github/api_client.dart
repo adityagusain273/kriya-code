@@ -49,7 +49,9 @@ class GitHubApiClient {
         Uri.parse('${AppConstants.githubApiBase}/user'),
         headers: _headers(token),
       );
-      if (response.statusCode == 401) return Err('Unauthorized — token rejected.');
+      if (response.statusCode == 401) {
+        return Err('Unauthorized (401) — token rejected.');
+      }
       if (response.statusCode != 200) {
         return Err('Failed to load user (${response.statusCode})');
       }
@@ -79,15 +81,16 @@ class GitHubApiClient {
     }
   }
 
-  /// Exception text can embed the request URI. Keep it presentable and never
-  /// echo anything credential-shaped back to the UI.
+  /// Turn an exception into something safe to show a user. Network and TLS
+  /// failures get a specific, actionable message; anything else keeps its own
+  /// text so real diagnostics are not swallowed.
   static String _describe(Object error) {
-    if (error is http.ClientException) return 'Network error: ${error.message}';
     if (error is HandshakeException) return error.message;
     if (error is TimeoutException) return 'The request timed out.';
     if (error is SocketException) return 'Could not reach GitHub.';
     if (error is HttpException) return 'Unexpected response from GitHub.';
-    return 'Request failed.';
+    if (error is http.ClientException) return 'Network error: ${error.message}';
+    return error.toString();
   }
 
   Future<Result<List<GHRepo>>> listRepos(String token) =>

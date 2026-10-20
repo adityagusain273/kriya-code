@@ -8,8 +8,7 @@
 - [x] File explorer: create, rename, delete, move; SAF import/export bridge on Android
 - [x] Extension system v1: static registry + stable interfaces, event bus, command registry
 - [x] Language packs: Python, C, C++, Java (grammar + run config each)
-- [x] Execution facade with local-first → cloud fallback and LOCAL/CLOUD labeling
-- [x] Cloud execution via Piston API (free, no key)
+- [x] Execution facade: local runtimes via bundled Termux packages
 - [x] Local exec bridge (`ExecPlugin`) ready for bundled runtimes
 - [x] GitHub: Device Flow login, repo browser, commit history, clone/pull/commit/push/diff
 - [x] Deploy-readiness: `com.bcode.editor`, signing config, minSdk 24, INTERNET-only,
@@ -34,7 +33,6 @@
 ## Phase 4 — collaboration groundwork
 
 - [ ] Gist create/read from GitHub module
-- [ ] Shareable run links for cloud executions
 - [ ] Live collaboration (CRDT) evaluation
 
 ## Phase 5 — expansion

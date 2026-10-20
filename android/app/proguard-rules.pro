@@ -55,12 +55,6 @@
 -dontwarn com.flutter_secure_app.**
 
 # ---------------------------------------------------------------------------
-# TLS
-# ---------------------------------------------------------------------------
--keep class io.github.http_certificate_pinning.** { *; }
--dontwarn io.github.http_certificate_pinning.**
-
-# ---------------------------------------------------------------------------
 # Device / app info plugins
 # ---------------------------------------------------------------------------
 -keep class dev.fluttercommunity.plus.packageinfo.** { *; }

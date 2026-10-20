@@ -1,6 +1,5 @@
 import 'package:highlight/highlight_core.dart';
 
-import '../../plugins/api/run_config.dart';
 import 'language_pack.dart';
 
 class HighlightEngine {
@@ -52,9 +51,6 @@ class HighlightEngine {
 
   Future<IndentRules> indentRulesFor(String? languageId) async =>
       (await _loadIfNeeded(languageId))?.indentRules ?? const IndentRules();
-
-  Future<RunConfig?> runConfigFor(String? languageId) async =>
-      (await _loadIfNeeded(languageId))?.runConfig;
 
   List<LanguagePack> get all => List.unmodifiable(_packs.values);
 }

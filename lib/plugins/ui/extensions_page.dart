@@ -38,9 +38,16 @@ const _extensions = <_ExtUi>[
     runtimeId: 'openjdk',
   ),
   _ExtUi(
-    id: 'bcode.lang.c_cpp',
-    title: 'C / C++',
-    subtitle: 'C and C++ language pack — highlighting, run support',
+    id: 'bcode.lang.c',
+    title: 'C',
+    subtitle: 'C language pack — highlighting and run support',
+    icon: Icons.code_rounded,
+    runtimeId: 'clang',
+  ),
+  _ExtUi(
+    id: 'bcode.lang.cpp',
+    title: 'C++',
+    subtitle: 'C++ language pack — highlighting and run support',
     icon: Icons.code_rounded,
     runtimeId: 'clang',
   ),
@@ -168,8 +175,9 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     final installed = _store.isInstalled(ext.id);
     if (installed) {
       setState(() => _store.uninstall(ext.id));
-      final runtimeId = ext.runtimeId;
-      if (runtimeId != null) await _downloads.remove(runtimeId);
+      // Do NOT delete the runtime here. C and C++ share the `clang` runtime,
+      // and deleting it on uninstall of either broke the other. Runtimes are
+      // managed on the Downloads page.
       return;
     }
 

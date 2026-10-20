@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/di.dart';
 import '../workspace/fs_service.dart';
+import 'recent_files_service.dart';
 import 'tab_manager.dart';
 
 class QuickOpenEntry {
@@ -57,13 +60,23 @@ class _QuickOpenState extends State<QuickOpen> {
     final fs = sl<FsService>();
     final tabs = sl<TabManager>();
     
-    final recentPaths = tabs.tabs.map((t) => t.filePath).toList();
+    // Open tabs first, then the persisted recent list. Only using open tabs made the
+    // stored history invisible the moment a file was open, which is the one time a
+    // user most wants to jump somewhere they were recently editing.
+    final openPaths = tabs.tabs.map((t) => t.filePath).toList();
+    final storedRecents = await RecentFilesService.instance.getAll();
+    final recentPaths = <String>[...openPaths];
+    for (final path in storedRecents) {
+      if (!recentPaths.contains(path) && File(path).existsSync()) {
+        recentPaths.add(path);
+      }
+    }
     final recentSet = recentPaths.toSet();
-    
+
     final allFiles = await _collectFiles(fs, '.');
-    
+
     final entries = <QuickOpenEntry>[];
-    
+
     // Add recent files first
     for (final path in recentPaths) {
       entries.add(QuickOpenEntry(
@@ -93,19 +106,29 @@ class _QuickOpenState extends State<QuickOpen> {
     }
   }
 
-  Future<List<String>> _collectFiles(FsService fs, String dir) async {
-    final result = <String>[];
+  static const _maxDepth = 10;
+  static const _maxFiles = 4000;
+  static const _ignoreDirNames = {
+    '.git', '.dart_tool', '.idea', 'node_modules', 'build', 'out', '.gradle',
+    '.symlinks', 'packages',
+  };
+
+  Future<List<String>> _collectFiles(FsService fs, String dir, {int depth = 0, int depthBudget = _maxDepth, List<String>? result}) async {
+    final out = result ?? [];
+    if (depth > depthBudget || out.length >= _maxFiles) return out;
     try {
       final entries = await fs.list(dir);
       for (final entry in entries) {
+        if (out.length >= _maxFiles) return out;
         if (entry.isDirectory) {
-          result.addAll(await _collectFiles(fs, entry.path));
+          if (_ignoreDirNames.contains(entry.name)) continue;
+          await _collectFiles(fs, entry.path, depth: depth + 1, result: out);
         } else {
-          result.add(entry.path);
+          out.add(entry.path);
         }
       }
     } catch (_) {}
-    return result;
+    return out;
   }
 
   void _filter() {

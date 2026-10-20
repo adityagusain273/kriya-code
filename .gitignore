@@ -68,3 +68,21 @@ android/key.properties
 
 # Firebase — not wired up; do not commit a config that implies it is
 android/app/google-services.json
+
+# Runtime payloads produced by tool/bundle_runtime.py.
+#
+# These are large, machine-specific build inputs (a few hundred MB across ABIs),
+# not source. The app does not need them: runtimes are installed on demand the way
+# VS Code installs an extension, which also means a new language version reaches the
+# user without an app release. Run the script only when building an offline-first
+# or store-policy flavour that must carry a runtime inside the package.
+android/app/src/main/assets/bundled_runtime/
+.agent/
+
+# Offline mirror of the Flutter engine artifacts, rebuilt by
+# tool/make-local-engine-repo.sh from the jars inside the Flutter SDK.
+#
+# Roughly 1 GB of machine-specific binaries. Only needed where
+# storage.googleapis.com is unreachable; android/build.gradle.kts skips it when the
+# directory is absent, so it is never committed.
+android/local-engine-repo/

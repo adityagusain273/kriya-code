@@ -22,6 +22,30 @@ void setRunCallback(VoidCallback callback) {
   _runCallback = callback;
 }
 
+/// Drops the registered callbacks.
+///
+/// The callbacks are process-global closures over the editor's State. After
+/// EditorPage is disposed (folder change, onboarding), the palette's Run entry
+/// would invoke a dead State.
+void clearRunCallbacks() {
+  _runWithArgsCallback = null;
+  _runCallback = null;
+  _editCallbacks.clear();
+}
+
+// Same pattern as the run callbacks: the palette is built outside the editor's
+// State, but several actions operate on the active document.
+final Map<Key, VoidCallback> _editCallbacks = {};
+
+void setEditCallback(Key key, VoidCallback callback) => _editCallbacks[key] = callback;
+
+/// Whether a callback is registered for [key].
+///
+/// The palette resolves its actions from this map at build time, so a key that was
+/// never registered produces an action that silently does nothing when chosen. That
+/// is exactly the failure this exists to make visible to a test.
+bool hasEditCallback(Key key) => _editCallbacks.containsKey(key);
+
 class CommandPaletteAction {
   final String label;
   final String category;
@@ -98,21 +122,19 @@ class _CommandPaletteState extends State<CommandPalette> {
         label: 'Close Tab',
         category: 'File',
         icon: Icons.close,
-        onExecute: () {
-          if (tab != null) tabs.close(tabs.activeIndex);
-        },
+        onExecute: _editCallbacks[Key('close_tab')],
       ),
       CommandPaletteAction(
         label: 'Close All',
         category: 'File',
         icon: Icons.close_fullscreen,
-        onExecute: () => tabs.closeAll(),
+        onExecute: _editCallbacks[Key('close_all')],
       ),
       CommandPaletteAction(
         label: 'Open Explorer',
         category: 'View',
         icon: Icons.folder_open,
-        onExecute: () {},
+        onExecute: _editCallbacks[Key('open_explorer')],
       ),
       CommandPaletteAction(
         label: 'Quick Open',
@@ -128,20 +150,49 @@ class _CommandPaletteState extends State<CommandPalette> {
         category: 'Edit',
         icon: Icons.find_replace,
         shortcut: 'Ctrl+F',
-        onExecute: () {},
+        onExecute: _editCallbacks[Key('find_replace')],
       ),
       CommandPaletteAction(
         label: 'Go to Line',
         category: 'Edit',
         icon: Icons.numbers,
         shortcut: 'Ctrl+G',
-        onExecute: () {},
+        onExecute: _editCallbacks[Key('goto_line')],
+      ),
+      CommandPaletteAction(
+        label: 'Move Line Up',
+        category: 'Edit',
+        icon: Icons.keyboard_arrow_up,
+        shortcut: 'Alt+Up',
+        onExecute: _editCallbacks[Key('move_line_up')],
+      ),
+      CommandPaletteAction(
+        label: 'Move Line Down',
+        category: 'Edit',
+        icon: Icons.keyboard_arrow_down,
+        shortcut: 'Alt+Down',
+        onExecute: _editCallbacks[Key('move_line_down')],
+      ),
+      CommandPaletteAction(
+        label: 'Copy Line',
+        category: 'Edit',
+        icon: Icons.content_copy,
+        onExecute: _editCallbacks[Key('copy_line')],
+      ),
+      CommandPaletteAction(
+        label: 'Cut Line',
+        category: 'Edit',
+        icon: Icons.content_cut,
+        onExecute: _editCallbacks[Key('cut_line')],
       ),
       CommandPaletteAction(
         label: 'Run',
         category: 'Execution',
         icon: Icons.play_arrow,
-        shortcut: 'Ctrl+R',
+        // F5 is the key that is actually handled. The palette used to advertise
+        // Ctrl+R, which did nothing, so the one binding a user could rely on to
+        // run code was not discoverable.
+        shortcut: 'F5',
         onExecute: () {
           _runCallback?.call();
         },
@@ -150,7 +201,7 @@ class _CommandPaletteState extends State<CommandPalette> {
         label: 'Run with Arguments',
         category: 'Execution',
         icon: Icons.play_circle_outline,
-        shortcut: 'Ctrl+Shift+R',
+        shortcut: '',
         onExecute: () {
           _runWithArgsCallback?.call();
         },
@@ -233,14 +284,14 @@ class _CommandPaletteState extends State<CommandPalette> {
         category: 'Edit',
         icon: Icons.comment,
         shortcut: 'Ctrl+/',
-        onExecute: () {},
+        onExecute: _editCallbacks[Key('toggle_comment')],
       ),
       CommandPaletteAction(
         label: 'Duplicate Line',
         category: 'Edit',
         icon: Icons.content_copy,
         shortcut: 'Ctrl+D',
-        onExecute: () {},
+        onExecute: _editCallbacks[Key('duplicate_line')],
       ),
     ];
   }

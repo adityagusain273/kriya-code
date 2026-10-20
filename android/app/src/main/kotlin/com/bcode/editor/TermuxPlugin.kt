@@ -21,12 +21,57 @@ object TermuxPlugin {
     private const val RESULT_ACTION = "com.bcode.editor.TERMUX_RESULT"
     private val executor = Executors.newSingleThreadExecutor()
     private lateinit var appContext: Context
+    private var activityContext: android.app.Activity? = null
     private var resultReceiver: BroadcastReceiver? = null
     private var pendingResult: MethodChannel.Result? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile private var permissionLatch = java.util.concurrent.CountDownLatch(0)
+    @Volatile private var permissionGrantedForUi: Boolean = false
 
     private fun runOnMain(block: () -> Unit) {
         mainHandler.post(block)
+    }
+
+    /// Tries to locate the launching activity so a dangerous runtime permission
+    /// can only be requested when we actually have an activity foreground.
+    fun attachActivity(activity: android.app.Activity) {
+        activityContext = activity
+    }
+
+    fun onRequestPermissionsResult(grantResults: IntArray) {
+        permissionGrantedForUi = grantResults.isNotEmpty() &&
+            grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val latch = permissionLatch
+        if (latch != null) {
+            try { latch.countDown() } catch (_: Exception) {}
+        }
+    }
+
+    /// Asks the user to grant the RUN_COMMAND permission, blocking the calling
+    /// thread until the dialog is answered (or a minute elapses). The result of
+    /// the request is read off `permissionGrantedForUi` afterwards.
+    fun requestTryGrantedPermission(): Boolean {
+        val activity = activityContext ?: return isTermuxAllowed()
+        if (isTermuxAllowed()) return true
+        permissionLatch = java.util.concurrent.CountDownLatch(1)
+        permissionGrantedForUi = false
+        mainHandler.post {
+            try {
+                activity.requestPermissions(
+                    arrayOf("com.termux.permission.RUN_COMMAND"),
+                    9913
+                )
+            } catch (e: Exception) {
+                permissionGrantedForUi = false
+                try { permissionLatch.countDown() } catch (_: Exception) {}
+            }
+        }
+        val ok = try {
+            permissionLatch.await(60, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            false
+        }
+        return ok && permissionGrantedForUi
     }
 
     fun register(messenger: BinaryMessenger, context: Context) {
@@ -37,7 +82,16 @@ object TermuxPlugin {
                     result.success(isTermuxInstalled())
                 }
                 "isAllowed" -> {
-                    result.success(isTermuxAllowed())
+                    if (isTermuxAllowed()) {
+                        result.success(true)
+                    } else {
+                        // The grant wait must NOT run on the main thread, otherwise
+                        // the permission dialog it tries to show can never render:
+                        // the blocking await holds the main thread hostage.
+                        executor.submit {
+                            result.success(requestTryGrantedPermission())
+                        }
+                    }
                 }
                 "runCommand" -> {
                     val command = call.argument<String>("command") ?: ""
@@ -46,12 +100,6 @@ object TermuxPlugin {
                     val workDir = call.argument<String>("workDir")
                     val useResult = call.argument<Boolean>("useResult") ?: false
                     runTermuxCommand(command, args, stdin, workDir, useResult, result)
-                }
-                "runScript" -> {
-                    val script = call.argument<String>("script") ?: ""
-                    val workDir = call.argument<String>("workDir")
-                    val useResult = call.argument<Boolean>("useResult") ?: false
-                    runTermuxScript(script, workDir, useResult, result)
                 }
                 else -> result.notImplemented()
             }
@@ -131,21 +179,6 @@ object TermuxPlugin {
         }
     }
 
-    private fun runTermuxScript(
-        script: String,
-        workDir: String?,
-        useResult: Boolean,
-        result: MethodChannel.Result
-    ) {
-        runTermuxCommand(
-            command = "/data/data/com.termux/files/usr/bin/bash",
-            args = listOf("-c", script),
-            stdin = null,
-            workDir = workDir,
-            useResult = useResult,
-            result = result
-        )
-    }
 
     private fun createRunIntent(
         command: String,

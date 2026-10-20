@@ -17,6 +17,24 @@ if (keystorePropertiesFile.exists()) {
 // Intended only for local sideload testing. Never enable for a distributed build.
 val allowDebugKeyForRelease = (project.findProperty("bcode.sideload") as String?)?.toBoolean() ?: false
 
+// targetSdk: 36 by default so every store that pays per download will accept
+// the APK (Google Play requires new apps and updates to target a recent API).
+//
+// Execution still works at a modern targetSdk, but not by exec'ing the runtime
+// directly. Android denies `execute` on files an app unpacked into its own
+// storage, and `/storage/emulated` is mounted `noexec`, so a direct
+// `execve()` of a downloaded interpreter fails with EACCES. Instead every
+// app-owned program is started through the system dynamic linker
+// (`/system/bin/linker64 <program>`), which the app may execute; the linker
+// then maps the program, an operation the policy permits, and LD_LIBRARY_PATH
+// still resolves the runtime's own libraries. ExecPlugin implements this.
+//
+// The escape hatches, for reference:
+//   -Pbcode.targetSdk=28 also works, via the legacy `untrusted_app_28` domain.
+//   -Pbcode.targetSdk=35 does too; nothing about the mechanism needs 36.
+val targetSdkOverride = (project.findProperty("bcode.targetSdk") as String?)?.toIntOrNull()
+val resolvedTargetSdk = targetSdkOverride ?: 36
+
 val missingKeystoreEntries = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
     .filter { (keystoreProperties[it] as String?).isNullOrBlank() }
 
@@ -73,7 +91,7 @@ android {
     defaultConfig {
         applicationId = "com.bcode.editor"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = resolvedTargetSdk
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

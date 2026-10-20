@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:b_code/core/di.dart';
+import 'package:b_code/plugins/host/extension_install_store.dart';
 import 'package:b_code/workspace/explorer_prefs.dart';
 import 'package:b_code/workspace/file_explorer.dart';
 import 'package:b_code/workspace/fs_service.dart';
@@ -39,9 +41,16 @@ void main() {
       fs = FsService(tempDir.path);
       await fs.createDirectory('src');
       await fs.writeFile('src/main.py', 'print("x")');
+
+      // FileExplorer resolves ExtensionInstallStore while building (to gate the
+      // "install this extension to run" hint), so the container needs one.
+      sl.registerSingleton<ExtensionInstallStore>(
+        ExtensionInstallStore(await SharedPreferences.getInstance()),
+      );
     });
 
     tearDown(() async {
+      sl.reset();
       if (await tempDir.exists()) {
         await tempDir.delete(recursive: true);
       }

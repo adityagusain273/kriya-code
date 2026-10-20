@@ -22,9 +22,9 @@ class CExtension extends BCodeExtension {
           '{runtimePath}/bin/clang',
           '{file}',
           '-o',
-          '{dir}/{name}.out',
+          '{outDir}/{name}.out',
         ],
-        runArgv: ['{dir}/{name}.out'],
+        runArgv: ['{outDir}/{name}.out'],
       ),
     ),
   );

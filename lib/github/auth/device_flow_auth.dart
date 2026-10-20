@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -62,14 +62,78 @@ class DeviceFlowAuth {
 
   void close() => client.close();
 
+  /// Turns a non-200 from the device-code endpoint into something a person can act on.
+  ///
+  /// The bare status code was the whole of the old message, and "failed to start
+  /// (404)" gave no way to tell a bad client id from a blocked network. Two cases
+  /// dominate in practice and they need opposite responses:
+  ///
+  ///  * GitHub answers 404 with `{"error":"Not Found"}` for this path when something
+  ///    between the app and GitHub serves it — a captive portal, or an egress policy
+  ///    that filters `github.com/login/*`. `api.github.com` and `github.com` itself
+  ///    keep working, so nothing else in the app looks broken and the user has no way
+  ///    to tell why. Worth saying in words, because retrying never helps.
+  ///  * Everything else — rate limiting, a rejected client id — is GitHub talking,
+  ///    and its own `error`/`error_description` is the actionable part, so it is
+  ///    surfaced instead of discarded.
+  static String describeStartFailure(http.Response response) {
+    final status = response.statusCode;
+    final detail = _errorDetail(response);
+
+    if (status == 404) {
+      return 'GitHub sign-in could not be reached (HTTP 404). '
+          '${detail.isEmpty ? '' : 'GitHub said "$detail". '}'
+          'This usually means the network is filtering GitHub\'s sign-in endpoints, '
+          'such as a work or school network or a VPN. Try a different network. '
+          'Everything else in B Code works without signing in.';
+    }
+
+    final suffix = detail.isEmpty ? '' : ': $detail';
+    return 'GitHub device flow failed to start (HTTP $status)$suffix';
+  }
+
+  /// The `error` / `error_description` pair GitHub returns, if the body is JSON.
+  static String _errorDetail(http.Response response) {
+    try {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map) return _shortBody(response);
+      final error = decoded['error'];
+      final description = decoded['error_description'];
+      final parts = <String>[
+        if (error is String && error.isNotEmpty) error,
+        if (description is String && description.isNotEmpty) description,
+      ];
+      return parts.isEmpty ? _shortBody(response) : parts.join(' - ');
+    } catch (_) {
+      return _shortBody(response);
+    }
+  }
+
+  static String _shortBody(http.Response response) {
+    final body = response.body.trim();
+    if (body.isEmpty) return '';
+    // A proxy can answer with a whole HTML page; one line of it is not useful.
+    final firstLine = body.split('\n').first.trim();
+    return firstLine.length > 120 ? '${firstLine.substring(0, 117)}...' : firstLine;
+  }
+
   Future<DeviceFlowSession> start() async {
+    // A build without a real OAuth app cannot authenticate. Saying so beats letting
+    // the request fail against an unknown client_id and reporting a bare 401, which
+    // reads as "GitHub is broken" rather than "this build was not configured".
+    if (clientId == AppConstants.unconfiguredClientId) {
+      throw StateError(
+        'GitHub sign-in is not available in this build. Rebuild with '
+        '--dart-define=GITHUB_CLIENT_ID=<your GitHub OAuth App client id>.',
+      );
+    }
     final response = await client.post(
       Uri.parse(AppConstants.githubDeviceCodeUrl),
       headers: {'Accept': 'application/json'},
       body: {'client_id': clientId, 'scope': AppConstants.githubScopes},
     );
     if (response.statusCode != 200) {
-      throw StateError('GitHub device flow failed to start (${response.statusCode}).');
+      throw StateError(describeStartFailure(response));
     }
     return DeviceFlowSession.fromJson(
       await decodeJsonBody(response) as Map<String, Object?>,
@@ -161,10 +225,10 @@ class DeviceFlowAuth {
   }
 
   static String _describe(Object error) {
-    if (error is http.ClientException) return 'Network error: ${error.message}';
     if (error is HandshakeException) return error.message;
     if (error is TimeoutException) return 'The request timed out.';
     if (error is SocketException) return 'Could not reach GitHub.';
-    return 'Request failed.';
+    if (error is http.ClientException) return 'Network error: ${error.message}';
+    return error.toString();
   }
 }
