@@ -85,11 +85,11 @@ jobs:
 
       - name: Build app bundle (Play)
         if: ${{ env.HAS_SECRETS == 'true' }}
-        run: flutter build appbundle --release --dart-define=GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }}
+        run: flutter build appbundle --release --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
 
       - name: Build APK (direct distribution)
         if: ${{ env.HAS_SECRETS == 'true' }}
-        run: flutter build apk --release --dart-define=GITHUB_CLIENT_ID=${{ secrets.GITHUB_CLIENT_ID }}
+        run: flutter build apk --release --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
 
       - name: Unsigned debug build (no secrets yet)
         if: ${{ env.HAS_SECRETS != 'true' }}
@@ -151,6 +151,6 @@ jobs:
             echo "- \`BCODE_KEYSTORE_PASSWORD\`"
             echo "- \`BCODE_KEY_ALIAS\`  (bcode)"
             echo "- \`BCODE_KEY_PASSWORD\`"
-            echo "- \`GITHUB_CLIENT_ID\` — OAuth app client id (device flow)"
+            echo "- \`BCODE_CLIENT_ID\` — OAuth app client id (device flow)"
           } > NOTE.md
           cat NOTE.md
