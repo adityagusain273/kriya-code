@@ -41,7 +41,7 @@ jobs:
         run: flutter test
 
       - name: Debug build (compile gate)
-        run: flutter build apk --debug
+        run: flutter build apk --debug -Pbcode.sideload=true
 
   release:
     name: Signed release artifacts (aab + apk)
@@ -93,7 +93,7 @@ jobs:
 
       - name: Unsigned debug build (no secrets yet)
         if: ${{ env.HAS_SECRETS != 'true' }}
-        run: flutter build apk --debug
+        run: flutter build apk --debug -Pbcode.sideload=true
 
       - name: Report 16 KB page-size alignment
         if: ${{ env.HAS_SECRETS == 'true' }}
