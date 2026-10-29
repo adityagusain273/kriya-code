@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../core/constants.dart';
 import '../core/crash_reporter.dart';
 import '../editor/highlighting/syntax_themes.dart';
 import '../execution/termux_runner.dart';
@@ -305,6 +307,12 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('Send crash logs and device info'),
             onTap: () => _showBugReportDialog(context),
           ),
+          ListTile(
+            leading: const Icon(Icons.favorite_rounded, color: Color(0xFFEF5350)),
+            title: const Text('Support Developer'),
+            subtitle: const Text('Scan & pay via UPI / Buy me a coffee'),
+            onTap: () => _showSupportDevDialog(context),
+          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -468,6 +476,213 @@ class _SettingsPageState extends State<SettingsPage> {
             child: const Text('Get Termux'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _showSupportDevDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 380),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161B22),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFF30363D), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.6),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0883E).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFF0883E).withValues(alpha: 0.4)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.coffee_rounded, size: 14, color: Color(0xFFF0883E)),
+                            SizedBox(width: 6),
+                            Text(
+                              'SUPPORT THE DEV',
+                              style: TextStyle(
+                                color: Color(0xFFF0883E),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.close_rounded, size: 20, color: Colors.white54),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Buy ${AppConstants.supportDevName} a Coffee ☕',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Scan with any UPI app to keep B Code active & offline',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFF0883E).withValues(alpha: 0.25),
+                          blurRadius: 18,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.asset(
+                        'assets/images/support_qr.png',
+                        width: 180,
+                        height: 180,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D1117),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF30363D)),
+                    ),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.alternate_email_rounded, size: 18, color: Color(0xFF58A6FF)),
+                          title: const Text('UPI ID', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                          subtitle: const Text(
+                            AppConstants.supportUpiId,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF58A6FF)),
+                            tooltip: 'Copy UPI ID',
+                            onPressed: () {
+                              Clipboard.setData(const ClipboardData(text: AppConstants.supportUpiId));
+                              HapticFeedback.lightImpact();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('UPI ID copied to clipboard!'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const Divider(height: 1, color: Color(0xFF21262D)),
+                        ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          leading: const Icon(Icons.phone_android_rounded, size: 18, color: Color(0xFF7EE787)),
+                          title: const Text('UPI Number', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                          subtitle: const Text(
+                            AppConstants.supportUpiNumber,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF7EE787)),
+                            tooltip: 'Copy UPI Number',
+                            onPressed: () {
+                              Clipboard.setData(const ClipboardData(text: AppConstants.supportUpiNumber));
+                              HapticFeedback.lightImpact();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('UPI Number copied to clipboard!'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      'Google Pay',
+                      'PhonePe',
+                      'Paytm',
+                      'Amazon Pay',
+                      'BHIM',
+                    ].map((app) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF21262D),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          app,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
