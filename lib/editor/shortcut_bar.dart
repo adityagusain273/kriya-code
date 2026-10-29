@@ -192,13 +192,26 @@ class _Key extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isControl = _controlKeys.contains(label);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          height: 36,
-          alignment: Alignment.center,
+    final semanticLabel = switch (label) {
+      'CTRL' => 'Control key${isCtrlActive ? ', active' : ''}',
+      'TAB' => 'Tab key',
+      'UNDO' => 'Undo',
+      'REDO' => 'Redo',
+      'FIND' => 'Find',
+      'SAVE' => 'Save file',
+      'SNIP' => 'Snippets',
+      _ => 'Insert $label',
+    };
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            height: 36,
+            alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isCtrlActive ? const Color(0xFF2A5DB0) : null,
             border: const Border(
@@ -236,6 +249,7 @@ class _Key extends StatelessWidget {
           },
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

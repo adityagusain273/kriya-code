@@ -50,15 +50,17 @@
 
 # ---------------------------------------------------------------------------
 # RASP (flutter_secure_app): native method resolution by name.
+# The plugin lives in com.engincode.flutter_secure_app; the rule that named
+# com.flutter_secure_app matched nothing and kept nothing.
 # ---------------------------------------------------------------------------
--keep class com.flutter_secure_app.** { *; }
--dontwarn com.flutter_secure_app.**
+-keep class com.engincode.flutter_secure_app.** { *; }
+-dontwarn com.engincode.flutter_secure_app.**
 
 # ---------------------------------------------------------------------------
 # Device / app info plugins
 # ---------------------------------------------------------------------------
 -keep class dev.fluttercommunity.plus.packageinfo.** { *; }
--keep class dev.fluttercommunity.plus.deviceinfo.** { *; }
+-keep class dev.fluttercommunity.plus.device_info.** { *; }
 
 # ---------------------------------------------------------------------------
 # Log reduction

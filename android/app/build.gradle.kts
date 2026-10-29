@@ -133,11 +133,32 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // A release build has no use for native debug symbols; they belong to
+            // the crash-symbolication store, never to the shipped tree.
             ndk {
-                debugSymbolLevel = "SYMBOL_TABLE"
+                debugSymbolLevel = "NONE"
             }
         }
     }
+}
+
+// R8 does not touch Dart AOT code, so a release build obfuscates it
+// explicitly. The Flutter plugin reads these properties when the release
+// variant is realized, which is after this script has run. The symbol file is
+// written outside the APK and must be uploaded to the crash backend instead of
+// being shipped. The flutter build system can replay a cached AOT snapshot,
+// skipping the gen_snapshot pass that writes this file, e.g. after a wipe of
+// the build/ folder; tool/dev.sh release and the CI workflow therefore verify
+// the symbol files exist after every release build.
+val releaseBuildRequested = gradle.startParameter.taskNames.any { task ->
+    task.contains("release", ignoreCase = true) || task == "assemble" || task == "build"
+}
+if (releaseBuildRequested) {
+    project.extensions.extraProperties.set("dart-obfuscation", "true")
+    project.extensions.extraProperties.set(
+        "split-debug-info",
+        rootProject.layout.buildDirectory.dir("symbols").get().asFile.absolutePath,
+    )
 }
 
 kotlin {
@@ -151,7 +172,7 @@ flutter {
 }
 
 dependencies {
-    implementation("org.apache.commons:commons-compress:1.27.1")
-    implementation("org.tukaani:xz:1.10")
-    implementation("com.github.luben:zstd-jni:1.5.6-8")
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("org.tukaani:xz:1.12")
+    implementation("com.github.luben:zstd-jni:1.5.7-24")
 }

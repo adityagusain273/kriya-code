@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - 'lib/**'
+      - 'test/**'
       - 'android/**'
       - 'pubspec.yaml'
       - '.github/workflows/build-apk.yml'
@@ -97,15 +98,52 @@ jobs:
 
       - name: Build app bundle (Play)
         if: ${{ env.HAS_SECRETS == 'true' }}
-        run: flutter build appbundle --release --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
+        run: |
+          flutter build appbundle --release \
+            --obfuscate \
+            --split-debug-info=build/symbols \
+            --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
 
       - name: Build APK (direct distribution)
         if: ${{ env.HAS_SECRETS == 'true' }}
-        run: flutter build apk --release --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
+        run: |
+          flutter build apk --release \
+            --obfuscate \
+            --split-debug-info=build/symbols \
+            --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
+
+      - name: Verify Dart symbol files (crash symbolication)
+        if: ${{ env.HAS_SECRETS == 'true' }}
+        run: |
+          set -euo pipefail
+          ls build/symbols/app.android-*.symbols
+          echo "Dart symbol files present for symbolication of crash reports"
 
       - name: Unsigned debug build (no secrets yet)
         if: ${{ env.HAS_SECRETS != 'true' }}
         run: flutter build apk --debug -Pbcode.sideload=true
+
+      - name: Verify the release APK is signed with the release key
+        if: ${{ env.HAS_SECRETS == 'true' }}
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/flutter-apk/app-release.apk
+          apksigner="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)"
+          signer="$("$apksigner" verify --print-certs "$apk" \
+            | awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2}' \
+            | tr -d ':' | tr 'A-Z' 'a-z')"
+          expected="$(keytool -list -v -keystore android/key.jks \
+            -storepass "${{ secrets.BCODE_KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.BCODE_KEY_ALIAS }}" \
+            | awk -F': ' '/SHA256:/ {print $2}' \
+            | tr -d ':' | tr 'A-Z' 'a-z')"
+          if [ -z "$signer" ] || [ -z "$expected" ] || [ "$signer" != "$expected" ]; then
+            echo "the release APK is not signed with the release key"
+            echo "apk signer:   ${signer:-none}"
+            echo "keystore:     ${expected:-none}"
+            exit 1
+          fi
+          echo "release APK signed with the release key: $signer"
 
       - name: Report 16 KB page-size alignment
         if: ${{ env.HAS_SECRETS == 'true' }}
@@ -134,6 +172,14 @@ jobs:
           name: b-code-release-bundle
           path: build/app/outputs/bundle/release/*.aab
           retention-days: 14
+
+      - name: Upload Dart symbol file (for crash symbolication)
+        if: ${{ env.HAS_SECRETS == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: b-code-release-symbols
+          path: build/symbols/
+          retention-days: 90
 
       - name: Upload APK
         if: ${{ env.HAS_SECRETS == 'true' }}

@@ -28,8 +28,11 @@ class PreviewServer {
       _server == null ? null : 'http://127.0.0.1:${_server!.port}';
 
   /// A URL for a specific resource path, with the session token in the query
-  /// component of the final path. The first authorised request exchanges it for
-  /// an HttpOnly cookie, so subsequent subresource requests stay authorised.
+  /// component of the final path. The first authorised request exchanges the
+  /// token for an HttpOnly cookie and 302s to the same path without `bct`, so
+  /// the page never ends up on a token-bearing URL; [baseUrl] stays clean for
+  /// display purposes. Subsequent requests, including subresources, must
+  /// present the cookie.
   String? urlFor(String relativePath) {
     final port = _server?.port;
     final token = _token;

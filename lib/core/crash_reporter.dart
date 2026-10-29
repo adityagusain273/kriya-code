@@ -12,12 +12,19 @@ class CrashReporter {
   static const _maxLogBytes = 100 * 1024;
 
   static final _sensitivePatterns = [
-    RegExp(r'ghp_[A-Za-z0-9]{36}', caseSensitive: false),
-    RegExp(r'gho_[A-Za-z0-9]{36}', caseSensitive: false),
+    // Fine-grained personal access tokens.
+    RegExp(r'github_pat_[A-Za-z0-9_]{20,}', caseSensitive: false),
+    // Classic OAuth tokens: gho_, ghp_, ghs_, ghu_, ghr_.
+    RegExp(r'gh[opsur]_[A-Za-z0-9]{20,}', caseSensitive: false),
     RegExp(r'Bearer\s+[A-Za-z0-9_\-\.]+', caseSensitive: false),
     RegExp(r'Authorization:\s*Bearer\s+[^\s]+', caseSensitive: false),
+    RegExp(r'Basic\s+[A-Za-z0-9+/=]{8,}', caseSensitive: false),
+    // JWTs: header.payload.signature segments.
+    RegExp(r'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}'),
     RegExp(r'client_secret=[^\s&]+', caseSensitive: false),
-    RegExp(r'access_token[=:]\s*[^\s&"]+', caseSensitive: false),
+    // Matches both `access_token=xyz` and the JSON form `"access_token":"xyz"`:
+    // after the key, the JSON form carries a closing quote before the colon.
+    RegExp(r'access_token[=:"]+\s*(?:"[^"]*"|[^\s&"]+)', caseSensitive: false),
   ];
 
   static String _redact(String message) {
@@ -27,6 +34,11 @@ class CrashReporter {
     }
     return result;
   }
+
+  /// Redaction used by tests; the crash log is emailed to a human, so these
+  /// patterns are security-relevant and exercised directly.
+  @visibleForTesting
+  static String redactForTesting(String message) => _redact(message);
 
   static Future<void> init({bool enabled = true}) async {
     FlutterError.onError = (details) {

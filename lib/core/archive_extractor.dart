@@ -36,6 +36,11 @@ class ArchiveExtractionException implements Exception {
 ///  * the partially written folder is removed when any entry is refused, so a
 ///    rejected archive cannot leave half a project behind for the user to trip over.
 ///
+/// The container itself is bounded too: the compressed file must fit within
+/// [maxCompressedBytes] and the decompressed stream is drained to a temporary
+/// file for tar.gz/tar.bz2, so a small download cannot expand inside the heap
+/// and kill the process.
+///
 /// ZIP, TAR, TAR.GZ/TGZ and TAR.BZ2/TBZ2 are recognised. The container is identified
 /// from its magic bytes rather than its name, because a file picked through the
 /// system file chooser routinely arrives called `download` or `project.zip` while
@@ -46,8 +51,8 @@ class ArchiveExtractor {
   static const int maxTotalBytes = 512 * 1024 * 1024;
   static const int maxEntries = 20000;
 
-  /// Ceiling on a compressed container that has to be held in memory to be
-  /// decompressed at all. Streaming formats are not subject to it.
+  /// Ceiling on the compressed container size, enforced for every format
+  /// before any decoding starts.
   static const int maxCompressedBytes = 256 * 1024 * 1024;
 
   static const _extensions = <String, ArchiveFormat>{
@@ -165,6 +170,12 @@ class ArchiveExtractor {
   ///
   /// A GitHub source archive unpacks to a few thousand files; without any feedback
   /// that reads on a phone as the app having hung.
+  ///
+  /// Memory is bounded entry by entry rather than archive by archive: the
+  /// container is streamed, a compressed tar is first drained to a temporary
+  /// file, each entry's declared size is refused against the budget before its
+  /// content is read, and every write goes through a sink that throws once the
+  /// budget is spent.
   static Future<void> extractWithProgress(
     File archiveFile,
     String extractDir,
@@ -175,6 +186,12 @@ class ArchiveExtractor {
           'No such archive: ${p.basename(archiveFile.path)}');
     }
 
+    if (await archiveFile.length() > maxCompressedBytes) {
+      throw const ArchiveExtractionException(
+        'Refusing to extract: the compressed archive is larger than 256 MB.',
+      );
+    }
+
     final targetRoot = p.normalize(p.absolute(extractDir));
     final format = await _formatOf(archiveFile);
 
@@ -183,8 +200,15 @@ class ArchiveExtractor {
     var entryCount = 0;
     var createdRoot = false;
 
+    Directory? tmpDir;
+    InputStream? archiveStream;
     try {
-      final archive = await _open(archiveFile, format);
+      final archive = await _decode(
+        archiveFile,
+        format,
+        (dir) => tmpDir = dir,
+        (stream) => archiveStream = stream,
+      );
 
       for (final entry in archive) {
         entryCount++;
@@ -214,9 +238,9 @@ class ArchiveExtractor {
 
         if (!entry.isFile) continue;
 
-        final content = entry.content;
-        totalBytes += content.length;
-        if (totalBytes > maxTotalBytes) {
+        // Declared sizes are checked before any content is decompressed, so
+        // the caps limit memory and not just disk.
+        if (entry.size < 0 || totalBytes + entry.size > maxTotalBytes) {
           throw const ArchiveExtractionException(
             'Refusing to extract: the archive expands beyond 512 MB.',
           );
@@ -231,7 +255,14 @@ class ArchiveExtractor {
         // Guards against an archive that lists the same path twice, where the
         // second write would otherwise clobber the first with different content.
         written.add(outPath);
-        await outFile.writeAsBytes(content);
+
+        final sink = _CappedFileSink(outPath, maxTotalBytes - totalBytes);
+        try {
+          entry.writeContent(sink);
+        } finally {
+          totalBytes += sink.length;
+          sink.closeSync();
+        }
 
         if (onProgress != null && entryCount % 32 == 0) {
           onProgress(entryCount, totalBytes);
@@ -249,6 +280,15 @@ class ArchiveExtractor {
         }
       }
       rethrow;
+    } finally {
+      try {
+        await archiveStream?.close();
+      } catch (_) {}
+      if (tmpDir != null) {
+        try {
+          await tmpDir!.delete(recursive: true);
+        } catch (_) {}
+      }
     }
 
     if (entryCount == 0) {
@@ -263,6 +303,7 @@ class ArchiveExtractor {
 
     onProgress?.call(entryCount, totalBytes);
   }
+
   static Future<ArchiveFormat> _formatOf(File file) async {
     final head = await _readHead(file, 512);
     final sniffed = detectFormat(head);
@@ -286,32 +327,117 @@ class ArchiveExtractor {
     }
   }
 
-  static Future<Archive> _open(File file, ArchiveFormat format) async {
+  /// Decodes [file] into an [Archive] whose entry contents are read lazily.
+  ///
+  /// The [onTempDir] and [onStream] callbacks hand back everything that has to
+  /// outlive the call: the temporary directory holding a decompressed tar, and
+  /// the input stream the archive iterates over. The caller releases both once
+  /// the extraction loop has run.
+  static Future<Archive> _decode(
+    File file,
+    ArchiveFormat format,
+    void Function(Directory dir) onTempDir,
+    void Function(InputStream stream) onStream,
+  ) async {
     switch (format) {
       case ArchiveFormat.zip:
-        return ZipDecoder().decodeStream(_streamOf(file));
+        final stream = _streamOf(file);
+        onStream(stream);
+        return ZipDecoder().decodeStream(stream);
       case ArchiveFormat.tar:
-        return TarDecoder().decodeStream(_streamOf(file));
+        final stream = _streamOf(file);
+        onStream(stream);
+        return TarDecoder().decodeStream(stream);
       case ArchiveFormat.tarGzip:
-        final raw = await _readCapped(file);
-        return TarDecoder().decodeBytes(GZipDecoder().decodeBytes(raw));
       case ArchiveFormat.tarBzip2:
-        final raw = await _readCapped(file);
-        return TarDecoder().decodeBytes(BZip2Decoder().decodeBytes(raw));
+        final tmp = await Directory.systemTemp.createTemp('bcode_extract_');
+        onTempDir(tmp);
+        final tmpTar = File(p.join(tmp.path, 'extract.tar'));
+        if (format == ArchiveFormat.tarGzip) {
+          await _gunzipToCappedFile(file, tmpTar);
+        } else {
+          await _bunzip2ToCappedFile(file, tmpTar);
+        }
+        final stream = InputFileStream(tmpTar.path);
+        onStream(stream);
+        return TarDecoder().decodeStream(stream);
+    }
+  }
+
+  /// Decompresses [source] into [target], refusing past [maxTotalBytes].
+  ///
+  /// dart:io's streaming gunzip is used rather than GZipDecoder.decodeStream:
+  /// that decoder collects every output chunk in a callback sink and only
+  /// starts writing once the whole stream has been decompressed, so a small
+  /// bomb would exhaust the heap before any cap could fire.
+  static Future<void> _gunzipToCappedFile(File source, File target) async {
+    final sink = _CappedFileSink(target.path, maxTotalBytes);
+    try {
+      await for (final chunk in source.openRead().transform(gzip.decoder)) {
+        sink.writeBytes(chunk);
+      }
+    } finally {
+      sink.closeSync();
+    }
+  }
+
+  static Future<void> _bunzip2ToCappedFile(File source, File target) async {
+    final sink = _CappedFileSink(target.path, maxTotalBytes);
+    final input = _streamOf(source);
+    try {
+      // BZip2Decoder hands blocks to the sink as it goes, so the sink's cap
+      // bounds both memory and the size of the temporary file.
+      final ok = BZip2Decoder().decodeStream(input, sink);
+      if (!ok) {
+        throw const ArchiveExtractionException('Invalid bzip2 archive.');
+      }
+    } finally {
+      sink.closeSync();
+      await input.close();
     }
   }
 
   /// Streaming input, so a large ZIP or TAR is never fully resident.
   static InputFileStream _streamOf(File file) =>
       InputFileStream.withFileHandle(FileHandle(file.path));
+}
 
-  static Future<List<int>> _readCapped(File file) async {
-    final length = await file.length();
-    if (length > maxCompressedBytes) {
+/// A file sink that throws once [cap] bytes have been written.
+///
+/// Backs the decompressed intermediate tar and every extracted entry, so a
+/// header that lies about its size cannot run away on disk either.
+class _CappedFileSink extends OutputFileStream {
+  final int cap;
+
+  _CappedFileSink(String path, this.cap)
+      : super.withFileHandle(
+          FileHandle(path, mode: FileAccess.write),
+          bufferSize: 1 << 20,
+        );
+
+  void _enforce(int incoming) {
+    if (length + incoming > cap) {
       throw const ArchiveExtractionException(
-        'Refusing to extract: the compressed archive is larger than 256 MB.',
+        'Refusing to extract: the archive expands beyond 512 MB.',
       );
     }
-    return file.readAsBytes();
+  }
+
+  @override
+  void writeByte(int value) {
+    _enforce(1);
+    super.writeByte(value);
+  }
+
+  @override
+  void writeBytes(List<int> bytes, {int? length}) {
+    _enforce(length ?? bytes.length);
+    super.writeBytes(bytes, length: length);
+  }
+
+  @override
+  void writeStream(InputStream stream) {
+    _enforce(stream.length);
+    super.writeStream(stream);
   }
 }

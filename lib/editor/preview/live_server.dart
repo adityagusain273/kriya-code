@@ -39,19 +39,23 @@ class LiveServer {
   String? _token;
   int? _port;
 
-  /// The URL to open in a browser, including the session token.
+  /// The clean URL of the server root, with no session token in it. Only
+  /// [urlFor] authorises a client; this getter stays token-free so it can be
+  /// shown on screen without leaking the token.
   String? get baseUrl {
     final port = _port;
-    final token = _token;
-    if (_server == null || port == null || token == null) return null;
-    return 'http://127.0.0.1:$port/?bct=$token';
+    if (_server == null || port == null) return null;
+    return 'http://127.0.0.1:$port';
   }
 
-  /// A URL for a specific resource path, with the session token appended
-  /// correctly. `PreviewPage` used to receive `baseUrl` (which embeds the token
-  /// as a *query* string) and concatenate `/relative/path`, producing
-  /// `.../?bct=tok/path`, which invalidated the token. Keep the token in the
-  /// query component of the final path here.
+  /// A URL for a specific resource path, carrying the session token as a query
+  /// parameter. This is the only URL form that includes the token: the first
+  /// authorised request exchanges it for an HttpOnly cookie and the server
+  /// immediately 302s to the same path without `bct`, so the page never ends
+  /// up on a token-bearing URL. `PreviewPage` used to receive `baseUrl` (which
+  /// embeds the token as a *query* string) and concatenate `/relative/path`,
+  /// producing `.../?bct=tok/path`, which invalidated the token. Keep the
+  /// token in the query component of the final path here.
   String? urlFor(String relativePath) {
     final port = _port;
     final token = _token;
@@ -77,7 +81,7 @@ class LiveServer {
     _handler = StaticFileHandler(
       rootPath: rootPath,
       sessionToken: token,
-      transformHtml: (html) => _injectLiveReload(html, port),
+      transformHtml: (html, nonce) => _injectLiveReload(html, port, nonce),
     );
 
     server.listen(
@@ -223,9 +227,11 @@ class LiveServer {
     }
   }
 
-  String _injectLiveReload(String html, int port) {
+  String _injectLiveReload(String html, int port, String nonce) {
+    // The nonce is the same one the CSP grants for this response; without it
+    // script-src would refuse the client.
     final script = '''
-<script>
+<script nonce="$nonce">
 (function(){
   function connect(){
     var ws = new WebSocket('ws://127.0.0.1:$port$_liveReloadPath');

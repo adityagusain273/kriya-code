@@ -982,7 +982,7 @@ class _EditorPageState extends State<EditorPage>
   /// and the bar fell back to a hardcoded 2 — for at least one frame on every
   /// rebuild, and the lookup was reissued each time the user typed.
   Future<int> _indentFutureFor(String? languageId) {
-    if (_indentLangId != languageId) {
+    if (_indentFuture == null || _indentLangId != languageId) {
       _indentLangId = languageId;
       _indentFuture = sl<HighlightService>().indentWidthFor(languageId);
     }

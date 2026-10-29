@@ -36,7 +36,27 @@ case "${1:-dev}" in
       echo "release builds need GITHUB_CLIENT_ID; refusing to ship one that cannot sign in" >&2
       exit 1
     fi
-    flutter build apk --release "${defines[@]}"
+    # Crash symbolication hinges on build/symbols/ surviving every release
+    # build. The flutter build system tracks its AOT outputs in
+    # .dart_tool/flutter_build, not in build/: when build/ is wiped while that
+    # cache is warm, gen_snapshot is skipped and an obfuscated APK ships with
+    # no way to symbolicate its crash reports. Clear the cache whenever the
+    # symbol files are missing so the rebuild regenerates them.
+    symbols_ok() {
+      ls build/symbols/app.android-*.symbols >/dev/null 2>&1
+    }
+    symbols_ok || rm -rf .dart_tool/flutter_build
+    flutter build apk --release --obfuscate --split-debug-info=build/symbols "${defines[@]}"
+    if ! symbols_ok; then
+      echo "release build left no Dart symbol files; clearing the flutter build cache and rebuilding" >&2
+      rm -rf .dart_tool/flutter_build
+      flutter build apk --release --obfuscate --split-debug-info=build/symbols "${defines[@]}"
+      symbols_ok || {
+        echo "release produced no build/symbols/*.symbols; crash reports would be unsymbolicable" >&2
+        exit 1
+      }
+    fi
+    echo "==> Dart symbols: $(ls build/symbols/app.android-*.symbols | tr '\n' ' ')"
     ;;
 
   dev|*)

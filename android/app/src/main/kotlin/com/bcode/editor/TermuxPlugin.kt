@@ -11,6 +11,8 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
+import java.security.SecureRandom
 import java.util.concurrent.Executors
 
 object TermuxPlugin {
@@ -29,8 +31,28 @@ object TermuxPlugin {
     /// request_id, so a stale broadcast could deliver one command's output to
     /// another. Termux may also deliver stdout/stderr bundles of arbitrary
     /// size, which are capped before they enter the Dart channel.
+    ///
+    /// request_id is drawn from SecureRandom rather than a millisecond
+    /// timestamp: the old value was sweepable by any app on the device, which
+    /// could forge a result for a command still in flight. The broadcast
+    /// action also carries a random per-registration token, so a forged
+    /// broadcast needs both the token and a live id to land.
     private val pendingResults = java.util.concurrent.ConcurrentHashMap<Int, MethodChannel.Result>()
     private const val MAX_RESULT_BYTES = 1_048_576
+    private val secureRandom = SecureRandom()
+
+    /// The action the result receiver is currently registered for. Regenerated
+    /// every time the receiver is (re)registered so a token that was ever live
+    /// cannot be replayed against a later session of the receiver.
+    @Volatile private var resultAction: String? = null
+
+    private fun currentResultAction(): String {
+        resultAction?.let { return it }
+        val token = ByteArray(16).joinToString("") { "%02x".format(it) }
+        val action = "$RESULT_ACTION.$token"
+        resultAction = action
+        return action
+    }
 
     private fun bounded(text: String?): String {
         if (text == null) return ""
@@ -155,13 +177,20 @@ object TermuxPlugin {
                 val intent = createRunIntent(command, args.toTypedArray(), stdin, workDir)
 
                 if (useResult) {
-                    requestId = System.currentTimeMillis().toInt()
+                    // Unpredictable correlation value: a timestamp is sweepable,
+                    // a SecureRandom draw is not.
+                    requestId = secureRandom.nextInt(Int.MAX_VALUE) + 1
                     val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
                     } else {
                         PendingIntent.FLAG_UPDATE_CURRENT
                     }
-                    val resultIntent = Intent(RESULT_ACTION).apply {
+                    // The result intent targets this app's package explicitly, so
+                    // the broadcast the PendingIntent fires can only land here.
+                    // Termux needs the PendingIntent mutable to fill in the
+                    // stdout/stderr/exit_code extras; fill-in cannot replace the
+                    // action, package or request_id already set below.
+                    val resultIntent = Intent(currentResultAction()).apply {
                         putExtra("request_id", requestId)
                         setPackage(appContext.packageName)
                     }
@@ -240,12 +269,16 @@ object TermuxPlugin {
                 }
             }
         }
-        val filter = IntentFilter(RESULT_ACTION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            appContext.registerReceiver(resultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            appContext.registerReceiver(resultReceiver, filter)
-        }
+        // RECEIVER_NOT_EXPORTED on every API level the app supports. The
+        // platform only started honouring the flag on API 31 and only requires
+        // it on 33+, but ContextCompat forwards it to the framework's flags
+        // overload on 26+ and falls back to the legacy overload below that,
+        // where the unpredictable action token above is what stands between a
+        // forged broadcast and this receiver.
+        val filter = IntentFilter(currentResultAction())
+        ContextCompat.registerReceiver(
+            appContext, resultReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     fun unregister() {
@@ -253,5 +286,8 @@ object TermuxPlugin {
             try { appContext.unregisterReceiver(it) } catch (_: Exception) {}
         }
         resultReceiver = null
+        // Retire the action with the receiver so the next registration is not
+        // reachable by broadcasts crafted against the old token.
+        resultAction = null
     }
 }

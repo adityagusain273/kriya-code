@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_pty/flutter_pty.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:xterm/xterm.dart';
 
 import '../core/constants.dart';
@@ -68,7 +69,20 @@ class _TerminalWidgetState extends State<TerminalWidget> {
     _startShell();
   }
 
-  void _startShell() {
+  /// App-private scratch directory the standalone shell treats as its home.
+  ///
+  /// HOME must not be the project directory: a user running `git credential
+  /// store` or `npm login` in the terminal would otherwise drop
+  /// `~/.git-credentials` / `~/.npmrc` into their project, where commit-all
+  /// would push them to GitHub.
+  Future<String> _terminalHome() async {
+    final support = await getApplicationSupportDirectory();
+    final home = '${support.path}/term-home';
+    await Directory(home).create(recursive: true);
+    return home;
+  }
+
+  Future<void> _startShell() async {
     if (_disposed) return;
     final shellPath = _findShell();
     final env = Map<String, String>.from(Platform.environment);
@@ -81,11 +95,13 @@ class _TerminalWidgetState extends State<TerminalWidget> {
       env['PREFIX'] = '/data/data/com.termux/files/usr';
       env['TMPDIR'] = '/data/data/com.termux/files/usr/tmp';
     } else if (_useStandalone && _standalonePath != null) {
-      env['HOME'] = widget.workDir ?? env['HOME'] ?? '';
+      final home = await _terminalHome();
+      if (_disposed) return;
+      env['HOME'] = home;
       env['PATH'] = '$_standalonePath/bin:${env['PATH'] ?? ''}';
       env['PREFIX'] = _standalonePath!;
-      env['TMPDIR'] = env['HOME']!;
-      
+      env['TMPDIR'] = home;
+
       final libPath = '$_standalonePath/lib';
       final currentLd = env['LD_LIBRARY_PATH'];
       env['LD_LIBRARY_PATH'] = currentLd != null ? '$libPath:$currentLd' : libPath;

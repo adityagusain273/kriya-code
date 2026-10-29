@@ -47,6 +47,7 @@ class MainActivity : FlutterActivity() {
         ExecPlugin.register(flutterEngine.dartExecutor.binaryMessenger, this)
         TermuxPlugin.register(flutterEngine.dartExecutor.binaryMessenger, this)
         TermuxPlugin.attachActivity(this)
+        IntegrityPlugin.register(flutterEngine.dartExecutor.binaryMessenger, this)
         registerSafChannel(flutterEngine.dartExecutor.binaryMessenger)
     }
 

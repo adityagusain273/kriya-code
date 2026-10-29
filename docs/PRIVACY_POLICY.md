@@ -50,5 +50,5 @@ B Code does not knowingly collect personal data from anyone, including children 
 Material changes to this policy will be reflected in app release notes and this document.
 
 The authoritative copy served at the store listing URL is
-`store/privacy_policy.html`. Contact:
+`privacy_policy.html`. Contact:
 [adityagusain273@gmail.com](mailto:adityagusain273@gmail.com)

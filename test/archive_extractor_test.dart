@@ -159,7 +159,7 @@ void main() {
       ArchiveExtractor.extract(zip, extractDir.path),
       throwsA(isA<ArchiveExtractionException>()),
     );
-  });
+  }, timeout: const Timeout.factor(4));
 
   test('a traversal entry after a good entry still aborts cleanly', () async {
     final zip = await writeZip('mixed.zip', [

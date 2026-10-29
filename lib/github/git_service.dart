@@ -31,12 +31,24 @@ class GitService {
         credentials: UserPass(username: 'x-access-token', password: token),
       );
 
+  /// Whether [url] is safe to hand to libgit2's clone.
+  ///
+  /// libgit2 honours the `ext::` transport, whose payload is executed by a
+  /// shell, so only https is allowed at this boundary.
+  static bool isAllowedCloneUrl(String url) {
+    final uri = Uri.tryParse(url);
+    return uri != null && uri.scheme == 'https';
+  }
+
   Future<Result<Repository>> clone({
     required String httpsUrl,
     required String token,
     required String destinationPath,
   }) async {
     try {
+      if (!isAllowedCloneUrl(httpsUrl)) {
+        return Err('Only https:// clone URLs are supported.');
+      }
       if (Directory(destinationPath).existsSync()) {
         return Ok(Repository.open(destinationPath));
       }
@@ -51,6 +63,23 @@ class GitService {
     }
   }
 
+  // Credential material that must never ride along in a commit-all sweep,
+  // however it ended up in the working tree.
+  static final _secretPathPatterns = [
+    RegExp(r'(^|/)\.env(\..*)?$'),
+    RegExp(r'(^|/)\.git-credentials$'),
+    RegExp(r'(^|/)\.npmrc$'),
+    RegExp(r'(^|/)\.netrc$'),
+    RegExp(r'(^|/)\.htpasswd$'),
+    RegExp(r'(^|/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$'),
+    RegExp(r'(^|/)[^/]*\.(pem|key|p12|pfx|jks|keystore)$'),
+    RegExp(r'(^|/)service-account[^/]*\.json$'),
+  ];
+
+  /// Whether [path] looks like credential material.
+  static bool isSecretPath(String path) =>
+      _secretPathPatterns.any((pattern) => pattern.hasMatch(path));
+
   Future<Result<void>> commitAll(
     Repository repo,
     String message,
@@ -58,7 +87,22 @@ class GitService {
   ) async {
     try {
       final index = repo.index;
+      // Staging must sweep '*' rather than repo.status: the default status
+      // list omits untracked files entirely, so status-driven staging
+      // silently skipped every newly created file. addAll still honours
+      // .gitignore, so ignored material never enters the index.
+      // Credential paths are then dropped, but only entries the add itself
+      // introduced: removing an already-tracked secret would stage its
+      // deletion in this commit, which would erase the file on the next
+      // pull/checkout.
+      final trackedBefore = index.map((e) => e.path).toSet();
       index.addAll(['*']);
+      final staged = index.map((e) => e.path).toList();
+      for (final path in staged) {
+        if (isSecretPath(path) && !trackedBefore.contains(path)) {
+          index.remove(path);
+        }
+      }
       index.write();
       final treeOid = index.writeTree();
       final tree = Tree.lookup(repo: repo, oid: treeOid);

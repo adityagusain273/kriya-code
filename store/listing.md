@@ -55,7 +55,7 @@ code editor, IDE, programming, python, java, javascript, terminal, developer too
 adityagusain273@gmail.com
 
 ## Website
-https://github.com/adityagusain273/b-code
+https://github.com/adityagusain273/b-code-app
 
 ## Privacy Policy URL (Play form field)
-https://github.com/adityagusain273/b-code/blob/main/privacy_policy.html
+https://github.com/adityagusain273/b-code-app/blob/main/privacy_policy.html

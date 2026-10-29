@@ -5,7 +5,9 @@ import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.StatFs
 import android.system.Os
+import android.system.OsConstants
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import org.apache.commons.compress.archivers.ar.ArArchiveInputStream
@@ -17,6 +19,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -26,10 +29,28 @@ object ExecPlugin {
     private const val TERMUX_PREFIX = "data/data/com.termux/files/usr/"
     private const val MAX_ARGV_SIZE = 256
     private const val MAX_ENV_SIZE = 65536
-    private const val MAX_EXTRACTED_BYTES = 4L * 1024 * 1024 * 1024
+    // Matches the Dart-side cap in lib/core/archive_extractor.dart
+    // (ArchiveExtractor.maxTotalBytes). A phone has no business unpacking 4 GiB.
+    private const val MAX_EXTRACTED_BYTES = 512L * 1024 * 1024
     private const val MAX_ARCHIVE_ENTRIES = 200000
     private const val MAX_CAPTURED_OUTPUT_BYTES = 8 * 1024 * 1024
     private val RUNTIME_ID_PATTERN = Regex("[a-z0-9][a-z0-9._-]{0,31}")
+
+    /// Per-file digest manifest written next to an extracted runtime and
+    /// checked before every exec of a runtime binary. The name follows the
+    /// `sha256sum` line format: `<hex> <relative-path>`.
+    private const val MANIFEST_NAME = "integrity.sha256"
+
+    /// SharedPreferences file holding the digest of each runtime's manifest.
+    ///
+    /// Binding the manifest to a second storage location means tampering with
+    /// the runtime tree alone is detected even when the attacker regenerates
+    /// the manifest to match. This is NOT cryptographically bound: an attacker
+    /// who can deliberately write both the runtime tree and this prefs file
+    /// (root, or code running as the app uid) can recompute both. The control
+    /// catches accidental corruption and undeliberate or naive writes -- it
+    /// does not stop a determined attacker with app-uid write access.
+    private const val INTEGRITY_PREFS = "runtime_integrity"
 
     private val SYSTEM_PREFIXES = listOf(
         "/system", "/system_ext", "/apex", "/vendor", "/product", "/odm",
@@ -227,6 +248,8 @@ object ExecPlugin {
                         try {
                             val output = exec(argv, cwd, safeEnv, timeoutMs)
                             runOnMain { result.success(output) }
+                        } catch (e: RuntimeIntegrityException) {
+                            runOnMain { result.error("RUNTIME_INTEGRITY", e.message, null) }
                         } catch (e: Exception) {
                             runOnMain {
                                 val denial = explainExecDenial(e, argv)
@@ -284,6 +307,18 @@ object ExecPlugin {
 
     private fun extractRuntime(runtimeId: String) {
         val dest = runtimeDir(runtimeId)
+        // Fail before touching the archive when the volume cannot hold the
+        // ceiling we allow, rather than dying mid-extraction with ENOSPC.
+        if (dest.exists()) {
+            val available = StatFs(dest.canonicalPath).availableBytes
+            if (available < MAX_EXTRACTED_BYTES) {
+                throw IllegalStateException(
+                    "Not enough free space to extract $runtimeId " +
+                        "(need ${MAX_EXTRACTED_BYTES / (1024 * 1024)} MiB, " +
+                        "have ${available / (1024 * 1024)} MiB)"
+                )
+            }
+        }
         val pkgsDir = File(dest, "pkgs")
         val debs = pkgsDir.listFiles()?.filter { it.name.endsWith(".deb") }
             ?: throw IllegalStateException("No downloaded packages for $runtimeId")
@@ -295,7 +330,180 @@ object ExecPlugin {
             pkgs.listFiles()?.forEach { it.delete() }
             pkgs.delete()
         }
+        // The manifest is written only after every file is on disk, so it
+        // describes the tree as it will be executed, not an intermediate state.
+        writeIntegrityManifest(dest)
     }
+
+    /// Records the SHA-256 of every regular file under [dest] (the runtime's
+    /// own directory) in `integrity.sha256`, and records the manifest's own
+    /// digest in SharedPreferences.
+    ///
+    /// Symlinks are skipped, and symlinked directories are not descended
+    /// into: their targets are regular files inside [dest] (extraction
+    /// re-roots links and refuses escapes) and are hashed in their own right,
+    /// so walking only real entries also makes cyclic links harmless. A stale
+    /// manifest from a previous install is removed before the walk so it
+    /// cannot end up listed inside its own replacement.
+    ///
+    /// Uses Os.lstat rather than java.nio.file, which only exists from API 26
+    /// while minSdk is 24.
+    private fun writeIntegrityManifest(dest: File) {
+        val manifestFile = File(dest, MANIFEST_NAME)
+        manifestFile.delete()
+        val files = mutableListOf<File>()
+        collectRegularFiles(dest, files)
+        val content = files
+            .map { it.relativeTo(dest).path to sha256Hex(it) }
+            .sortedBy { it.first }
+            .joinToString("\n") { (rel, hex) -> "$hex $rel" }
+        manifestFile.writeText(if (content.isEmpty()) "" else "$content\n")
+        appContext.getSharedPreferences(INTEGRITY_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(dest.name, sha256Hex(manifestFile))
+            .apply()
+    }
+
+    /// Depth-first collection of real files below [dir], refusing to follow
+    /// symlinks anywhere in the tree.
+    private fun collectRegularFiles(dir: File, out: MutableList<File>) {
+        for (child in dir.listFiles() ?: return) {
+            when (entryKind(child)) {
+                EntryKind.SYMLINK -> {}
+                EntryKind.DIRECTORY -> collectRegularFiles(child, out)
+                EntryKind.FILE -> out.add(child)
+                EntryKind.OTHER -> {}
+            }
+        }
+    }
+
+    private enum class EntryKind { SYMLINK, DIRECTORY, FILE, OTHER }
+
+    /// Classifies [file] without following its final component, so a link is
+    /// never mistaken for the file it points at.
+    private fun entryKind(file: File): EntryKind = try {
+        val mode = Os.lstat(file.path).st_mode
+        when (mode and OsConstants.S_IFMT) {
+            OsConstants.S_IFLNK -> EntryKind.SYMLINK
+            OsConstants.S_IFDIR -> EntryKind.DIRECTORY
+            OsConstants.S_IFREG -> EntryKind.FILE
+            else -> EntryKind.OTHER
+        }
+    } catch (_: Exception) {
+        EntryKind.OTHER
+    }
+
+    /// Reads the manifest into a relative-path -> digest map.
+    private fun readIntegrityManifest(manifestFile: File): Map<String, String> {
+        val map = mutableMapOf<String, String>()
+        manifestFile.useLines { lines ->
+            for (line in lines) {
+                if (line.isEmpty()) continue
+                val hex = line.substringBefore(' ')
+                val rel = line.substringAfter(' ', "")
+                if (hex.length == 64 && rel.isNotEmpty()) map[rel] = hex
+            }
+        }
+        return map
+    }
+
+    /// Throws [RuntimeIntegrityException] when the program about to be exec'd
+    /// is an app-unpacked runtime binary whose bytes no longer match the
+    /// manifest recorded at extraction time.
+    ///
+    /// Only the program itself is re-hashed per exec, not the whole tree: the
+    /// manifest covers the full contents for install-time and offline checks,
+    /// while per-exec hashing stays proportional to one binary.
+    private fun verifyRuntimeBinary(argv: List<String>) {
+        val command = argv.firstOrNull() ?: return
+        val target = if (File(command).isAbsolute) {
+            File(command)
+        } else {
+            val dir = buildPathEntries().firstOrNull { candidate ->
+                File(candidate, command).exists() && File(candidate, command).canExecute()
+            } ?: return
+            File(dir, command)
+        }
+        if (isSystemPath(target.path)) return
+
+        val rootRaw = runtimesRoot().absolutePath + File.separator
+        val rootCanonical = runtimesRoot().canonicalPath + File.separator
+        val canonical = canonicalOf(target.path)
+
+        // Membership is decided on the canonical path, so equivalent spellings
+        // of the data directory (/data/data/<pkg> vs /data/user/0/<pkg>) are
+        // treated the same. A path that names the runtime tree but resolves
+        // outside it is a re-pointed symlink, not a legitimate binary.
+        if (canonical != null && canonical.startsWith(rootCanonical)) {
+            verifyAgainstManifest(canonical, rootCanonical)
+        } else if (target.absolutePath.startsWith(rootRaw)) {
+            throw RuntimeIntegrityException(
+                "Runtime binary resolves outside the runtime directory: ${target.path}"
+            )
+        }
+    }
+
+    /// [canonical] is a file inside the runtimes root; check it against the
+    /// owning runtime's manifest and the manifest's own bound digest.
+    private fun verifyAgainstManifest(canonical: String, rootCanonical: String) {
+        val relToRoot = canonical.removePrefix(rootCanonical)
+        val runtimeId = relToRoot.substringBefore(File.separatorChar)
+        if (!RUNTIME_ID_PATTERN.matches(runtimeId)) {
+            throw RuntimeIntegrityException("Invalid runtime directory: $runtimeId")
+        }
+        val relInRuntime = relToRoot.substringAfter(File.separatorChar)
+
+        val dir = runtimeDir(runtimeId)
+        val manifestFile = File(dir, MANIFEST_NAME)
+        if (!manifestFile.isFile) {
+            throw RuntimeIntegrityException(
+                "No integrity manifest for runtime '$runtimeId'. " +
+                    "Reinstall the runtime from the Runtimes screen."
+            )
+        }
+        val bound = appContext.getSharedPreferences(INTEGRITY_PREFS, Context.MODE_PRIVATE)
+            .getString(runtimeId, null)
+            ?: throw RuntimeIntegrityException(
+                "No integrity record for runtime '$runtimeId'. " +
+                    "Reinstall the runtime from the Runtimes screen."
+            )
+        if (!sha256Hex(manifestFile).equals(bound, ignoreCase = true)) {
+            throw RuntimeIntegrityException(
+                "Runtime '$runtimeId' failed its integrity check. " +
+                    "Reinstall the runtime from the Runtimes screen."
+            )
+        }
+        val expected = readIntegrityManifest(manifestFile)[relInRuntime]
+            ?: throw RuntimeIntegrityException(
+                "No recorded digest for '$relInRuntime' in runtime '$runtimeId'. " +
+                    "Reinstall the runtime from the Runtimes screen."
+            )
+        val actual = sha256Hex(File(canonical))
+        if (!actual.equals(expected, ignoreCase = true)) {
+            throw RuntimeIntegrityException(
+                "'$relInRuntime' in runtime '$runtimeId' was modified after installation. " +
+                    "Reinstall the runtime from the Runtimes screen."
+            )
+        }
+    }
+
+    private fun sha256Hex(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /// Refusal to run a runtime binary whose bytes do not match the manifest
+    /// recorded at extraction time. Distinct from [IllegalStateException] so
+    /// the channel handler can surface a dedicated error code to Dart.
+    private class RuntimeIntegrityException(message: String) : Exception(message)
 
     private fun extractDeb(deb: File, dest: File) {
         ArArchiveInputStream(FileInputStream(deb)).use { ar ->
@@ -306,19 +514,24 @@ object ExecPlugin {
                 val raw: InputStream = when {
                     name.endsWith(".gz") -> GzipCompressorInputStream(ar)
                     name.endsWith(".xz") -> {
+                        // Missing-library failures are Errors, not Exceptions; normalized so the
+                        // MethodChannel result is answered instead of hanging on an escaped Error.
                         try {
                             XZCompressorInputStream(ar)
-                        } catch (e: NoClassDefFoundError) {
+                        } catch (e: LinkageError) {
                             throw UnsupportedOperationException(
                                 "xz decompression not available; install xz library", e)
                         }
                     }
                     name.endsWith(".zst") -> {
+                        // The zstd native library cannot load on Android: any failure here is a
+                        // platform gap, so convert it (incl. UnsatisfiedLinkError) to a clean refusal.
                         try {
                             ZstdInputStream(ar)
-                        } catch (e: NoClassDefFoundError) {
+                        } catch (e: Throwable) {
                             throw UnsupportedOperationException(
-                                "zstd decompression not available; install zstd-jni library", e)
+                                "zstd decompression is not supported on this platform: " +
+                                    "the zstd native library cannot load on Android", e)
                         }
                     }
                     else -> ar
@@ -374,10 +587,10 @@ object ExecPlugin {
                         if (resolved != destCanonical && !resolved.startsWith(destPrefix)) continue
                         if (outFile.exists()) outFile.delete()
                         try {
-                            val relativeTarget = dest.toPath()
-                                .relativize(File(dest, linkName).toPath())
-                                .toString()
-                            Os.symlink(relativeTarget, outFile.path)
+                            // linkName is already relative to dest; nio
+                            // relativize via File.toPath() is API 26+ while
+                            // minSdk is 24.
+                            Os.symlink(linkName, outFile.path)
                         } catch (_: Exception) {
                         }
                     }
@@ -526,6 +739,12 @@ object ExecPlugin {
         env: Map<String, String>,
         timeoutMs: Long
     ): Map<String, Any> {
+        // Last gate before the bytes run: the program must still match what
+        // was verified at download and extraction time. Runs on this executor
+        // thread immediately before start(), so the window between the check
+        // and the exec is as small as this design allows.
+        verifyRuntimeBinary(argv)
+
         val workDir = File(cwd)
         if (!workDir.exists()) workDir.mkdirs()
 

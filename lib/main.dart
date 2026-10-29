@@ -52,8 +52,18 @@ import 'workspace/fs_service.dart';
 Future<void> main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    // Release builds otherwise paint Flutter's anonymous grey box when a widget
+    // throws, which is indistinguishable from a hang. Show that it is an error
+    // and send the user to the crash log instead of leaving a dead screen.
+    if (kReleaseMode) {
+      ErrorWidget.builder = (_) => const _RenderFailureScreen();
+    }
 
-    await _initCrashReporterAndRasp();
+    try {
+      await _initCrashReporterAndRasp().timeout(const Duration(seconds: 10));
+    } catch (error, stack) {
+      CrashReporter.recordZoneError(error, stack);
+    }
     try {
       await _bootstrap();
     } catch (error, stack) {
@@ -117,6 +127,38 @@ class _BootstrapFailureApp extends StatelessWidget {
   }
 }
 
+class _RenderFailureScreen extends StatelessWidget {
+  const _RenderFailureScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Directionality(
+      textDirection: TextDirection.ltr,
+      child: ColoredBox(
+        color: Color(0xFF1A1C1E),
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, color: Color(0xFFE0E0E0), size: 40),
+                SizedBox(height: 12),
+                Text(
+                  'This screen failed to draw.\n'
+                  'Reopen B Code. If it repeats, the details are in the crash log.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFFE0E0E0), fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> _initCrashReporterAndRasp() async {
   final crashEnabled = await _initCrashReporter();
   await CrashReporter.init(enabled: crashEnabled);
@@ -140,7 +182,11 @@ Future<void> _initCrashReporterAndRasp() async {
     checkEmulator: false,
     checkAppSignature: !kDebugMode,
     checkOfficialStore: false,
-    checkDeviceBinding: !kDebugMode,
+    // The binding token is written to both secure storage and prefs, which do
+    // not stay in sync across a reinstall or data restore: this fired on every
+    // launch of an ordinary sideloaded build. Nothing acts on the finding, so it
+    // only dirtied the crash log.
+    checkDeviceBinding: false,
     // Compares Build.ID, which rotates with OS updates. It detects nothing and
     // breaks the app after the first system update.
     checkDeviceIdSpoofing: false,

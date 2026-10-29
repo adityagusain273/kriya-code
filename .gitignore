@@ -52,6 +52,13 @@ key.properties
 android/key.properties
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pem
+
+# Dart symbol files produced by --split-debug-info belong in the crash
+# backend, not in the repository.
+/symbols/
 
 # Local scratch: patch/patch-application leftovers
 *.orig
@@ -86,3 +93,10 @@ android/app/src/main/assets/bundled_runtime/
 # storage.googleapis.com is unreachable; android/build.gradle.kts skips it when the
 # directory is absent, so it is never committed.
 android/local-engine-repo/
+
+# Harness-memory local database
+.harness-memory/
+
+# OpenCode tooling
+.opencode/
+opencode.json

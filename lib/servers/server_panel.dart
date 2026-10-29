@@ -88,10 +88,33 @@ class _ServerPanelState extends State<ServerPanel> {
     }
   }
 
-  void _openPreview(BuildContext context, DevServer server) {
-    Navigator.pop(context);
-    Navigator.push(
-      context,
+  /// Dev servers are not ours to protect: whatever process listens on the
+  /// port — including a malicious `postinstall` script — controls the page B
+  /// Code renders, and the preview sandbox (CSP, token) does not apply. So an
+  /// explicit confirmation stands between the tap and the WebView.
+  Future<void> _openPreview(BuildContext context, DevServer server) async {
+    final nav = Navigator.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Open untrusted server?'),
+        content: Text(
+          'This page is served by an external dev server on port ${server.port}, '
+          'not by B Code. B Code cannot protect it: they can run any code they '
+          'want in this window. Only open a server you started yourself.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Open anyway'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    nav.pop();
+    nav.push(
       MaterialPageRoute(
         builder: (_) => PreviewPage(
           baseUrl: server.url,
