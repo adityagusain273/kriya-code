@@ -560,6 +560,7 @@ class _EntryTileState extends State<_EntryTile> {
           },
           trailing: PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 18),
+            tooltip: 'Options for ${entry.name}',
             onSelected: (action) => _handleAction(context, action),
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'copy_path', child: Text('Copy Path')),

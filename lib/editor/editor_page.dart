@@ -1068,6 +1068,7 @@ class _EditorPageState extends State<EditorPage>
             ),
           IconButton(
             icon: const Icon(Icons.code),
+            tooltip: 'GitHub',
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GitHubPage())),
           ),
           PopupMenuButton<String>(
@@ -1213,13 +1214,20 @@ class _EditorPageState extends State<EditorPage>
                         const SizedBox(width: 4),
                         Text(tabs.tabs[i].name),
                         if (tabs.tabs[i].dirty) const Text(' •'),
-                        GestureDetector(
-                          onTap: () => _closeTabWithConfirm(i),
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.close, size: 18),
+                        Semantics(
+                          button: true,
+                          label: 'Close tab ${tabs.tabs[i].name}',
+                          child: Tooltip(
+                            message: 'Close tab',
+                            child: GestureDetector(
+                              onTap: () => _closeTabWithConfirm(i),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.close, size: 18),
+                              ),
+                            ),
                           ),
                         ),
                       ],

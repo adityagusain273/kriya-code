@@ -41,6 +41,7 @@ class QuickOpen extends StatefulWidget {
 class _QuickOpenState extends State<QuickOpen> {
   final _searchCtrl = TextEditingController();
   final _focusNode = FocusNode();
+  final _listFocusNode = FocusNode();
   List<QuickOpenEntry> _allEntries = [];
   List<QuickOpenEntry> _filtered = [];
   int _selectedIndex = 0;
@@ -168,6 +169,7 @@ class _QuickOpenState extends State<QuickOpen> {
   void dispose() {
     _searchCtrl.dispose();
     _focusNode.dispose();
+    _listFocusNode.dispose();
     super.dispose();
   }
 
@@ -222,7 +224,7 @@ class _QuickOpenState extends State<QuickOpen> {
           else
             Expanded(
               child: KeyboardListener(
-                focusNode: FocusNode(),
+                focusNode: _listFocusNode,
                 onKeyEvent: (event) {
                   if (event is! KeyDownEvent) return;
                   if (event.logicalKey == LogicalKeyboardKey.arrowDown) {

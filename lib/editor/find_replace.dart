@@ -274,10 +274,12 @@ class _FindReplaceBarState extends State<FindReplaceBar> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.keyboard_arrow_up, size: 18),
+                    tooltip: 'Previous match',
                     onPressed: c.previous,
                   ),
                   IconButton(
                     icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+                    tooltip: 'Next match',
                     onPressed: c.next,
                   ),
                 ],
@@ -335,30 +337,35 @@ class _OptionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: selected
-                ? Theme.of(context).colorScheme.primary
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
+    return Semantics(
+      button: true,
+      toggled: selected,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
               color: selected
                   ? Theme.of(context).colorScheme.primary
-                  : Colors.white24,
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: selected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.white24,
+              ),
             ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : Colors.white70,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : Colors.white70,
+              ),
             ),
           ),
         ),

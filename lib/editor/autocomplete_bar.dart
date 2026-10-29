@@ -83,31 +83,35 @@ class AutocompleteBar extends StatelessWidget {
                     final item = suggestions[i];
                     final color = _kindColor[item.kind] ?? cs.onSurface;
                     final icon = _kindIcon[item.kind] ?? Icons.circle;
-                    return InkWell(
-                      onTap: () => _apply(item),
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: color.withValues(alpha: 0.25), width: 0.5),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(icon, size: 12, color: color),
-                            const SizedBox(width: 4),
-                            Text(
-                              item.label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'monospace',
-                                color: cs.onSurface,
-                                height: 1.2,
+                    return Semantics(
+                      button: true,
+                      label: 'Autocomplete suggestion: ${item.label}',
+                      child: InkWell(
+                        onTap: () => _apply(item),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: color.withValues(alpha: 0.25), width: 0.5),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(icon, size: 12, color: color),
+                              const SizedBox(width: 4),
+                              Text(
+                                item.label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                  color: cs.onSurface,
+                                  height: 1.2,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     );
