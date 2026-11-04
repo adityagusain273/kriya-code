@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
+import 'package:path/path.dart' as p;
+
 import '../plugins/api/run_config.dart';
+import 'exec_events.dart';
 import 'local/local_runner.dart';
 import 'models.dart';
 import 'termux_runner.dart';
@@ -24,6 +29,46 @@ class RunnerService extends ChangeNotifier {
 
   static const int _maxLines = 1000;
 
+  String? _runId;
+  StreamSubscription<ExecEvent>? _events;
+  int _generation = 0;
+
+  // Output arrives in chunks that can split a line, so complete lines are
+  // drained and any partial tail waits for the next chunk.
+  final _stdout = LineCollector();
+  final _stderr = LineCollector();
+  bool _sawStdout = false;
+  bool _sawStderr = false;
+
+  void _ensureStream() {
+    if (_events != null) return;
+    ExecEvents.instance.ensureListening();
+    _events = ExecEvents.instance.stream.listen(_onEvent);
+  }
+
+  void _onEvent(ExecEvent event) {
+    if (event.runId != _runId || !running) return;
+    final isStderr = event.stream == 'stderr';
+    if (isStderr) {
+      _sawStderr = true;
+    } else {
+      _sawStdout = true;
+    }
+    final collector = isStderr ? _stderr : _stdout;
+    for (final line in collector.add(event.data)) {
+      _append(line, isStderr: isStderr);
+    }
+  }
+
+  void _flushPending() {
+    for (final line in _stdout.flush()) {
+      _append(line);
+    }
+    for (final line in _stderr.flush()) {
+      _append(line, isStderr: true);
+    }
+  }
+
   void _append(String text, {bool isStderr = false}) {
     for (final line in text.split('\n')) {
       lines.add(ConsoleLine(line, isStderr: isStderr));
@@ -31,7 +76,19 @@ class RunnerService extends ChangeNotifier {
     if (lines.length > _maxLines) {
       lines.removeRange(0, lines.length - _maxLines);
     }
-    notifyListeners();
+    _scheduleNotify();
+  }
+
+  // Streaming delivers many chunks; rebuilding once per chunk is enough.
+  bool _notifyScheduled = false;
+
+  void _scheduleNotify() {
+    if (_notifyScheduled) return;
+    _notifyScheduled = true;
+    scheduleMicrotask(() {
+      _notifyScheduled = false;
+      notifyListeners();
+    });
   }
 
   Future<void> clear() async {
@@ -42,6 +99,10 @@ class RunnerService extends ChangeNotifier {
   void cancel() {
     if (!running) return;
     _cancelRequested = true;
+    // Stop used to only flip a flag in Dart: the native process kept running
+    // until its 30 second timeout. Native now holds a runId -> Process map.
+    final id = _runId;
+    if (id != null) unawaited(local.kill(id));
     running = false;
     notifyListeners();
   }
@@ -55,6 +116,13 @@ class RunnerService extends ChangeNotifier {
     running = true;
     _cancelRequested = false;
     lastError = null;
+    final generation = ++_generation;
+    _runId = 'r${DateTime.now().microsecondsSinceEpoch}';
+    _sawStdout = false;
+    _sawStderr = false;
+    _stdout.clear();
+    _stderr.clear();
+    _ensureStream();
     await clear();
     notifyListeners();
 
@@ -69,10 +137,21 @@ class RunnerService extends ChangeNotifier {
         final available = await local.hasRuntime(runtimeId);
         if (available) {
           final result = await local.run(
-              request: request, target: config.local!, workDir: workDir);
-          if (_cancelRequested) return;
-          if (result.stdout.isNotEmpty) _append(result.stdout);
-          if (result.stderr.isNotEmpty) _append(result.stderr, isStderr: true);
+            request: request,
+            target: config.local!,
+            workDir: workDir,
+            runId: _runId,
+          );
+          // A newer run may have started after Stop, in which case this one's
+          // output belongs to nobody.
+          if (generation != _generation || _cancelRequested) return;
+          _flushPending();
+          // Streaming may be unavailable (older install, plugin missing). The
+          // summary is the fallback, and the only copy for short runs.
+          if (!_sawStdout && result.stdout.isNotEmpty) _append(result.stdout);
+          if (!_sawStderr && result.stderr.isNotEmpty) {
+            _append(result.stderr, isStderr: true);
+          }
           if (!result.success) {
             lastError = 'Process exited with code ${result.exitCode}';
           }
@@ -86,7 +165,7 @@ class RunnerService extends ChangeNotifier {
         await TermuxRunner.checkAvailability();
         if (TermuxRunner.isAvailable) {
           final result = await _runViaTermux(request, config.local!, workDir);
-          if (_cancelRequested) return;
+          if (generation != _generation || _cancelRequested) return;
           if (result.stdout.isNotEmpty) _append(result.stdout);
           if (result.stderr.isNotEmpty) _append(result.stderr, isStderr: true);
           if (!result.success) {
@@ -105,8 +184,11 @@ class RunnerService extends ChangeNotifier {
     } catch (e) {
       lastError = 'Execution error: $e';
     } finally {
-      running = false;
-      notifyListeners();
+      if (generation == _generation) {
+        _runId = null;
+        running = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -147,7 +229,7 @@ class RunnerService extends ChangeNotifier {
     String workDir, {
     String? runtimePrefix,
   }) {
-    final filePath = '$workDir/${request.mainFile}';
+    final filePath = p.join(workDir, request.mainFile);
     final fileName = request.mainFile.split('/').last;
     final dot = fileName.lastIndexOf('.');
     final baseName = dot > 0 ? fileName.substring(0, dot) : fileName;
@@ -166,7 +248,7 @@ class RunnerService extends ChangeNotifier {
           .replaceAll('{runtimeDir}', runtimePath)
           .replaceAll('{runtimePath}', runtimePath)
           .replaceAll('{file}', filePath)
-          .replaceAll('{dir}', filePath.substring(0, filePath.lastIndexOf('/')))
+          .replaceAll('{dir}', p.dirname(filePath))
           .replaceAll('{name}', baseName);
     }).toList();
   }

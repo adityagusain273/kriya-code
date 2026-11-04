@@ -310,7 +310,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.favorite_rounded, color: Color(0xFFEF5350)),
             title: const Text('Support Developer'),
-            subtitle: const Text('Scan & pay via UPI / Buy me a coffee'),
+            subtitle: const Text('Optional tip via UPI — no features unlocked'),
             onTap: () => _showSupportDevDialog(context),
           ),
           const SizedBox(height: 24),
@@ -551,7 +551,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Scan with any UPI app to keep B Code active & offline',
+                    'B Code is free and has no ads. This tip is voluntary and '
+                    'does not unlock any feature.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),

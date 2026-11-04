@@ -69,9 +69,10 @@ class FileExplorer extends StatefulWidget {
   State<FileExplorer> createState() => _FileExplorerState();
 }
 class _FileExplorerState extends State<FileExplorer> {
-  late Future<List<FsEntry>> _rootFuture = _loadRoot();
+  late Future<List<FsEntry>> _rootFuture;
   late final Set<String> _expandedDirs =
       widget.prefs?.loadExpanded() ?? <String>{};
+  late bool _showHidden;
   String? _selectedDir;
   int _reloadGen = 0;
   final _refreshKey = GlobalKey<RefreshIndicatorState>();
@@ -79,6 +80,9 @@ class _FileExplorerState extends State<FileExplorer> {
   @override
   void initState() {
     super.initState();
+    _showHidden = widget.prefs?.loadShowHidden() ?? false;
+    widget.fs.showHidden = _showHidden;
+    _rootFuture = _loadRoot();
     widget.controller?.addListener(_onRevealRequested);
   }
 
@@ -114,20 +118,20 @@ class _FileExplorerState extends State<FileExplorer> {
       changed |= _expandedDirs.add(acc);
     }
     if (changed) widget.prefs?.saveExpanded(_expandedDirs);
-    _reload();
+    _reload(refresh: true);
   }
 
-  Future<List<FsEntry>> _loadRoot() async {
+  Future<List<FsEntry>> _loadRoot({bool refresh = false}) async {
     _pruneMissing();
     final selected = _selectedDir;
     if (selected != null && !widget.fs.exists(selected)) {
       _selectedDir = null;
     }
-    return widget.fs.list('.');
+    return widget.fs.list('.', refresh: refresh);
   }
 
-  Future<void> _reload() async {
-    final future = _loadRoot();
+  Future<void> _reload({bool refresh = false}) async {
+    final future = _loadRoot(refresh: refresh);
     setState(() {
       _reloadGen++;
       _rootFuture = future;
@@ -177,6 +181,20 @@ class _FileExplorerState extends State<FileExplorer> {
         automaticallyImplyLeading: false,
         actions: [
           IconButton(
+            icon: Icon(
+              _showHidden ? Icons.visibility : Icons.visibility_off_outlined,
+              size: 20,
+            ),
+            tooltip: _showHidden ? 'Hide dotfiles' : 'Show dotfiles',
+            onPressed: () {
+              final next = !_showHidden;
+              widget.fs.showHidden = next;
+              widget.prefs?.saveShowHidden(next);
+              setState(() => _showHidden = next);
+              _reload(refresh: true);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.note_add, size: 20),
             tooltip: 'New file',
             onPressed: () => _createEntry(isFolder: false),
@@ -195,7 +213,7 @@ class _FileExplorerState extends State<FileExplorer> {
       ),
       body: RefreshIndicator(
         key: _refreshKey,
-        onRefresh: _reload,
+        onRefresh: () => _reload(refresh: true),
         child: Column(
         children: [
           if (_selectedDir != null)
@@ -499,7 +517,7 @@ class _EntryTileState extends State<_EntryTile> {
     setState(() {
       _expanded = expanded;
       if (expanded) {
-        _childrenFuture = fs.list(_relativePath);
+        _childrenFuture = fs.list(_relativePath, refresh: true);
       }
     });
     widget.onToggleDir(_relativePath, expanded);
@@ -507,7 +525,7 @@ class _EntryTileState extends State<_EntryTile> {
 
   void _reloadSubtree() {
     if (_expanded) {
-      setState(() => _childrenFuture = fs.list(_relativePath));
+      setState(() => _childrenFuture = fs.list(_relativePath, refresh: true));
     }
     widget.onChanged();
   }
@@ -564,6 +582,9 @@ class _EntryTileState extends State<_EntryTile> {
             onSelected: (action) => _handleAction(context, action),
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'copy_path', child: Text('Copy Path')),
+              if (!entry.isDirectory)
+                const PopupMenuItem(
+                    value: 'export', child: Text('Export to device…')),
               if (isArchive)
                 const PopupMenuItem(
                     value: 'extract_archive', child: Text('Extract Archive')),
@@ -614,6 +635,9 @@ class _EntryTileState extends State<_EntryTile> {
               SnackBar(content: Text('Copied: ${entry.path}')),
             );
           }
+          break;
+        case 'export':
+          await exportFileToDevice(context, entry.path);
           break;
         case 'extract_archive':
           await widget.onExtractArchive(entry.path);

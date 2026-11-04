@@ -11,8 +11,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Pumps several frames to flush chained futures without requiring
 /// animation quiescence (the loading spinner never stops animating).
+///
+/// `FsService.list` reads the directory asynchronously now, and widget tests
+/// run in fake-async time, where real file I/O never completes. `runAsync`
+/// gives it a slice of real time before each frame.
 Future<void> settleFrames(WidgetTester tester) async {
   for (var i = 0; i < 8; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
     await tester.pump(const Duration(milliseconds: 50));
   }
 }

@@ -9,6 +9,23 @@ class BCodeApp extends StatelessWidget {
 
   const BCodeApp({super.key, required this.settings});
 
+  /// Built once. `ColorScheme.fromSeed` is the Material colour algorithm, and
+  /// regenerating both schemes on every settings notification made dragging the
+  /// font-size slider stutter.
+  static final ThemeData _lightTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4FC3F7)),
+    useMaterial3: true,
+    fontFamily: 'Roboto',
+  );
+
+  static final ThemeData _darkTheme = ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF4FC3F7),
+      brightness: Brightness.dark,
+    ),
+    useMaterial3: true,
+  );
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -17,18 +34,8 @@ class BCodeApp extends StatelessWidget {
         title: 'B Code',
         debugShowCheckedModeBanner: false,
         themeMode: settings.themeMode,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4FC3F7)),
-          useMaterial3: true,
-          fontFamily: 'Roboto',
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF4FC3F7),
-            brightness: Brightness.dark,
-          ),
-          useMaterial3: true,
-        ),
+        theme: _lightTheme,
+        darkTheme: _darkTheme,
         home: settings.onboardingComplete
             ? const EditorPage()
             : const OnboardingPage(),

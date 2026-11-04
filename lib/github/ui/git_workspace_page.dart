@@ -92,13 +92,12 @@ class _GitWorkspacePageState extends State<GitWorkspacePage> {
     }
   }
 
-  /// Gates `pull`, which is `fetch` plus `reset --hard`.
+  /// Gates `pull`, which is `fetch` plus a fast-forward reset.
   ///
-  /// The hard reset rewinds HEAD to `origin/<branch>`, so anything only present
-  /// locally is destroyed. Two distinct things can be lost and both must be
-  /// called out: uncommitted working-tree changes, and commits that were never
-  /// pushed. The previous check looked only at the working tree, so "commit
-  /// locally, then pull" discarded the commits with no prompt at all.
+  /// Pull now refuses to rewind a branch that has unpushed commits, so only
+  /// uncommitted working-tree changes can be lost. That needs an explicit
+  /// confirmation; it used to be the only check, so "commit locally, then pull"
+  /// discarded the commits with no prompt at all.
   Future<void> _pullWithDirtyCheck() async {
     final repo = _repo;
     if (repo == null || _disposed) return;
@@ -108,16 +107,30 @@ class _GitWorkspacePageState extends State<GitWorkspacePage> {
     final unpushedCount = unpushed.isOk ? unpushed.valueOrNull ?? 0 : 0;
     if (_disposed || !mounted) return;
 
+    if (unpushedCount > 0) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Push first'),
+          content: Text(
+            '$unpushedCount local commit(s) are not on '
+            'origin/${widget.defaultBranch}. Pulling now would discard them.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     final warnings = <String>[];
     if (_changes.isNotEmpty) {
       warnings.add(
         '${_changes.length} uncommitted change(s) will be discarded.',
-      );
-    }
-    if (unpushedCount > 0) {
-      warnings.add(
-        '$unpushedCount commit(s) that were never pushed will be lost. '
-        'Push them first if you want to keep them.',
       );
     }
 

@@ -657,24 +657,11 @@ class _EditorPageState extends State<EditorPage>
 
     final langId = tab.languageId ?? '';
     final extId = _langToExtId[langId];
+    // Language packs are bundled Dart, not downloads, so a missing install flag
+    // is bookkeeping, not a reason to refuse. The old gate told a first-run user
+    // to install the pack they had just chosen in onboarding.
     if (extId != null && !sl<ExtensionInstallStore>().isInstalled(extId)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Install the ${langId.toUpperCase()} extension to run code.'),
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Extensions',
-              textColor: Colors.white,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ExtensionsPage()),
-              ),
-            ),
-          ),
-        );
-      }
-      return;
+      sl<ExtensionInstallStore>().install(extId);
     }
 
     final online = await NetworkHelper.isOnline;
@@ -698,32 +685,36 @@ class _EditorPageState extends State<EditorPage>
     await tabs.save();
     final contribution = registry.byId(langId);
     final config = contribution?.runConfig;
+    // Open the console before awaiting: output used to appear only after the
+    // process had already exited, so a long script looked like it did nothing.
+    if (mounted) ConsolePanel.show(context);
     await runner.run(
       request: RunRequest(mainFile: tab.filePath, source: tab.controller.text, args: args ?? []),
       config: config ?? const RunConfig(),
-      workDir: _workDir(),
+      // Relative paths in the program resolve next to the file being run, not
+      // at the workspace root. `open("data.csv")` failed for every subfolder.
+      // `resolve` also makes a tab opened by bare name absolute, which the
+      // native sandbox check requires.
+      workDir: p.dirname(sl<FsService>().resolve(tab.filePath)),
     );
-    if (mounted) {
-      ConsolePanel.show(context);
-      if (runner.lastError != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(runner.lastError!, maxLines: 2, overflow: TextOverflow.ellipsis),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Settings',
-              textColor: Colors.white,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SettingsPage(store: sl<SettingsStore>()),
-                ),
+    if (mounted && runner.lastError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(runner.lastError!, maxLines: 2, overflow: TextOverflow.ellipsis),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Settings',
+            textColor: Colors.white,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SettingsPage(store: sl<SettingsStore>()),
               ),
             ),
           ),
-        );
-      }
+        ),
+      );
     }
   }
 
@@ -854,8 +845,6 @@ class _EditorPageState extends State<EditorPage>
   }
 
 
-  String _workDir() => sl<FsService>().rootPath;
-
   late final PreviewServer _previewServer =
       PreviewServer(sl<FsService>().rootPath);
 
@@ -943,7 +932,29 @@ class _EditorPageState extends State<EditorPage>
   Future<void> _importAndOpenFile() async {
     final imported = await importFileFromDevice(context);
     if (imported == null || !mounted) return;
-    await sl<TabManager>().open(imported.path);
+    await _openPath(imported.path);
+  }
+
+  /// Opens a tab and reports a refusal instead of dropping it on the floor.
+  ///
+  /// Binary files and the 5 MB guard throw from [TabManager.open]; every entry
+  /// point used to call it fire-and-forget, so a `.png` in an imported web
+  /// project simply did nothing when tapped.
+  Future<void> _openPath(String path) async {
+    try {
+      await sl<TabManager>().open(path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e is StateError ? e.message : 'Could not open $path: $e',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      );
+    }
   }
 
   /// Copies a whole project folder off the device into the workspace, then shows the
@@ -1093,6 +1104,10 @@ class _EditorPageState extends State<EditorPage>
                 case 'save_all':
                   await tabs.saveAll();
                   break;
+                case 'export_file':
+                  final path = tabs.active?.filePath;
+                  if (path != null) await exportFileToDevice(context, path);
+                  break;
                 case 'close_all':
                   await _closeAllWithConfirm();
                   break;
@@ -1157,6 +1172,11 @@ class _EditorPageState extends State<EditorPage>
                 value: 'extract_archive',
                 child: Text('Extract Project Archive...'),
               ),
+              PopupMenuItem(
+                value: 'export_file',
+                enabled: tab != null,
+                child: const Text('Export Current File…'),
+              ),
               const PopupMenuItem(
                 value: 'global_search',
                 child: Text('Global Search'),
@@ -1191,7 +1211,7 @@ class _EditorPageState extends State<EditorPage>
           controller: _explorerController,
           onFileTap: (path) {
             Navigator.pop(context);
-            sl<TabManager>().open(path);
+            _openPath(path);
           },
           onChanged: () {},
           activeFile: tab?.filePath,
@@ -1360,39 +1380,76 @@ class _StatusBar extends StatefulWidget {
 }
 
 class _StatusBarState extends State<_StatusBar> {
+  _DocumentStats? _stats;
+  String? _statsText;
+  Timer? _statsTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _attach();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StatusBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tab.controller != widget.tab.controller) {
+      oldWidget.tab.controller.removeListener(_onChanged);
+      _attach();
+    }
+  }
+
+  void _attach() {
+    _statsTimer?.cancel();
+    final text = widget.tab.controller.text;
+    _statsText = text;
+    _stats = _DocumentStats.of(text);
+    widget.tab.controller.addListener(_onChanged);
+  }
+
+  void _onChanged() {
+    if (!mounted) return;
+    // Line/column is bounded by the caret and cheap; the document-wide counts
+    // are O(n) and used to run on every keystroke. Let them settle once typing
+    // pauses instead of rescanning the whole file each character.
+    setState(() {});
+    if (identical(widget.tab.controller.text, _statsText)) return;
+    _statsTimer?.cancel();
+    _statsTimer = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      final text = widget.tab.controller.text;
+      setState(() {
+        _statsText = text;
+        _stats = _DocumentStats.of(text);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.tab.controller.removeListener(_onChanged);
+    _statsTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    // ListenableBuilder: rebuild when the document or selection actually
-    // changes. Previously the status bar only re-ran when the dirty flag flipped,
-    // so the Ln/Col and line/word counts froze for the whole editing session.
-    return ListenableBuilder(
-      listenable: widget.tab.controller,
-      builder: (context, _) => _buildStatus(context),
-    );
-  }
-
-  Widget _buildStatus(BuildContext context) {
     final tab = widget.tab;
     final sel = tab.controller.selection;
     final text = tab.controller.text;
     final pos = sel.start >= 0 ? sel.start : 0;
     int line = 1, col = 1;
-    int count = 0;
     for (int i = 0; i < pos && i < text.length; i++) {
-      count++;
       if (text[i] == '\n') {
         line++;
-        count = 0;
+        col = 1;
+      } else {
+        col++;
       }
     }
-    col = count + 1;
 
+    final stats = _stats ?? _DocumentStats.of(text);
     final langName = widget.langName;
-
-    final wordCount = text.isEmpty ? 0 : text.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
-    final charCount = text.length;
-    final lineCount = text.isEmpty ? 1 : text.split('\n').length;
 
     return Container(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -1406,13 +1463,13 @@ class _StatusBarState extends State<_StatusBar> {
           children: [
             Text('Ln $line, Col $col'),
             const SizedBox(width: 16),
-            Text('$lineCount lines'),
+            Text('${stats.lineCount} lines'),
             const SizedBox(width: 16),
             Flexible(child: Text(langName, overflow: TextOverflow.ellipsis)),
             const Spacer(),
-            Flexible(child: Text('$wordCount words', overflow: TextOverflow.ellipsis)),
+            Flexible(child: Text('${stats.wordCount} words', overflow: TextOverflow.ellipsis)),
             const SizedBox(width: 12),
-            Flexible(child: Text('$charCount chars', overflow: TextOverflow.ellipsis)),
+            Flexible(child: Text('${text.length} chars', overflow: TextOverflow.ellipsis)),
             const SizedBox(width: 16),
             // Read-only, because there is nothing to change: files are read and
             // written as UTF-8, and the line ending in use is whatever the file
@@ -1420,13 +1477,67 @@ class _StatusBarState extends State<_StatusBar> {
             // silently did nothing, which is worse than not offering the choice --
             // picking a different encoding gave no hint that the bytes on disk were
             // still UTF-8.
-            Text(detectLineEnding(widget.tab.controller.text)),
+            Text(stats.lineEnding),
             const SizedBox(width: 12),
             const Text('UTF-8'),
           ],
         ),
       ),
     );
+  }
+}
+
+/// Document-wide counts, computed in one pass.
+///
+/// The previous implementation split the whole file three times (lines, words,
+/// `\r`/`\n` regexes) for every status-bar rebuild.
+class _DocumentStats {
+  final int lineCount;
+  final int wordCount;
+  final String lineEnding;
+
+  const _DocumentStats(this.lineCount, this.wordCount, this.lineEnding);
+
+  static _DocumentStats of(String text) {
+    var lines = 1;
+    var words = 0;
+    var crlf = 0;
+    var lf = 0;
+    var cr = 0;
+    var inWord = false;
+
+    for (var i = 0; i < text.length; i++) {
+      final c = text.codeUnitAt(i);
+      if (c == 10) {
+        lines++;
+        if (i > 0 && text.codeUnitAt(i - 1) == 13) {
+          crlf++;
+        } else {
+          lf++;
+        }
+        inWord = false;
+      } else if (c == 13) {
+        if (i + 1 >= text.length || text.codeUnitAt(i + 1) != 10) cr++;
+        inWord = false;
+      } else if (c == 32 || c == 9 || c == 11 || c == 12 || c == 0xA0) {
+        inWord = false;
+      } else if (!inWord) {
+        inWord = true;
+        words++;
+      }
+    }
+
+    final kinds = [crlf, lf, cr].where((n) => n > 0).length;
+    final ending = kinds == 0
+        ? 'LF'
+        : kinds > 1
+            ? 'Mixed'
+            : crlf > 0
+                ? 'CRLF'
+                : cr > 0
+                    ? 'CR'
+                    : 'LF';
+    return _DocumentStats(lines, words, ending);
   }
 }
 
@@ -1562,7 +1673,20 @@ class _EmptyStateState extends State<_EmptyState> {
                     leading: FileTypeIcon(spec: fileSpec(path), size: 18),
                     title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text(shortDir, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                    onTap: () => tabs.open(path),
+                    onTap: () async {
+                      try {
+                        await tabs.open(path);
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              e is StateError ? e.message : 'Could not open $name: $e',
+                            ),
+                          ),
+                        );
+                      }
+                    },
                   ),
                 );
               })),

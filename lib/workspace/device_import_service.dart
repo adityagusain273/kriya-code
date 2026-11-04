@@ -105,6 +105,24 @@ class DeviceImportService {
     }
   }
 
+  /// Writes [path] to a user-picked location through the system save dialog.
+  ///
+  /// The native side has handled `exportFile` since the SAF channel was added,
+  /// but nothing in Dart called it, so a file that arrived by import or clone
+  /// could only leave the app through `git push`.
+  Future<bool> exportFile(String path) async {
+    try {
+      final name = path.split('/').last;
+      return await _channel.invokeMethod<bool>('exportFile', {
+            'path': path,
+            'suggestedName': name,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<String?> _invokePath(String method) async {
     try {
       return await _channel.invokeMethod<String>(method);

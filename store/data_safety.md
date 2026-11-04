@@ -57,14 +57,20 @@ uploaded anywhere except as part of a git push the user explicitly triggers.
 - Network: cleartext traffic is disabled globally
   (`android:usesCleartextTraffic="false"`). The only cleartext exception is
   `127.0.0.1` / `localhost`, required by the built-in live-preview server.
-- Trust anchors: system certificate authorities only. A user-installed proxy CA
-  is not trusted, so a TLS interception proxy cannot silently read traffic.
+- Trust anchors: the three pinned hosts (GitHub OAuth/API and the Termux
+  package host) are validated **only** against the bundled issuing CA described
+  below, not the system trust store. A user-installed proxy CA is therefore not
+  trusted for them. The libgit2 transport used by clone/push/pull validates
+  against the system CAs.
 - Certificate pinning: `api.github.com`, `github.com`, and `packages.termux.dev`
-  are pinned to SPKI hashes verified during the TLS handshake on the same
-  connection that carries the request. Runtime downloads additionally carry the
-  Certificate Transparency identity for `packages.termux.dev`
-  (`lib/core/pinned_http.dart`; pin values were captured live via openssl
-  during development and are committed alongside the code).
+  are trusted only to a pinned issuing CA (Sectigo Public Server Authentication
+  Root E46 for GitHub, ISRG Root YR for Termux), verified during the TLS
+  handshake on the same connection that carries the request
+  (`lib/core/pinned_http.dart`). Pinning the CA rather than the leaf survives
+  GitHub's ~90-day and Let's Encrypt's ~60-day certificate renewals; `dart run
+  tool/check_cert_pins.dart` fails CI if a host moves to another authority.
+  Git traffic from `git2dart`/libgit2 uses its own TLS stack and is **not**
+  covered by these pins.
 - Secrets at rest: the GitHub token is stored in `EncryptedSharedPreferences`
   (AES-256-GCM) with the key held in the Android Keystore.
 - Backup: `android:allowBackup="false"`, `android:fullBackupContent="false"`, and

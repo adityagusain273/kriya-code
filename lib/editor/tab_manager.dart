@@ -24,6 +24,7 @@ class EditorTab {
   String? languageId;
   String _savedContent;
   late final FindReplaceController findController;
+  Timer? autoSaveTimer;
 
   /// Offset the editor should scroll to and select once this tab is on screen.
   ///
@@ -68,7 +69,10 @@ class EditorTab {
   String get name => filePath.split('/').last;
 
   void checkDirty() {
-    final isDirty = controller.text != _savedContent;
+    // Length first: comparing a 100 KB buffer on every keystroke, for every
+    // open tab, adds up. Only a same-length edit needs the content compare.
+    final text = controller.text;
+    final isDirty = text.length != _savedContent.length || text != _savedContent;
     if (isDirty != dirty) {
       dirty = isDirty;
     }
@@ -79,11 +83,8 @@ class EditorTab {
     dirty = false;
   }
 
-  void updateSavedContent() {
-    _savedContent = controller.text;
-  }
-
   void dispose() {
+    autoSaveTimer?.cancel();
     findController.dispose();
     controller.dispose();
   }
@@ -98,7 +99,6 @@ class TabManager extends ChangeNotifier {
   final List<EditorTab> tabs = [];
   int activeIndex = -1;
   SharedPreferences? _prefs;
-  Timer? _autoSaveTimer;
 
   TabManager({
     required this.fs,
@@ -117,10 +117,14 @@ class TabManager extends ChangeNotifier {
   /// and the edit stayed dirty on disk indefinitely. The tab is also re-checked for
   /// membership at fire time: the debounce can outlive the tab, and writing through
   /// a disposed controller would throw.
+  ///
+  /// The timer lives on the tab, not on the manager: one shared timer meant
+  /// typing in A, switching to B and typing within the debounce cancelled A's
+  /// save entirely, leaving A dirty with no pending write.
   void _scheduleAutoSave(EditorTab tab) {
-    _autoSaveTimer?.cancel();
+    tab.autoSaveTimer?.cancel();
     if (_settings == null || !_settings!.autoSave) return;
-    _autoSaveTimer = Timer(Duration(milliseconds: _settings!.autoSaveDelayMs), () {
+    tab.autoSaveTimer = Timer(Duration(milliseconds: _settings!.autoSaveDelayMs), () {
       if (tabs.contains(tab)) save(tab);
     });
   }
@@ -185,11 +189,12 @@ class TabManager extends ChangeNotifier {
       }
       content = await fs.readFile(path);
     }
-    // Syntax highlighting runs synchronously on the UI isolate on every edit.
-    // Several bundled grammars are pathological on adversarial input (the Java
-    // one has a nested quantifier that freezes the editor permanently), so
-    // large buffers are served unhighlighted rather than risking a freeze.
-    final effectiveGrammar = content.length > 256000 ? null : grammar;
+    // Syntax highlighting runs synchronously on the UI isolate on every edit and
+    // re-tokenizes the entire document (~4-6 ms/KB on a mid-range phone). The old
+    // 256k cutoff allowed a 50 KB file to spend ~300 ms per keystroke. 40k keeps
+    // typing interactive at the cost of colour in large files; several bundled
+    // grammars are also pathological on adversarial input.
+    final effectiveGrammar = content.length > 40000 ? null : grammar;
 
     final tab = EditorTab(
       filePath: path,
@@ -211,9 +216,7 @@ class TabManager extends ChangeNotifier {
     if (target == null) return;
     await fs.writeFile(target.filePath, target.controller.text);
     target.markSaved();
-    target.updateSavedContent();
     notifyListeners();
-    await _persist();
   }
 
   Future<void> saveAll() async {
@@ -221,11 +224,9 @@ class TabManager extends ChangeNotifier {
       if (tab.dirty) {
         await fs.writeFile(tab.filePath, tab.controller.text);
         tab.markSaved();
-        tab.updateSavedContent();
       }
     }
     notifyListeners();
-    await _persist();
   }
 
   bool get hasUnsavedChanges => tabs.any((t) => t.dirty);
@@ -291,7 +292,9 @@ class TabManager extends ChangeNotifier {
 
   @override
   void dispose() {
-    _autoSaveTimer?.cancel();
+    for (final tab in tabs) {
+      tab.autoSaveTimer?.cancel();
+    }
     super.dispose();
   }
 

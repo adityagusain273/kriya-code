@@ -9,6 +9,7 @@ import android.os.StatFs
 import android.system.Os
 import android.system.OsConstants
 import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import org.apache.commons.compress.archivers.ar.ArArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -26,6 +27,7 @@ import java.util.concurrent.TimeUnit
 
 object ExecPlugin {
     private const val CHANNEL = "bcode.exec"
+    private const val RUN_CHANNEL = "bcode.exec/stream"
     private const val TERMUX_PREFIX = "data/data/com.termux/files/usr/"
     private const val MAX_ARGV_SIZE = 256
     private const val MAX_ENV_SIZE = 65536
@@ -81,11 +83,29 @@ object ExecPlugin {
     private lateinit var appContext: Context
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /// Runs currently alive, keyed by the Dart-side run id. `kill` arrives on
+    /// the main thread while `exec` blocks an executor thread.
+    private val activeProcesses = ConcurrentHashMap<String, Process>()
+    private lateinit var runChannel: EventChannel
+    // Written on the main thread when Dart subscribes, read on the exec thread.
+    @Volatile private var eventSink: EventChannel.EventSink? = null
+
     // Sandbox: allowed root directories that commands can access
     private val allowedRoots = ConcurrentHashMap<String, Boolean>()
 
     private fun runOnMain(block: () -> Unit) {
         mainHandler.post(block)
+    }
+
+    /// Sends one stdout/stderr chunk to Dart without waiting for process exit.
+    private fun emit(runId: String, stream: String, data: String) {
+        mainHandler.post {
+            eventSink?.success(mapOf(
+                "runId" to runId,
+                "stream" to stream,
+                "data" to data,
+            ))
+        }
     }
 
     // Roots that are always allowed because they are owned by the app or the
@@ -195,6 +215,17 @@ object ExecPlugin {
         appContext = context.applicationContext
         initializeAllowedRoots()
 
+        runChannel = EventChannel(messenger, RUN_CHANNEL)
+        runChannel.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                eventSink = events
+            }
+
+            override fun onCancel(arguments: Any?) {
+                eventSink = null
+            }
+        })
+
         MethodChannel(messenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "hasRuntime" -> {
@@ -224,6 +255,7 @@ object ExecPlugin {
                     val cwd = call.argument<String>("cwd") ?: appContext.filesDir.absolutePath
                     val env = call.argument<Map<String, String>>("env") ?: emptyMap()
                     val timeoutMs = (call.argument<Number>("timeoutMs")?.toLong()) ?: 30_000L
+                    val runId = call.argument<String>("runId")
 
                     val validationError = validateArgv(argv)
                     if (validationError != null) {
@@ -246,7 +278,7 @@ object ExecPlugin {
 
                     executor.submit {
                         try {
-                            val output = exec(argv, cwd, safeEnv, timeoutMs)
+                            val output = exec(argv, cwd, safeEnv, timeoutMs, runId)
                             runOnMain { result.success(output) }
                         } catch (e: RuntimeIntegrityException) {
                             runOnMain { result.error("RUNTIME_INTEGRITY", e.message, null) }
@@ -261,6 +293,12 @@ object ExecPlugin {
                             }
                         }
                     }
+                }
+                "kill" -> {
+                    val runId = call.argument<String>("runId")
+                    val process = runId?.let { activeProcesses.remove(it) }
+                    process?.destroyForcibly()
+                    result.success(process != null)
                 }
                 "setSandboxPaths" -> {
                     // Replaces the dynamic root set rather than adding to it.
@@ -737,7 +775,8 @@ object ExecPlugin {
         argv: List<String>,
         cwd: String,
         env: Map<String, String>,
-        timeoutMs: Long
+        timeoutMs: Long,
+        runId: String? = null
     ): Map<String, Any> {
         // Last gate before the bytes run: the program must still match what
         // was verified at download and extraction time. Runs on this executor
@@ -777,44 +816,70 @@ object ExecPlugin {
         if (environment["PYTHONHOME"]!!.isEmpty()) environment.remove("PYTHONHOME")
 
         val process = processBuilder.start()
-
-        val stdoutFuture = ioExecutor.submit<Captured> {
-            capture(process.inputStream)
+        // The console has no stdin row, so a program calling input() must see
+        // EOF instead of blocking until the user stops the run.
+        process.outputStream.close()
+        if (runId != null) {
+            activeProcesses[runId] = process
+            // Dart subscribes to the run channel immediately before invoking
+            // exec, but the native onListen lands on the main thread a moment
+            // later. Waiting briefly for it avoids losing the first lines of a
+            // program that exits instantly.
+            val deadline = System.currentTimeMillis() + 1500
+            while (eventSink == null && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10)
+            }
         }
-        val stderrFuture = ioExecutor.submit<Captured> {
-            capture(process.errorStream)
-        }
 
-        val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-        if (!finished) {
-            process.destroyForcibly()
-            // Cancel the readers too. They stay blocked on the pipe otherwise and
-            // leak two threads per timed-out run.
-            stdoutFuture.cancel(true)
-            stderrFuture.cancel(true)
+        try {
+            val stdoutFuture = ioExecutor.submit<Captured> {
+                capture(process.inputStream, runId, "stdout")
+            }
+            val stderrFuture = ioExecutor.submit<Captured> {
+                capture(process.errorStream, runId, "stderr")
+            }
+
+            // A zero timeout means "run until it exits or is stopped". The UI now
+            // has a working Stop button, so a server or REPL is no longer killed
+            // at 30 seconds with no way to keep it alive.
+            val finished = if (timeoutMs <= 0L) {
+                process.waitFor()
+                true
+            } else {
+                process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+            }
+            if (!finished) {
+                process.destroyForcibly()
+                // Cancel the readers too. They stay blocked on the pipe otherwise and
+                // leak two threads per timed-out run.
+                stdoutFuture.cancel(true)
+                stderrFuture.cancel(true)
+                return mapOf(
+                    "success" to false,
+                    "stdout" to "",
+                    "stderr" to "Execution timed out after ${timeoutMs}ms",
+                    "exitCode" to -1,
+                    "truncated" to false
+                )
+            }
+
+            val out = try { stdoutFuture.get(5, TimeUnit.SECONDS) } catch (_: Exception) {
+                Captured("", false)
+            }
+            val err = try { stderrFuture.get(5, TimeUnit.SECONDS) } catch (_: Exception) {
+                Captured("", false)
+            }
+            val code = process.exitValue()
             return mapOf(
-                "success" to false,
-                "stdout" to "",
-                "stderr" to "Execution timed out after ${timeoutMs}ms",
-                "exitCode" to -1,
-                "truncated" to false
+                "success" to (code == 0),
+                "stdout" to out.text,
+                "stderr" to err.text,
+                "exitCode" to code,
+                "truncated" to (out.truncated || err.truncated)
             )
+        } finally {
+            if (runId != null) activeProcesses.remove(runId)
         }
-
-        val out = try { stdoutFuture.get(5, TimeUnit.SECONDS) } catch (_: Exception) {
-            Captured("", false)
-        }
-        val err = try { stderrFuture.get(5, TimeUnit.SECONDS) } catch (_: Exception) {
-            Captured("", false)
-        }
-        val code = process.exitValue()
-        return mapOf(
-            "success" to (code == 0),
-            "stdout" to out.text,
-            "stderr" to err.text,
-            "exitCode" to code,
-            "truncated" to (out.truncated || err.truncated)
-        )
     }
 
     private class Captured(val text: String, val truncated: Boolean)
@@ -828,12 +893,13 @@ object ExecPlugin {
      * MethodChannel result was never replied to and the Dart side only unblocked
      * on its own timeout.
      */
-    private fun capture(stream: InputStream): Captured {
-        val out = java.io.ByteArrayOutputStream()
-        val buffer = ByteArray(16 * 1024)
+    private fun capture(stream: InputStream, runId: String?, kind: String): Captured {
+        val out = StringBuilder()
+        val reader = java.io.InputStreamReader(stream, Charsets.UTF_8)
+        val buffer = CharArray(8 * 1024)
         var total = 0
         var truncated = false
-        stream.use { input ->
+        reader.use { input ->
             while (true) {
                 val read = try {
                     input.read(buffer)
@@ -846,16 +912,17 @@ object ExecPlugin {
                     truncated = true
                     break
                 }
-                if (read > remaining) {
-                    out.write(buffer, 0, remaining)
-                    total += remaining
+                val take = minOf(read, remaining)
+                val chunk = String(buffer, 0, take)
+                out.append(chunk)
+                total += take
+                if (runId != null) emit(runId, kind, chunk)
+                if (take < read) {
                     truncated = true
                     break
                 }
-                out.write(buffer, 0, read)
-                total += read
             }
         }
-        return Captured(out.toString(Charsets.UTF_8.name()), truncated)
+        return Captured(out.toString(), truncated)
     }
 }

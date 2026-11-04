@@ -163,6 +163,15 @@ Future<void> _initCrashReporterAndRasp() async {
   final crashEnabled = await _initCrashReporter();
   await CrashReporter.init(enabled: crashEnabled);
 
+  // RASP does signature, jailbreak, debugger and hooking checks. Nothing in the
+  // app acts on the result, and it used to sit on the critical path before the
+  // first frame; the finding only needs to reach the crash log.
+  unawaited(_initRasp().catchError((Object error) {
+    CrashReporter.recordZoneError(error, StackTrace.current);
+  }));
+}
+
+Future<void> _initRasp() async {
   // Never call exit() from here.
   //
   // The previous implementation killed the process on any detected threat, and
@@ -180,7 +189,10 @@ Future<void> _initCrashReporterAndRasp() async {
     checkJailbreakOrHooking: !kDebugMode,
     checkDebugger: !kDebugMode,
     checkEmulator: false,
-    checkAppSignature: !kDebugMode,
+    // The only known SHA-256 is the upload key. Play App Signing re-signs the
+    // AAB with Google's app-signing certificate, so this check fires on every
+    // Play install. Re-enable with the app-signing cert from the Play Console.
+    checkAppSignature: false,
     checkOfficialStore: false,
     // The binding token is written to both secure storage and prefs, which do
     // not stay in sync across a reinstall or data restore: this fired on every

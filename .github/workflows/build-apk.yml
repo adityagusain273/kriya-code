@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - master
     paths:
       - 'lib/**'
       - 'test/**'
@@ -47,6 +48,9 @@ jobs:
       - name: Tests
         run: flutter test
 
+      - name: TLS trust-anchor check
+        run: dart run tool/check_cert_pins.dart
+
       - name: Debug build (compile gate)
         run: flutter build apk --debug -Pbcode.sideload=true
 
@@ -81,6 +85,13 @@ jobs:
 
       - name: pub get
         run: flutter pub get
+
+      - name: Require OAuth client id
+        run: |
+          if [ -z "${{ secrets.BCODE_CLIENT_ID }}" ]; then
+            echo "::error::BCODE_CLIENT_ID is empty. A release build without it installs but cannot start."
+            exit 1
+          fi
 
       - name: Restore release signing key
         if: ${{ env.HAS_SECRETS == 'true' }}

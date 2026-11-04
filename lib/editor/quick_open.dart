@@ -158,11 +158,18 @@ class _QuickOpenState extends State<QuickOpen> {
     return queryIdx == query.length;
   }
 
-  void _execute(int index) {
+  Future<void> _execute(int index) async {
     if (index < 0 || index >= _filtered.length) return;
     final entry = _filtered[index];
+    final messenger = ScaffoldMessenger.of(context);
     Navigator.pop(context);
-    sl<TabManager>().open(entry.path);
+    try {
+      await sl<TabManager>().open(entry.path);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(e is StateError ? e.message : 'Could not open ${entry.name}: $e'),
+      ));
+    }
   }
 
   @override

@@ -175,7 +175,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
       // Do not index a file this app cannot open in the editor either. Reading
       // unbounded content froze the UI isolate and can OOM on a multi-hundred-MB
       // file.
-      if (file.lengthSync() > 2 * 1024 * 1024) return;
+      if (await file.length() > 2 * 1024 * 1024) return;
       final content = await file.readAsString();
       final lines = content.split('\n');
       final relativePath = p.relative(file.path, from: root);
@@ -219,18 +219,25 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
     final fs = sl<FsService>();
     final fullPath = p.join(fs.rootPath, result.filePath);
     final tabs = sl<TabManager>();
-    final tab = await tabs.open(fullPath);
-    final offset = _offsetOf(result);
-    if (offset != null) tab.revealAt(offset);
-    if (mounted) Navigator.pop(context);
+    try {
+      final tab = await tabs.open(fullPath);
+      final offset = await _offsetOf(result);
+      if (offset != null) tab.revealAt(offset);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e is StateError ? e.message : 'Could not open ${result.filePath}: $e'),
+      ));
+    }
   }
 
   /// Character offset of the match, counted across the file's lines.
-  int? _offsetOf(SearchResult result) {
+  Future<int?> _offsetOf(SearchResult result) async {
     final fs = sl<FsService>();
     final file = File(p.join(fs.rootPath, result.filePath));
-    if (!file.existsSync()) return null;
-    final lines = file.readAsLinesSync();
+    if (!await file.exists()) return null;
+    final lines = await file.readAsLines();
     final index = result.lineNumber - 1;
     if (index < 0 || index >= lines.length) return null;
     var offset = 0;

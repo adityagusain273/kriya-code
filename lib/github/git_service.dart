@@ -222,6 +222,21 @@ class GitService {
         return Err('The remote branch $branch does not exist. Nothing was changed.');
       }
 
+      // Fast-forward only. `reset --hard` is safe when the local branch has
+      // nothing of its own, and silently destroys work when it does: a user who
+      // commits locally and then pulls used to lose those commits.
+      final localOid = _tryRefTarget(repo, 'refs/heads/$branch');
+      if (localOid != null) {
+        final counts = repo.aheadBehind(local: localOid, upstream: remoteOid);
+        final ahead = counts.isNotEmpty ? counts.first : 0;
+        if (ahead > 0) {
+          return Err(
+            'Pull stopped: $ahead local commit(s) are not on origin/$branch. '
+            'Push them first.',
+          );
+        }
+      }
+
       repo.reset(oid: remoteOid, resetType: GitReset.hard);
       return const Ok(null);
     } catch (e) {

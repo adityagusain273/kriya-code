@@ -93,6 +93,22 @@ Future<DeviceImport?> importArchiveFromDevice(BuildContext context) async {
   return unpackArchive(context, picked.path);
 }
 
+/// Saves [path] to a location the user picks in the system file dialog.
+Future<bool> exportFileToDevice(BuildContext context, String path) async {
+  try {
+    final saved = await DeviceImportService.instance.exportFile(path);
+    if (context.mounted && saved) {
+      _toast(context, 'Exported ${p.basename(path)}');
+    }
+    return saved;
+  } catch (e) {
+    if (context.mounted) {
+      _toast(context, 'Could not export that file: $e', isError: true);
+    }
+    return false;
+  }
+}
+
 /// Unpacks [archivePath] into a fresh sibling folder, with progress.
 ///
 /// Returns the folder, or null if it was refused. The archive itself is left alone: if

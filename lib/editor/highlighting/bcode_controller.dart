@@ -86,14 +86,26 @@ class BCodeController extends CodeController {
     TextStyle? style,
     bool? withComposing,
   }) {
-    _splitStringNodes();
-    _colorizeBrackets();
+    // Both transforms rebuild the entire node tree. `buildTextSpan` runs on
+    // every frame that repaints the field, including plain selection changes,
+    // and re-decorating an already-decorated tree wrapped nodes repeatedly.
+    final highlighted = code.visibleHighlighted;
+    if (highlighted?.nodes != null &&
+        !identical(highlighted!.nodes, _decoratedNodes)) {
+      _splitStringNodes();
+      _colorizeBrackets();
+      _decoratedNodes = highlighted.nodes;
+    }
     return super.buildTextSpan(
       context: context,
       style: style,
       withComposing: withComposing,
     );
   }
+
+  List<Node>? _decoratedNodes;
+
+  static final _bracketPattern = RegExp(r'[\[\]\(\)\{\}]');
 
   void _colorizeBrackets() {
     final highlighted = code.visibleHighlighted;
@@ -120,7 +132,7 @@ class BCodeController extends CodeController {
         } else if (node.value != null) {
           final val = node.value!;
           int lastMatchEnd = 0;
-          final matches = RegExp(r'[\[\]\(\)\{\}]').allMatches(val);
+          final matches = _bracketPattern.allMatches(val);
           for (final match in matches) {
             if (match.start > lastMatchEnd) {
               result.add(Node(className: node.className, value: val.substring(lastMatchEnd, match.start)));

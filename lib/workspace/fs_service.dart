@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -19,11 +20,40 @@ class FsEntry {
   });
 }
 
+class _CachedListing {
+  final List<FsEntry> entries;
+  final DateTime listedAt;
+
+  const _CachedListing(this.entries, this.listedAt);
+
+  bool get isFresh =>
+      DateTime.now().difference(listedAt) < FsService.listingCacheTtl;
+}
+
 class FsService {
   /// Absolute, normalised workspace root. Everything the editor reads or writes
   /// is confined to this subtree.
   String get rootPath => _rootPath;
   final String _rootPath;
+
+  /// Short-lived listing cache. The explorer and quick-open walk the same
+  /// directories repeatedly, and a cold `list` pays a stat per child on the UI
+  /// isolate. Mutations clear the cache; the TTL only bounds staleness from
+  /// changes made outside the app (git, another app on shared storage).
+  static const listingCacheTtl = Duration(seconds: 2);
+  final Map<String, _CachedListing> _listings = {};
+
+  bool _showHidden = false;
+
+  /// Whether [list] includes dotfiles. `.git` stays hidden either way: it is
+  /// large, never opened in the editor, and floods the tree.
+  bool get showHidden => _showHidden;
+
+  set showHidden(bool value) {
+    if (_showHidden == value) return;
+    _showHidden = value;
+    _listings.clear();
+  }
 
   FsService(String root) : _rootPath = p.normalize(p.absolute(root));
 
@@ -99,38 +129,63 @@ class FsService {
   String relativeToRoot(String absolutePath) =>
       p.relative(absolutePath, from: _rootPath);
 
-  Future<List<FsEntry>> list(String dirPath) async {
+  Future<List<FsEntry>> list(String dirPath, {bool refresh = false}) async {
     final resolved = resolve(dirPath);
+    final cacheKey = _showHidden ? '$resolved\u0000h' : resolved;
+    final cached = _listings[cacheKey];
+    if (!refresh && cached != null && cached.isFresh) return cached.entries;
+
     final dir = Directory(resolved);
-    if (!dir.existsSync()) return const [];
+    if (!await dir.exists()) return const [];
 
-    final children = dir.listSync(followLinks: false)
-      ..sort((a, b) {
-        final aDir = a is Directory;
-        final bDir = b is Directory;
-        if (aDir != bDir) return aDir ? -1 : 1;
-        return p
-            .basename(a.path)
-            .toLowerCase()
-            .compareTo(p.basename(b.path).toLowerCase());
-      });
+    final entries = <FsEntry>[];
+    await for (final entity in dir.list(followLinks: false)) {
+      final name = p.basename(entity.path);
+      if (name.startsWith('.') && (!_showHidden || name == '.git')) continue;
+      entries.add(FsEntry(
+        path: entity.path,
+        name: name,
+        isDirectory: entity is Directory,
+        isLink: entity is Link,
+      ));
+    }
+    entries.sort((a, b) {
+      if (a.isDirectory != b.isDirectory) return a.isDirectory ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
 
-    return children
-        .where((e) => !p.basename(e.path).startsWith('.'))
-        .map((e) {
-          final path = e.path;
-          final type = FileSystemEntity.typeSync(path, followLinks: false);
-          return FsEntry(
-            path: path,
-            name: p.basename(path),
-            isDirectory: type == FileSystemEntityType.directory,
-            isLink: type == FileSystemEntityType.link,
-          );
-        })
-        .toList();
+    final result = List<FsEntry>.unmodifiable(entries);
+    _listings[cacheKey] = _CachedListing(result, DateTime.now());
+    return result;
   }
 
-  Future<String> readFile(String path) => File(resolve(path)).readAsString();
+  /// Reads a workspace file as UTF-8, refusing content the editor cannot show.
+  ///
+  /// `readAsString` throws a bare `FormatException` on a PNG or a `.zip`, and
+  /// callers used to fire it into the zone handler, so tapping a binary in the
+  /// explorer did nothing at all. A NUL byte in the first 4 KB is the same test
+  /// `git` uses to call a file binary; the message is actionable instead.
+  Future<String> readFile(String path) async {
+    final bytes = await File(resolve(path)).readAsBytes();
+    final probe = bytes.length < 4096 ? bytes.length : 4096;
+    for (var i = 0; i < probe; i++) {
+      if (bytes[i] == 0) {
+        throw StateError('This looks like a binary file. B Code edits text.');
+      }
+    }
+    try {
+      return utf8.decode(bytes);
+    } on FormatException {
+      throw StateError('This file is not UTF-8 text.');
+    }
+  }
+
+  /// Drops every cached directory listing.
+  ///
+  /// Called from each mutator: the 2 s TTL alone left a created, renamed or
+  /// deleted entry visible/absent in the explorer, and made pull-to-refresh a
+  /// no-op, until it expired.
+  void _invalidateListings() => _listings.clear();
 
   /// Writes via a sibling temp file and renames into place.
   ///
@@ -143,6 +198,7 @@ class FsService {
   Future<void> writeFile(String path, String content) async {
     final resolved = resolve(path);
     final target = File(resolved);
+    final isNew = !await target.exists();
     await target.parent.create(recursive: true);
 
     final temp = File('$resolved.bcode-tmp');
@@ -157,16 +213,22 @@ class FsService {
       }
       rethrow;
     }
+    // Autosave rewrites the same file every 1.5 s; invalidating on every save
+    // would throw the explorer's cache away while the user is typing.
+    if (isNew) _invalidateListings();
   }
 
   Future<void> createFile(String path) async {
     final f = File(resolve(path));
     if (f.existsSync()) throw StateError('File already exists');
     await f.create(recursive: true);
+    _invalidateListings();
   }
 
-  Future<void> createDirectory(String path) =>
-      Directory(resolve(path)).create(recursive: true);
+  Future<void> createDirectory(String path) async {
+    await Directory(resolve(path)).create(recursive: true);
+    _invalidateListings();
+  }
 
   Future<void> rename(String oldPath, String newName) async {
     if (newName.contains('/') ||
@@ -186,6 +248,7 @@ class FsService {
     }
     _rejectSymlinkedComponents(_rootPath, target, newName);
     await entity.rename(target);
+    _invalidateListings();
   }
 
   Future<void> move(String fromPath, String toDirPath) async {
@@ -204,6 +267,7 @@ class FsService {
     }
     _rejectSymlinkedComponents(_rootPath, target, fromPath);
     await entity.rename(target);
+    _invalidateListings();
   }
 
   Future<void> delete(String path) async {
@@ -217,6 +281,7 @@ class FsService {
     } else if (type == FileSystemEntityType.file) {
       await File(resolved).delete();
     }
+    _invalidateListings();
   }
 
   bool exists(String path) {

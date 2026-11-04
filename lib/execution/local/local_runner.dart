@@ -34,6 +34,18 @@ class LocalRunner {
     return dir.path;
   }
 
+  /// Stops [runId] on the native side. Returns false when it already exited.
+  Future<bool> kill(String runId) async {
+    try {
+      return await _channel.invokeMethod<bool>('kill', {'runId': runId}) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> hasRuntime(String runtimeId) async {
     try {
       return await _channel.invokeMethod<bool>('hasRuntime', {'runtimeId': runtimeId}) ?? false;
@@ -66,6 +78,7 @@ class LocalRunner {
     required RunRequest request,
     required LocalTarget target,
     required String workDir,
+    String? runId,
   }) async {
     final runtimeDir = await runtimeRoot();
     if (runtimeDir == null) {
@@ -86,9 +99,10 @@ class LocalRunner {
               'argv': buildArgv,
               'cwd': workDir,
               'env': target.env,
-              'timeoutMs': 30000,
+              'timeoutMs': 120000,
+              if (runId != null) 'runId': runId,
             })
-            .timeout(const Duration(minutes: 2));
+            .timeout(const Duration(minutes: 3));
         final buildResult = buildRaw?.cast<String, Object?>() ?? {};
         buildStdout = (buildResult['stdout'] as String?) ?? '';
         buildStderr = (buildResult['stderr'] as String?) ?? '';
@@ -114,9 +128,11 @@ class LocalRunner {
             'argv': runArgv,
             'cwd': workDir,
             'env': target.env,
-            'timeoutMs': 30000,
-          })
-          .timeout(const Duration(minutes: 2));
+            // Zero means "until it exits or the user stops it": the native side
+            // no longer kills every program at 30 seconds, and Stop now works.
+            'timeoutMs': 0,
+            if (runId != null) 'runId': runId,
+          });
       final runResult = runRaw?.cast<String, Object?>() ?? {};
       sw.stop();
 

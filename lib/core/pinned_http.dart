@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
@@ -21,42 +20,119 @@ import 'package:http/io_client.dart';
 /// decorative.
 ///
 /// Here the check happens inside the handshake of the connection that carries
-/// the request: `HttpClient.connectionFactory` builds the socket, default
-/// platform validation runs, and the presented leaf is compared against the
-/// pin set before a single request byte is written.
+/// the request: `HttpClient.connectionFactory` builds the socket, and the
+/// handshake uses a [SecurityContext] whose only trusted certificate is the CA
+/// that signs the host. Nothing else in the system trust store is accepted.
 ///
-/// Pin format is the SHA-256 of the leaf certificate's DER encoding, uppercase
-/// hex. Regenerate with:
+/// Why the CA and not the leaf
+/// ---------------------------
+/// This used to pin the SHA-256 of the leaf certificate. GitHub rotates its
+/// leaf every ~90 days and Let's Encrypt every 60, so the pins went stale and
+/// every request failed with a `HandshakeException` until a new app release
+/// shipped — a routine certificate renewal bricked sign-in, cloning and
+/// runtime downloads. Trusting the host's issuing root survives leaf rotation;
+/// it only needs an update when the CA itself changes (years, not months).
 ///
-///     openssl s_client -connect api.github.com:443 -servername api.github.com \
-///       </dev/null 2>/dev/null \
-///       | openssl x509 -outform DER \
-///       | openssl dgst -sha256 -hex
-///
-/// dart:io only exposes the leaf (`SecureSocket.peerCertificate`), so the
-/// issuing intermediate cannot be pinned. GitHub rotates its leaf on the order
-/// of months, so these pins need refreshing when that happens. The failure is a
-/// loud `HandshakeException`, never a silent downgrade to unpinned traffic.
+/// Pinning a CA still narrows trust from ~150 system roots to one authority
+/// per host, so a rogue CA cannot mint a certificate for api.github.com and
+/// read the token. The trade-off is deliberate: a leaf pin is stronger on paper
+/// but unusable without a remote pin-update channel.
 class PinnedHttpClient {
   PinnedHttpClient._();
 
   static const Duration _connectTimeout = Duration(seconds: 15);
   static const Duration _requestTimeout = Duration(seconds: 30);
 
-  /// SHA-256 of the leaf certificate DER, per host.
-  static const Map<String, Set<String>> pins = {
-    'api.github.com': {
-      '06E6A4A004329905D4A4E7C0D2C6EC7A632C56443F256424A43CC786951B3149',
-    },
-    'github.com': {
-      '46B601EE08B418CF8A3A1EBFE670BA5CE43BB05A917FA8B2DD087A30471CFC63',
-    },
-    'packages.termux.dev': {
-      'CD1A25F33DC112582C5EE244E5A856491AE8D58615D3B609F4D23ECB5F5DABA2',
-    },
+  /// The only certificate authority accepted for each host, as PEM.
+  ///
+  /// Sectigo Public Server Authentication Root E46 (valid to 2038) signs both
+  /// github.com hostnames. ISRG Root YR (valid to 2032) signs the Termux
+  /// package host. Regenerate the check with:
+  ///
+  ///     openssl s_client -connect api.github.com:443 -servername api.github.com \
+  ///       -showcerts </dev/null 2>/dev/null | openssl x509 -noout -text
+  ///
+  /// Verify the chain still ends at these roots before releasing. A CA change
+  /// fails loudly at handshake time, never silently falling back to unpinned
+  /// traffic.
+  static const Map<String, String> _issuers = {
+    'github.com': _githubIssuer,
+    'api.github.com': _githubIssuer,
+    'packages.termux.dev': _termuxIssuer,
   };
 
-  static Set<String>? pinsFor(String host) => pins[host.toLowerCase()];
+  static const String _githubIssuer = '''
+-----BEGIN CERTIFICATE-----
+MIIDRjCCAsugAwIBAgIQGp6v7G3o4ZtcGTFBto2Q3TAKBggqhkjOPQQDAzCBiDEL
+MAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNl
+eSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMT
+JVVTRVJUcnVzdCBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMjEwMzIy
+MDAwMDAwWhcNMzgwMTE4MjM1OTU5WjBfMQswCQYDVQQGEwJHQjEYMBYGA1UEChMP
+U2VjdGlnbyBMaW1pdGVkMTYwNAYDVQQDEy1TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIg
+QXV0aGVudGljYXRpb24gUm9vdCBFNDYwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAR2
++pmpbiDt+dd34wc7qNs9Xzjoq1WmVk/WSOrsfy2qw7LFeeyZYX8QeccCWvkEN/U0
+NSt3zn8gj1KjAIns1aeibVvjS5KToID1AZTc8GgHHs3u/iVStSBDHBv+6xnOQ6Oj
+ggEgMIIBHDAfBgNVHSMEGDAWgBQ64QmG1M8ZwpZ2dEl23OA1xmNjmjAdBgNVHQ4E
+FgQU0SLaTFnxS18mOKqd1u7rDcP7qWEwDgYDVR0PAQH/BAQDAgGGMA8GA1UdEwEB
+/wQFMAMBAf8wHQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMBEGA1UdIAQK
+MAgwBgYEVR0gADBQBgNVHR8ESTBHMEWgQ6BBhj9odHRwOi8vY3JsLnVzZXJ0cnVz
+dC5jb20vVVNFUlRydXN0RUNDQ2VydGlmaWNhdGlvbkF1dGhvcml0eS5jcmwwNQYI
+KwYBBQUHAQEEKTAnMCUGCCsGAQUFBzABhhlodHRwOi8vb2NzcC51c2VydHJ1c3Qu
+Y29tMAoGCCqGSM49BAMDA2kAMGYCMQCMCyBit99vX2ba6xEkDe+YO7vC0twjbkv9
+PKpqGGuZ61JZryjFsp+DFpEclCVy4noCMQCwvZDXD/m2Ko1HA5Bkmz7YQOFAiNDD
+49IWa2wdT7R3DtODaSXH/BiXv8fwB9su4tU=
+-----END CERTIFICATE-----
+''';
+
+  static const String _termuxIssuer = '''
+-----BEGIN CERTIFICATE-----
+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
+-----END CERTIFICATE-----
+''';
+
+  static final Map<String, SecurityContext> _contexts = {};
+
+  static SecurityContext _contextFor(String host) {
+    return _contexts.putIfAbsent(host.toLowerCase(), () {
+      final pem = _issuers[host.toLowerCase()];
+      if (pem == null) {
+        throw HandshakeException('No certificate authority pin configured for $host.');
+      }
+      return SecurityContext(withTrustedRoots: false)
+        ..setTrustedCertificatesBytes(utf8.encode(pem));
+    });
+  }
 
   /// Builds a client that pins the configured hosts and applies the standard
   /// timeouts.
@@ -121,34 +197,28 @@ class PinnedHttpClient {
   ) async {
     final raw = await rawSocket;
 
-    // `onBadCertificate` returning false means platform validation is never
-    // bypassed. A certificate the system does not trust fails the handshake
-    // before the pin comparison is even reached.
+    final SecurityContext context;
+    try {
+      context = _contextFor(host);
+    } catch (_) {
+      raw.destroy();
+      rethrow;
+    }
+
+    // Only the pinned CA is in this context, so the handshake fails for any
+    // certificate chain that does not terminate at it. Hostname verification
+    // still runs, so a valid pinned-CA certificate for a different host is
+    // refused too.
     final secure = await SecureSocket.secure(
       raw,
       host: host,
+      context: context,
       onBadCertificate: (_) => false,
     );
 
     try {
-      final expected = pinsFor(host);
-      if (expected == null) {
-        throw HandshakeException('No certificate pin configured for $host.');
-      }
-
-      final leaf = secure.peerCertificate;
-      if (leaf == null) {
+      if (secure.peerCertificate == null) {
         throw HandshakeException('Server presented no certificate for $host.');
-      }
-
-      final actual = sha256.convert(leaf.der).toString().toUpperCase();
-      if (!expected.contains(actual)) {
-        throw HandshakeException(
-          'Certificate pin mismatch for $host. Either the connection was '
-          'intercepted, or the host rotated its certificate and the pins in '
-          'PinnedHttpClient need refreshing. Refusing the connection rather '
-          'than continuing unpinned.',
-        );
       }
     } catch (_) {
       secure.destroy();
