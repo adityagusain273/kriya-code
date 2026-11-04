@@ -62,11 +62,14 @@ void main() {
       expect(gradle, contains('"split-debug-info"'));
     });
 
-    test('ships no native debug symbols', () {
+    test('keeps the native symbol table for the Play bundle', () {
       final gradle = readRepoFile('android/app/build.gradle.kts');
 
-      expect(gradle, contains('debugSymbolLevel = "NONE"'));
-      expect(gradle, isNot(contains('debugSymbolLevel = "SYMBOL_TABLE"')));
+      // Flutter's appbundle check requires libflutter/libapp symbol files in
+      // the AAB; "NONE" made every signed release fail after a good build.
+      // The APK never ships these files.
+      expect(gradle, contains('debugSymbolLevel = "SYMBOL_TABLE"'));
+      expect(gradle, isNot(contains('debugSymbolLevel = "NONE"')));
     });
 
     test('refuses to build a release APK without a release key', () {
