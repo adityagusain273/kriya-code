@@ -107,14 +107,8 @@ jobs:
           sed -i "s/^keyAlias=$/keyAlias=${{ secrets.BCODE_KEY_ALIAS }}/" android/key.properties
           sed -i "s/^keyPassword=$/keyPassword=${{ secrets.BCODE_KEY_PASSWORD }}/" android/key.properties
 
-      - name: Build app bundle (Play)
-        if: ${{ env.HAS_SECRETS == 'true' }}
-        run: |
-          flutter build appbundle --release \
-            --obfuscate \
-            --split-debug-info=build/symbols \
-            --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
-
+      # APK first: it is the sideload/test artifact. The bundle's post-build
+      # strip check is stricter, and its failure must not hide the APK.
       - name: Build APK (direct distribution)
         if: ${{ env.HAS_SECRETS == 'true' }}
         run: |
@@ -123,8 +117,28 @@ jobs:
             --split-debug-info=build/symbols \
             --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
 
-      - name: Verify Dart symbol files (crash symbolication)
+      - name: Build app bundle (Play)
         if: ${{ env.HAS_SECRETS == 'true' }}
+        run: |
+          flutter build appbundle --release \
+            --obfuscate \
+            --split-debug-info=build/symbols \
+            --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }}
+
+      - name: Diagnose bundle strip verification
+        if: ${{ always() && env.HAS_SECRETS == 'true' }}
+        run: |
+          set +e
+          analyzer="$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/apkanalyzer 2>/dev/null | tail -1)"
+          echo "apkanalyzer=${analyzer:-missing}"
+          ls -la build/app/outputs/bundle/release/ 2>/dev/null
+          if [ -n "$analyzer" ]; then
+            "$analyzer" files list build/app/outputs/bundle/release/app-release.aab \
+              | grep -E "lib(flutter|app)\.so" | head -20
+          fi
+
+      - name: Verify Dart symbol files (crash symbolication)
+        if: ${{ always() && env.HAS_SECRETS == 'true' }}
         run: |
           set -euo pipefail
           ls build/symbols/app.android-*.symbols
@@ -135,7 +149,7 @@ jobs:
         run: flutter build apk --debug -Pbcode.sideload=true
 
       - name: Verify the release APK is signed with the release key
-        if: ${{ env.HAS_SECRETS == 'true' }}
+        if: ${{ always() && env.HAS_SECRETS == 'true' }}
         run: |
           set -euo pipefail
           apk=build/app/outputs/flutter-apk/app-release.apk
@@ -157,7 +171,7 @@ jobs:
           echo "release APK signed with the release key: $signer"
 
       - name: Report 16 KB page-size alignment
-        if: ${{ env.HAS_SECRETS == 'true' }}
+        if: ${{ always() && env.HAS_SECRETS == 'true' }}
         run: |
           status=0
           for so in "$HOME"/.pub-cache/hosted/pub.dev/git2dart_binaries-*/android/src/main/jniLibs/{arm64-v8a,x86_64}/lib*.so; do
@@ -177,7 +191,7 @@ jobs:
           fi
 
       - name: Upload bundle
-        if: ${{ env.HAS_SECRETS == 'true' }}
+        if: ${{ always() && env.HAS_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: b-code-release-bundle
@@ -185,7 +199,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Dart symbol file (for crash symbolication)
-        if: ${{ env.HAS_SECRETS == 'true' }}
+        if: ${{ always() && env.HAS_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: b-code-release-symbols
@@ -193,7 +207,7 @@ jobs:
           retention-days: 90
 
       - name: Upload APK
-        if: ${{ env.HAS_SECRETS == 'true' }}
+        if: ${{ always() && env.HAS_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: b-code-release-apk
