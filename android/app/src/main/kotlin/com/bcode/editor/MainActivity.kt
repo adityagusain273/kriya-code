@@ -9,6 +9,7 @@ import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.webkit.MimeTypeMap
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -183,9 +184,19 @@ class MainActivity : FlutterActivity() {
                     } else {
                         pendingExport = result
                         exportTargetPath = path
+                        // A fixed text/plain made the picker append ".txt" to
+                        // every exported .py/.js/.kt file. Ask for the real
+                        // type, and use octet-stream when Android has no
+                        // mapping, which keeps the original name.
+                        val extension =
+                            suggestedName.substringAfterLast('.', "").lowercase()
+                        val mime =
+                            MimeTypeMap.getSingleton()
+                                .getMimeTypeFromExtension(extension)
+                                ?: "application/octet-stream"
                         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "text/plain"
+                            type = mime
                             putExtra(Intent.EXTRA_TITLE, suggestedName)
                         }
                         startActivityForResult(intent, exportRequestCode)
