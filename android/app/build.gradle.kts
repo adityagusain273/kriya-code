@@ -133,10 +133,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // A release build has no use for native debug symbols; they belong to
-            // the crash-symbolication store, never to the shipped tree.
+            // Flutter's appbundle post-build check requires the native symbol
+            // table in the bundle; Play uses it for crash symbolication. The
+            // APK is unaffected because it never ships these files.
             ndk {
-                debugSymbolLevel = "NONE"
+                debugSymbolLevel = "SYMBOL_TABLE"
             }
         }
     }
