@@ -100,3 +100,10 @@ android/local-engine-repo/
 # OpenCode tooling
 .opencode/
 opencode.json
+
+# Knowledge graph
+graphify-out/
+
+
+# Android build outputs (leaked absolute paths when committed)
+android/build/

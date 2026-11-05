@@ -183,24 +183,33 @@ class LiveServer {
         return;
       }
 
+      final token = handler.sessionToken;
+      if (token == null) {
+        response.statusCode = HttpStatus.serviceUnavailable;
+        await response.close();
+        return;
+      }
       final hasToken = request.cookies.any(
-        (c) => c.name == 'bct' && c.value == handler.sessionToken,
+        (c) =>
+            c.name == 'bct' &&
+            StaticFileHandler.constantTimeEquals(c.value, token),
       );
       final queryToken = request.uri.queryParameters['bct'];
-      if (!hasToken && queryToken != handler.sessionToken) {
+      final hasQueryToken = queryToken != null &&
+          StaticFileHandler.constantTimeEquals(queryToken, token);
+      if (!hasToken && !hasQueryToken) {
         response.statusCode = HttpStatus.forbidden;
         await response.close();
         return;
       }
 
-      final origin = request.headers.value('origin');
-      if (origin != null) {
-        final uri = Uri.tryParse(origin);
-        if (uri == null || uri.scheme != 'http' || uri.port != port) {
-          response.statusCode = HttpStatus.forbidden;
-          await response.close();
-          return;
-        }
+      // Same loopback-origin rule the HTTP handler applies: a matching port
+      // on a non-loopback host is not good enough.
+      if (!StaticFileHandler.isLoopbackHttpOrigin(
+          request.headers.value('origin'), port)) {
+        response.statusCode = HttpStatus.forbidden;
+        await response.close();
+        return;
       }
 
       // A page in a loop is otherwise a trivial way to exhaust sockets.

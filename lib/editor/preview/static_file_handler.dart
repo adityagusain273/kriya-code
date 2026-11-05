@@ -68,6 +68,18 @@ class StaticFileHandler {
 
   static const _loopbackHosts = {'127.0.0.1', 'localhost', '::1', '[::1]'};
 
+  /// True when [origin] is an http origin on loopback for [port]. Shared with
+  /// the live-reload WebSocket upgrade, which needs the same check before it
+  /// upgrades the connection.
+  static bool isLoopbackHttpOrigin(String? origin, int port) {
+    if (origin == null) return true;
+    final uri = Uri.tryParse(origin);
+    if (uri == null) return false;
+    if (uri.scheme != 'http') return false;
+    if (uri.port != port) return false;
+    return _loopbackHosts.contains(uri.host.toLowerCase());
+  }
+
   static const _cookieName = 'bct';
 
   /// `HttpHeaders` has no `originHeader` constant.
@@ -139,7 +151,7 @@ class StaticFileHandler {
       final token = sessionToken;
       if (token != null && !_hasValidCookie(request, token)) {
         final supplied = request.uri.queryParameters[_cookieName];
-        if (supplied == null || !_constantTimeEquals(supplied, token)) {
+        if (supplied == null || !constantTimeEquals(supplied, token)) {
           await _fail(request, HttpStatus.forbidden);
           return;
         }
@@ -215,22 +227,14 @@ class StaticFileHandler {
   /// Refuses cross-origin requests outright. Omitting the CORS header would be
   /// enough to stop `fetch`, but refusing is unambiguous and also covers the
   /// preflight and simple-request shapes we do not enumerate here.
-  bool _isAllowedOrigin(HttpRequest request, int port) {
-    final origin = request.headers.value(_originHeader);
-    if (origin == null) return true;
-
-    final uri = Uri.tryParse(origin);
-    if (uri == null) return false;
-    if (uri.scheme != 'http') return false;
-    if (uri.port != port) return false;
-    return _loopbackHosts.contains(uri.host.toLowerCase());
-  }
+  bool _isAllowedOrigin(HttpRequest request, int port) =>
+      isLoopbackHttpOrigin(request.headers.value(_originHeader), port);
 
   /// Cookie-based check; the query-parameter path is the bootstrap in
   /// [_bootstrap], which runs only for the very first request.
   bool _hasValidCookie(HttpRequest request, String token) {
     for (final cookie in request.cookies) {
-      if (cookie.name == _cookieName && _constantTimeEquals(cookie.value, token)) {
+      if (cookie.name == _cookieName && constantTimeEquals(cookie.value, token)) {
         return true;
       }
     }
@@ -293,8 +297,8 @@ class StaticFileHandler {
   }
 
   /// Compares without an early return so the running time does not reveal how
-  /// much of the token matched.
-  static bool _constantTimeEquals(String a, String b) {
+  /// much of the token matched. Shared with the live-reload WebSocket upgrade.
+  static bool constantTimeEquals(String a, String b) {
     if (a.length != b.length) return false;
     var diff = 0;
     for (var i = 0; i < a.length; i++) {
