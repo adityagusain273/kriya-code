@@ -1,5 +1,5 @@
 Most recent local review with findings: 23 stored findings
-Review directory: ~/USB drive1/b_code
+Review directory: ~/b_code
 Base branch: master
 
 ────────────────────────────────────────────────────────────────────────
