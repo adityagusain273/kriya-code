@@ -60,6 +60,9 @@ class _EditorPageState extends State<EditorPage>
   /// Attached to the visible editor so a global-search result can pull focus and
   /// let the field scroll its caret into view.
   final FocusNode _editorFocus = FocusNode();
+
+  /// Multiplier applied to the editor font size by the pinch-to-zoom extension.
+  double _zoomScale = 1.0;
   final FileExplorerController _explorerController = FileExplorerController();
 
   @override
@@ -771,16 +774,19 @@ class _EditorPageState extends State<EditorPage>
         final fontFamily = settings.fontFamily;
         final showLineNumbers = settings.showLineNumbers;
         final wordWrap = settings.wordWrap;
+        final isZoomInstalled = sl<ExtensionInstallStore>().isInstalled('bcode.zoom');
 
         final baseTheme = SyntaxThemes.fromId(settings.syntaxThemeId).styles;
         
         // flutter_code_editor completely replaces text styles for tokens instead of merging.
         // We inject the font family and size into every token style to prevent them from reverting to default.
         final syntaxTheme = <String, TextStyle>{};
+        final fontSize =
+            settings.fontSize * (isZoomInstalled ? _zoomScale : 1.0);
         baseTheme.forEach((key, style) {
           syntaxTheme[key] = style.copyWith(
             fontFamily: fontFamily,
-            fontSize: settings.fontSize,
+            fontSize: fontSize,
           );
         });
 
@@ -799,11 +805,6 @@ class _EditorPageState extends State<EditorPage>
           ),
         );
 
-        final isZoomInstalled = sl<ExtensionInstallStore>().isInstalled('bcode.zoom');
-        // When pinch-to-zoom is active, line numbers are rendered by BCodeZoomView's
-        // fixed unscaled gutter so line numbers never blow up or drift into the code.
-        final showGutterInEditor = showLineNumbers && !isZoomInstalled;
-
         final editor = CodeTheme(
           data: CodeThemeData(styles: syntaxTheme),
           child: CodeField(
@@ -814,11 +815,11 @@ class _EditorPageState extends State<EditorPage>
             background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
             gutterStyle: GutterStyle(
               background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
-              showLineNumbers: showGutterInEditor,
+              showLineNumbers: showLineNumbers,
               showFoldingHandles: false,
               showErrors: false,
-              width: showGutterInEditor ? 80 : 0,
-              margin: showGutterInEditor ? 8 : 0,
+              width: showLineNumbers ? 80 : 0,
+              margin: showLineNumbers ? 8 : 0,
               textStyle: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 12,
@@ -827,7 +828,7 @@ class _EditorPageState extends State<EditorPage>
             ),
             textStyle: TextStyle(
               fontFamily: fontFamily,
-              fontSize: settings.fontSize,
+              fontSize: fontSize,
             ),
           ),
         );
@@ -841,12 +842,8 @@ class _EditorPageState extends State<EditorPage>
 
         if (isZoomInstalled) {
           return BCodeZoomView(
-            key: ValueKey('zoom_${tab.filePath}'),
-            controller: tab.controller,
-            showLineNumbers: showLineNumbers,
-            fontSize: settings.fontSize,
-            fontFamily: fontFamily,
-            gutterBackground: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
+            scale: _zoomScale,
+            onScaleChanged: (value) => setState(() => _zoomScale = value),
             child: combined,
           );
         }
