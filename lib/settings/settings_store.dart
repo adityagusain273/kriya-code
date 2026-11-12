@@ -85,6 +85,12 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool get showShortcutBar => prefs.getBool('show_shortcut_bar') ?? true;
+  set showShortcutBar(bool v) {
+    prefs.setBool('show_shortcut_bar', v);
+    notifyListeners();
+  }
+
   List<String> get primaryLanguages => prefs.getStringList('primary_languages') ?? [];
   set primaryLanguages(List<String> v) {
     prefs.setStringList('primary_languages', v);

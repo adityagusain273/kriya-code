@@ -110,6 +110,7 @@ class _EditorPageState extends State<EditorPage>
     });
     setEditCallback(const Key('close_all'), _closeAllWithConfirm);
     sl<TabManager>().addListener(_onTabsChanged);
+    sl<SettingsStore>().addListener(_onSettingsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       sl<TabManager>().restoreSession();
     });
@@ -131,6 +132,10 @@ class _EditorPageState extends State<EditorPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _revealPendingMatch();
     });
+  }
+
+  void _onSettingsChanged() {
+    if (mounted) setState(() {});
   }
 
   void _syncTabController(int length) {
@@ -182,6 +187,7 @@ class _EditorPageState extends State<EditorPage>
     _editorFocus.dispose();
     _explorerController.dispose();
     sl<TabManager>().removeListener(_onTabsChanged);
+    sl<SettingsStore>().removeListener(_onSettingsChanged);
     clearRunCallbacks();
     _tabController?.dispose();
     _autocomplete.dispose();
@@ -806,7 +812,7 @@ class _EditorPageState extends State<EditorPage>
               showLineNumbers: showLineNumbers,
               showFoldingHandles: false,
               showErrors: false,
-              width: showLineNumbers ? 48 : 0,
+              width: showLineNumbers ? 80 : 0,
               margin: showLineNumbers ? 8 : 0,
               textStyle: TextStyle(
                 fontFamily: 'monospace',
@@ -1047,6 +1053,23 @@ class _EditorPageState extends State<EditorPage>
           style: const TextStyle(fontSize: 16),
         ),
         actions: [
+          if (tab != null && _isPreviewable(tab.filePath))
+            IconButton(
+              icon: const Icon(Icons.open_in_browser_rounded),
+              tooltip: 'Preview in browser',
+              onPressed: _openPreview,
+            ),
+          if (tab != null)
+            IconButton(
+              icon: const Icon(
+                Icons.play_arrow_rounded,
+                color: Color(0xFF4CAF50),
+                size: 26,
+              ),
+              tooltip: 'Run code (hold for args)',
+              onPressed: _run,
+              onLongPress: _showRunWithArgsDialog,
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
@@ -1234,17 +1257,6 @@ class _EditorPageState extends State<EditorPage>
       ),
       body: Column(
         children: [
-          _ActionBar(
-            canFind: tab != null,
-            canRun: tab != null,
-            canPreview: tab != null && _isPreviewable(tab.filePath),
-            showFind: _showFind,
-            onFind: () => setState(() => _showFind = !_showFind),
-            onRun: _run,
-            onRunWithArgs: _showRunWithArgsDialog,
-            onSave: tabs.save,
-            onPreview: _openPreview,
-          ),
           if (tabs.tabs.isNotEmpty)
             TabBar(
               controller: _tabController,
@@ -1297,13 +1309,19 @@ class _EditorPageState extends State<EditorPage>
                   ),
           ),
           if (tab != null)
-            _StatusBar(tab: tab, langName: _langName(tab.languageId, tab.name.contains('.') ? tab.name.split('.').last.toLowerCase() : '')),
+            _StatusBar(
+              tab: tab,
+              langName: _langName(tab.languageId, tab.name.contains('.') ? tab.name.split('.').last.toLowerCase() : ''),
+              showShortcuts: sl<SettingsStore>().showShortcutBar,
+              onToggleShortcuts: () =>
+                  sl<SettingsStore>().showShortcutBar = !sl<SettingsStore>().showShortcutBar,
+            ),
           if (tab != null)
             AutocompleteBar(
               engine: _autocomplete,
               controller: tab.controller,
             ),
-          if (tab != null)
+          if (tab != null && sl<SettingsStore>().showShortcutBar)
             FutureBuilder<int>(
               future: _indentFutureFor(tab.languageId),
               builder: (context, snapshot) => EditorShortcutBar(
@@ -1311,6 +1329,7 @@ class _EditorPageState extends State<EditorPage>
                 indentWidth: snapshot.data ?? 2,
                 onFind: () => setState(() => _showFind = true),
                 onSave: tabs.save,
+                onToggle: () => sl<SettingsStore>().showShortcutBar = false,
                 languageId: tab.languageId,
               ),
             ),
@@ -1428,127 +1447,18 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
-/// Labelled actions, because the icon-only row it replaces could not be read:
-/// a download arrow meant "install a language runtime", and `< >` meant GitHub.
-class _ActionBar extends StatelessWidget {
-  final bool canFind;
-  final bool canRun;
-  final bool canPreview;
-  final bool showFind;
-  final VoidCallback onFind;
-  final VoidCallback onRun;
-  final VoidCallback onRunWithArgs;
-  final VoidCallback onSave;
-  final VoidCallback onPreview;
-
-  const _ActionBar({
-    required this.canFind,
-    required this.canRun,
-    required this.canPreview,
-    required this.showFind,
-    required this.onFind,
-    required this.onRun,
-    required this.onRunWithArgs,
-    required this.onSave,
-    required this.onPreview,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Row(
-          children: [
-            _Action(
-              icon: Icons.folder_open,
-              label: 'Files',
-              onTap: () => Scaffold.of(context).openDrawer(),
-            ),
-            _Action(icon: Icons.save_outlined, label: 'Save', onTap: onSave),
-            _Action(
-              icon: showFind ? Icons.search_off : Icons.search,
-              label: showFind ? 'Hide find' : 'Find',
-              selected: showFind,
-              onTap: canFind ? onFind : null,
-            ),
-            _Action(
-              icon: Icons.play_arrow,
-              label: 'Run',
-              onTap: canRun ? onRun : null,
-              onLongPress: canRun ? onRunWithArgs : null,
-            ),
-            if (canPreview)
-              _Action(
-                icon: Icons.open_in_browser,
-                label: 'Preview',
-                onTap: onPreview,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Action extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-  final bool selected;
-
-  const _Action({
-    required this.icon,
-    required this.label,
-    this.onTap,
-    this.onLongPress,
-    this.selected = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final enabled = onTap != null;
-    final color = !enabled
-        ? cs.onSurface.withValues(alpha: 0.3)
-        : selected
-            ? cs.primary
-            : cs.onSurface;
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 20, color: color),
-              Text(label,
-                  style: TextStyle(fontSize: 10, color: color, height: 1.15)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _StatusBar extends StatefulWidget {
   final EditorTab tab;
   final String langName;
-  const _StatusBar({required this.tab, required this.langName});
+  final bool showShortcuts;
+  final VoidCallback onToggleShortcuts;
+
+  const _StatusBar({
+    required this.tab,
+    required this.langName,
+    required this.showShortcuts,
+    required this.onToggleShortcuts,
+  });
 
   @override
   State<_StatusBar> createState() => _StatusBarState();
@@ -1584,9 +1494,6 @@ class _StatusBarState extends State<_StatusBar> {
 
   void _onChanged() {
     if (!mounted) return;
-    // Line/column is bounded by the caret and cheap; the document-wide counts
-    // are O(n) and used to run on every keystroke. Let them settle once typing
-    // pauses instead of rescanning the whole file each character.
     setState(() {});
     if (identical(widget.tab.controller.text, _statsText)) return;
     _statsTimer?.cancel();
@@ -1625,36 +1532,49 @@ class _StatusBarState extends State<_StatusBar> {
 
     final stats = _stats ?? _DocumentStats.of(text);
     final langName = widget.langName;
+    final cs = Theme.of(context).colorScheme;
 
     return Container(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: cs.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       child: DefaultTextStyle(
         style: TextStyle(
           fontSize: 11,
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+          color: cs.onSurface.withValues(alpha: 0.7),
         ),
         child: Row(
           children: [
             Text('Ln $line, Col $col'),
-            const SizedBox(width: 12),
-            Text('${stats.lineCount} ${stats.lineCount == 1 ? 'line' : 'lines'}'),
-            const SizedBox(width: 12),
-            Text('${stats.wordCount} ${stats.wordCount == 1 ? 'word' : 'words'}'),
-            const SizedBox(width: 12),
-            Text('${text.length} chars'),
+            const SizedBox(width: 8),
+            Text('${stats.lineCount} lines'),
             const Spacer(),
-            Flexible(child: Text(langName, overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 12),
-            // Read-only, because there is nothing to change: files are read and
-            // written as UTF-8, and the line ending in use is whatever the file
-            // already contains. These used to be dropdowns that looked editable and
-            // silently did nothing, which is worse than not offering the choice --
-            // picking a different encoding gave no hint that the bytes on disk were
-            // still UTF-8.
+            Text(langName),
+            const SizedBox(width: 8),
             Text(stats.lineEnding),
-            const SizedBox(width: 12),
-            const Text('UTF-8'),
+            const SizedBox(width: 6),
+            Semantics(
+              button: true,
+              label: widget.showShortcuts ? 'Hide shortcut keys' : 'Show shortcut keys',
+              child: Tooltip(
+                message: widget.showShortcuts ? 'Hide shortcut bar' : 'Show shortcut bar',
+                child: InkWell(
+                  onTap: widget.onToggleShortcuts,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    child: Icon(
+                      widget.showShortcuts
+                          ? Icons.keyboard_hide_outlined
+                          : Icons.keyboard_outlined,
+                      size: 16,
+                      color: widget.showShortcuts
+                          ? cs.primary
+                          : cs.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

@@ -261,16 +261,40 @@ class _FileExplorerState extends State<FileExplorer> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.folder_open, size: 48, color: Colors.white24),
+                          const Icon(Icons.folder_open_rounded, size: 54, color: Colors.white24),
                           const SizedBox(height: 12),
                           const Text(
                             'No files yet',
-                            style: TextStyle(fontSize: 14, color: Colors.white70),
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white70),
                           ),
                           const SizedBox(height: 4),
                           const Text(
-                            'Create a file or folder to get started',
-                            style: TextStyle(fontSize: 11, color: Colors.white38),
+                            'Create a file or use a template to get started',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 12, color: Colors.white38),
+                          ),
+                          const SizedBox(height: 20),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            alignment: WrapAlignment.center,
+                            children: [
+                              FilledButton.tonalIcon(
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                label: const Text('New File'),
+                                onPressed: () => _createEntry(isFolder: false),
+                              ),
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                                label: const Text('New Folder'),
+                                onPressed: () => _createEntry(isFolder: true),
+                              ),
+                              TextButton.icon(
+                                icon: const Icon(Icons.description_outlined, size: 18),
+                                label: const Text('From Template'),
+                                onPressed: _createFromTemplate,
+                              ),
+                            ],
                           ),
                         ],
                       ),

@@ -29,6 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late String _syntaxThemeId = widget.store.syntaxThemeId;
   late bool _wordWrap = widget.store.wordWrap;
   late bool _showLineNumbers = widget.store.showLineNumbers;
+  late bool _showShortcutBar = widget.store.showShortcutBar;
   late String _fontFamily = widget.store.fontFamily;
   bool _termuxInstalled = false;
   bool _termuxChecking = true;
@@ -174,6 +175,15 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) {
               setState(() => _showLineNumbers = v);
               widget.store.showLineNumbers = v;
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Show shortcut bar'),
+            subtitle: const Text('Accessory keys for symbols and actions above the keyboard'),
+            value: _showShortcutBar,
+            onChanged: (v) {
+              setState(() => _showShortcutBar = v);
+              widget.store.showShortcutBar = v;
             },
           ),
 

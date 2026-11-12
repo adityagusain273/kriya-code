@@ -8,6 +8,7 @@ class EditorShortcutBar extends StatefulWidget {
   final int indentWidth;
   final VoidCallback onFind;
   final VoidCallback onSave;
+  final VoidCallback? onToggle;
   final String? languageId;
 
   const EditorShortcutBar({
@@ -16,6 +17,7 @@ class EditorShortcutBar extends StatefulWidget {
     required this.indentWidth,
     required this.onFind,
     required this.onSave,
+    this.onToggle,
     this.languageId,
   });
 
@@ -26,8 +28,8 @@ class EditorShortcutBar extends StatefulWidget {
 class ShortcutBarState extends State<EditorShortcutBar> {
   static const _pairs = {'(': ')', '[': ']', '{': '}', '"': '"', "'": "'"};
 
-  static const _rows = <List<String>>[
-    ['TAB', 'UNDO', 'REDO', 'FIND', 'SNIP', 'SAVE'],
+  List<List<String>> get _rows => [
+    ['TAB', 'UNDO', 'REDO', 'FIND', 'SNIP', 'SAVE', if (widget.onToggle != null) 'HIDE'],
     ['(', ')', '{', '}', '[', ']', '<', '>', '"', "'", ';', ':', '=', '&', '|', '/'],
   ];
 
@@ -50,6 +52,9 @@ class ShortcutBarState extends State<EditorShortcutBar> {
         return;
       case 'SNIP':
         _showSnippets();
+        return;
+      case 'HIDE':
+        widget.onToggle?.call();
         return;
     }
     final close = _pairs[key];
@@ -168,7 +173,7 @@ class _Key extends StatelessWidget {
 
   const _Key({required this.label, required this.onTap});
 
-  static const _controlKeys = {'TAB', 'UNDO', 'REDO', 'FIND', 'SAVE', 'SNIP'};
+  static const _controlKeys = {'TAB', 'UNDO', 'REDO', 'FIND', 'SAVE', 'SNIP', 'HIDE'};
 
   static const _icons = <String, IconData>{
     'TAB': Icons.keyboard_tab,
@@ -176,7 +181,8 @@ class _Key extends StatelessWidget {
     'REDO': Icons.redo,
     'FIND': Icons.search,
     'SAVE': Icons.save_outlined,
-    'SNIP': Icons.bolt,
+    'SNIP': Icons.data_object,
+    'HIDE': Icons.keyboard_hide_outlined,
   };
 
   static const _captions = <String, String>{
@@ -185,7 +191,8 @@ class _Key extends StatelessWidget {
     'REDO': 'Redo',
     'FIND': 'Find',
     'SAVE': 'Save',
-    'SNIP': 'Insert',
+    'SNIP': 'Snippets',
+    'HIDE': 'Hide',
   };
 
   @override
@@ -194,9 +201,16 @@ class _Key extends StatelessWidget {
     final isControl = _controlKeys.contains(label);
     final icon = _icons[label];
     final color = cs.onSurface.withValues(alpha: 0.85);
+    final semanticLabel = label == 'SNIP'
+        ? 'Code Snippets'
+        : label == 'HIDE'
+            ? 'Hide shortcut bar'
+            : isControl
+                ? _captions[label]
+                : 'Insert $label';
     return Semantics(
       button: true,
-      label: isControl ? _captions[label] : 'Insert $label',
+      label: semanticLabel,
       child: InkWell(
         onTap: onTap,
         child: Container(
