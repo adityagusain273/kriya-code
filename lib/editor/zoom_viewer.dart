@@ -36,8 +36,6 @@ class _BCodeZoomViewState extends State<BCodeZoomView> {
 
   /// Zoom currently applied, so the on-screen indicator can be shown and reset.
   double _scale = 1.0;
-  
-  bool _isFixingMatrix = false;
 
   @override
   void initState() {
@@ -53,22 +51,7 @@ class _BCodeZoomViewState extends State<BCodeZoomView> {
   }
 
   void _syncScale() {
-    if (_isFixingMatrix) return;
-
-    final matrix = _controller.value;
-    final nextScale = matrix.getMaxScaleOnAxis();
-    final tx = matrix.getTranslation().x;
-    final ty = matrix.getTranslation().y;
-    
-    if (tx != 0.0 || ty != 0.0) {
-      final newMatrix = matrix.clone();
-      newMatrix.setTranslationRaw(0, 0, 0);
-      
-      _isFixingMatrix = true;
-      _controller.value = newMatrix;
-      _isFixingMatrix = false;
-    }
-
+    final nextScale = _controller.value.getMaxScaleOnAxis();
     if ((nextScale - _scale).abs() > 0.001) {
       _scale = nextScale;
       if (mounted) setState(() {});

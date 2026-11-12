@@ -1,5 +1,6 @@
 import 'package:b_code/editor/zoom_viewer.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 TransformationController controllerOf(WidgetTester tester) => tester
@@ -84,5 +85,60 @@ void main() {
     controllerOf(tester).value = Matrix4.identity()..scaleByDouble(1.5, 1.5, 1.5, 1);
     await tester.pump();
     expect(find.text('150%'), findsOneWidget);
+  });
+
+  testWidgets('pinching with two fingers scales the viewer', (tester) async {
+    await tester.pumpWidget(host(const SizedBox(width: 400, height: 400)));
+
+    final touch1 = await tester.startGesture(const Offset(200, 200), pointer: 1);
+    final touch2 = await tester.startGesture(const Offset(200, 250), pointer: 2);
+    await tester.pump();
+    await touch1.moveTo(const Offset(200, 100));
+    await touch2.moveTo(const Offset(200, 350));
+    await tester.pump();
+    await touch1.up();
+    await touch2.up();
+    await tester.pump();
+
+    expect(controllerOf(tester).value.getMaxScaleOnAxis(), greaterThan(1.0));
+  });
+
+  testWidgets('pinching on an editable text field scales the viewer', (tester) async {
+    final controller = TextEditingController(text: 'line 1\nline 2\nline 3\nline 4\nline 5\n');
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(host(TextField(controller: controller, maxLines: null, expands: true)));
+
+    final touch1 = await tester.startGesture(const Offset(200, 200), pointer: 1);
+    final touch2 = await tester.startGesture(const Offset(200, 250), pointer: 2);
+    await tester.pump();
+    await touch1.moveTo(const Offset(200, 100));
+    await touch2.moveTo(const Offset(200, 350));
+    await tester.pump();
+    await touch1.up();
+    await touch2.up();
+    await tester.pump();
+
+    expect(controllerOf(tester).value.getMaxScaleOnAxis(), greaterThan(1.0));
+  });
+
+  testWidgets('pinching on CodeField scales the viewer and allows pan', (tester) async {
+    final controller = CodeController(text: 'def hello():\n    print("world")\n');
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(host(CodeField(controller: controller, expands: true)));
+
+    final touch1 = await tester.startGesture(const Offset(200, 200), pointer: 1);
+    final touch2 = await tester.startGesture(const Offset(200, 250), pointer: 2);
+    await tester.pump();
+    await touch1.moveTo(const Offset(200, 100));
+    await touch2.moveTo(const Offset(200, 350));
+    await tester.pump();
+    await touch1.up();
+    await touch2.up();
+    await tester.pump();
+
+    expect(controllerOf(tester).value.getMaxScaleOnAxis(), greaterThan(1.0));
+    expect(find.textContaining('%'), findsOneWidget);
   });
 }

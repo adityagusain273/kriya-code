@@ -48,7 +48,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Buy Aditya a Coffee ☕'), findsOneWidget);
+    expect(find.text('Buy Aditya a Chai ☕'), findsOneWidget);
     expect(find.text(AppConstants.supportUpiId), findsOneWidget);
     expect(find.text(AppConstants.supportUpiNumber), findsOneWidget);
     expect(find.text('Google Pay'), findsOneWidget);
@@ -61,6 +61,6 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Buy Aditya a Coffee ☕'), findsNothing);
+    expect(find.text('Buy Aditya a Chai ☕'), findsNothing);
   });
 }

@@ -573,7 +573,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.coffee_rounded, size: 14, color: Color(0xFFF0883E)),
+                            Icon(Icons.emoji_food_beverage_rounded, size: 14, color: Color(0xFFF0883E)),
                             SizedBox(width: 6),
                             Text(
                               'SUPPORT THE DEV',
@@ -596,7 +596,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Buy ${AppConstants.supportDevName} a Coffee ☕',
+                    'Buy ${AppConstants.supportDevName} a Chai ☕',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
