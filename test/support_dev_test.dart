@@ -33,6 +33,9 @@ void main() {
     );
     await tester.pump();
 
+    await tester.tap(find.text('About'));
+    await tester.pumpAndSettle();
+
     final supportTile = find.text('Support Developer');
     await tester.scrollUntilVisible(
       supportTile,

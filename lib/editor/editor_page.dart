@@ -26,7 +26,6 @@ import '../settings/settings_page.dart';
 import '../settings/settings_store.dart';
 import '../workspace/explorer_prefs.dart';
 import 'find_replace.dart';
-import 'keyboard_help_page.dart';
 import 'preview/preview_page.dart';
 import 'preview/preview_server.dart';
 import 'preview/live_server.dart';
@@ -1049,40 +1048,16 @@ class _EditorPageState extends State<EditorPage>
         ),
         actions: [
           IconButton(
-            icon: Icon(_showFind ? Icons.search_off : Icons.search),
-            tooltip: 'Find / Replace',
-            onPressed: tab == null
-                ? null
-                : () => setState(() {
-                      _showFind = !_showFind;
-                    }),
-          ),
-          IconButton(
-            icon: const Icon(Icons.download),
-            tooltip: 'Downloads',
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadsPage()));
-            },
-          ),
-          IconButton(icon: const Icon(Icons.save_outlined), tooltip: 'Save', onPressed: tabs.save),
-          IconButton(
-            icon: const Icon(Icons.play_arrow),
-            tooltip: 'Run (Long press for arguments)',
-            onPressed: tab == null ? null : _run,
-            onLongPress: tab == null ? null : _showRunWithArgsDialog,
-          ),
-          if (_isPreviewable(tab?.filePath))
-            IconButton(
-              icon: const Icon(Icons.open_in_browser),
-              tooltip: 'Preview',
-              onPressed: tab == null ? null : _openPreview,
-            ),
-          IconButton(
-            icon: const Icon(Icons.code),
-            tooltip: 'GitHub',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GitHubPage())),
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => SettingsPage(store: sl<SettingsStore>()))),
           ),
           PopupMenuButton<String>(
+            tooltip: 'More actions',
+            icon: const Icon(Icons.more_vert),
             onSelected: (value) async {
               switch (value) {
                 case 'github':
@@ -1138,66 +1113,106 @@ class _EditorPageState extends State<EditorPage>
                 case 'dev_servers':
                   ServerPanel.show(context);
                   break;
-                case 'keyboard_help':
-                  Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const KeyboardHelpPage()));
-                  break;
               }
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'command_palette', child: Text('Command Palette')),
-              const PopupMenuItem(value: 'terminal', child: Text('Terminal')),
+              const PopupMenuItem(
+                height: 40,
+                value: 'command_palette',
+                child: _MenuItem(icon: Icons.bolt, label: 'Command palette'),
+              ),
+              const PopupMenuItem(
+                height: 40,
+                value: 'global_search',
+                child: _MenuItem(
+                    icon: Icons.manage_search, label: 'Search in all files'),
+              ),
               const PopupMenuDivider(),
-              const PopupMenuItem(value: 'github', child: Text('GitHub')),
-              const PopupMenuItem(value: 'extensions', child: Text('Extensions')),
-              const PopupMenuItem(value: 'downloads', child: Text('Downloads')),
+              const PopupMenuItem(
+                height: 40,
+                value: 'terminal',
+                child: _MenuItem(icon: Icons.terminal, label: 'Terminal'),
+              ),
+              const PopupMenuItem(
+                height: 40,
+                value: 'extensions',
+                child: _MenuItem(icon: Icons.extension, label: 'Extensions'),
+              ),
+              const PopupMenuItem(
+                height: 40,
+                value: 'downloads',
+                child: _MenuItem(
+                    icon: Icons.memory,
+                    label: 'Runtimes (Python, Java, C…)'),
+              ),
+              const PopupMenuItem(
+                height: 40,
+                value: 'github',
+                child: _MenuItem(icon: Icons.source, label: 'Git & GitHub'),
+              ),
+              const PopupMenuItem(
+                height: 40,
+                value: 'dev_servers',
+                child: _MenuItem(
+                    icon: Icons.dns, label: 'Ports & live URLs'),
+              ),
               PopupMenuItem(
+                height: 40,
                 value: 'live_server',
-                child: Text(_liveServer?.isRunning == true
-                    ? 'Stop Live Server'
-                    : 'Start Live Server'),
+                child: _MenuItem(
+                  icon: Icons.wifi_tethering,
+                  label: _liveServer?.isRunning == true
+                      ? 'Stop live server'
+                      : 'Start live server',
+                ),
               ),
-              const PopupMenuItem(value: 'dev_servers', child: Text('Dev Servers')),
-              const PopupMenuItem(value: 'settings', child: Text('Settings')),
               const PopupMenuDivider(),
               const PopupMenuItem(
+                height: 40,
                 value: 'open_file',
-                child: Text('Open File...'),
+                child: _MenuItem(
+                    icon: Icons.insert_drive_file, label: 'Open a file'),
               ),
               const PopupMenuItem(
+                height: 40,
                 value: 'open_folder',
-                child: Text('Open Folder...'),
+                child: _MenuItem(
+                    icon: Icons.folder_open, label: 'Open a folder'),
               ),
               const PopupMenuItem(
+                height: 40,
                 value: 'extract_archive',
-                child: Text('Extract Project Archive...'),
+                child: _MenuItem(
+                    icon: Icons.folder_zip, label: 'Unzip a project'),
               ),
               PopupMenuItem(
+                height: 40,
                 value: 'export_file',
                 enabled: tab != null,
-                child: const Text('Export Current File…'),
-              ),
-              const PopupMenuItem(
-                value: 'global_search',
-                child: Text('Global Search'),
+                child: const _MenuItem(
+                    icon: Icons.ios_share, label: 'Export current file'),
               ),
               PopupMenuItem(
+                height: 40,
                 value: 'go_to_line',
                 enabled: tab != null,
-                child: const Text('Go to Line'),
+                child: const _MenuItem(
+                    icon: Icons.numbers, label: 'Go to line'),
               ),
               PopupMenuItem(
+                height: 40,
                 value: 'save_all',
                 enabled: tabs.hasUnsavedChanges,
-                child: const Text('Save All'),
+                child: const _MenuItem(
+                    icon: Icons.save, label: 'Save all files'),
               ),
               PopupMenuItem(
+                height: 40,
                 value: 'close_all',
                 enabled: tabs.tabs.isNotEmpty,
-                child: const Text('Close All'),
+                child: const _MenuItem(
+                    icon: Icons.close_fullscreen, label: 'Close all tabs'),
               ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(value: 'keyboard_help', child: Text('Keyboard Shortcuts')),
             ],
           ),
         ],
@@ -1219,6 +1234,17 @@ class _EditorPageState extends State<EditorPage>
       ),
       body: Column(
         children: [
+          _ActionBar(
+            canFind: tab != null,
+            canRun: tab != null,
+            canPreview: tab != null && _isPreviewable(tab.filePath),
+            showFind: _showFind,
+            onFind: () => setState(() => _showFind = !_showFind),
+            onRun: _run,
+            onRunWithArgs: _showRunWithArgsDialog,
+            onSave: tabs.save,
+            onPreview: _openPreview,
+          ),
           if (tabs.tabs.isNotEmpty)
             TabBar(
               controller: _tabController,
@@ -1239,13 +1265,14 @@ class _EditorPageState extends State<EditorPage>
                           label: 'Close tab ${tabs.tabs[i].name}',
                           child: Tooltip(
                             message: 'Close tab',
-                            child: GestureDetector(
+                            child: InkWell(
                               onTap: () => _closeTabWithConfirm(i),
+                              borderRadius: BorderRadius.circular(13),
                               child: Container(
-                                width: 44,
-                                height: 44,
+                                width: 26,
+                                height: 26,
                                 alignment: Alignment.center,
-                                child: const Icon(Icons.close, size: 18),
+                                child: const Icon(Icons.close, size: 16),
                               ),
                             ),
                           ),
@@ -1370,6 +1397,154 @@ class _EditorPageState extends State<EditorPage>
   }
 }
 
+/// Compact icon+label row. `ListTile` has a 56dp minimum height, which pushed
+/// the lower half of the overflow menu off screen and buried Settings.
+class _MenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MenuItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Labelled actions, because the icon-only row it replaces could not be read:
+/// a download arrow meant "install a language runtime", and `< >` meant GitHub.
+class _ActionBar extends StatelessWidget {
+  final bool canFind;
+  final bool canRun;
+  final bool canPreview;
+  final bool showFind;
+  final VoidCallback onFind;
+  final VoidCallback onRun;
+  final VoidCallback onRunWithArgs;
+  final VoidCallback onSave;
+  final VoidCallback onPreview;
+
+  const _ActionBar({
+    required this.canFind,
+    required this.canRun,
+    required this.canPreview,
+    required this.showFind,
+    required this.onFind,
+    required this.onRun,
+    required this.onRunWithArgs,
+    required this.onSave,
+    required this.onPreview,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainer,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Row(
+          children: [
+            _Action(
+              icon: Icons.folder_open,
+              label: 'Files',
+              onTap: () => Scaffold.of(context).openDrawer(),
+            ),
+            _Action(icon: Icons.save_outlined, label: 'Save', onTap: onSave),
+            _Action(
+              icon: showFind ? Icons.search_off : Icons.search,
+              label: showFind ? 'Hide find' : 'Find',
+              selected: showFind,
+              onTap: canFind ? onFind : null,
+            ),
+            _Action(
+              icon: Icons.play_arrow,
+              label: 'Run',
+              onTap: canRun ? onRun : null,
+              onLongPress: canRun ? onRunWithArgs : null,
+            ),
+            if (canPreview)
+              _Action(
+                icon: Icons.open_in_browser,
+                label: 'Preview',
+                onTap: onPreview,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Action extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final bool selected;
+
+  const _Action({
+    required this.icon,
+    required this.label,
+    this.onTap,
+    this.onLongPress,
+    this.selected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final enabled = onTap != null;
+    final color = !enabled
+        ? cs.onSurface.withValues(alpha: 0.3)
+        : selected
+            ? cs.primary
+            : cs.onSurface;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: color),
+              Text(label,
+                  style: TextStyle(fontSize: 10, color: color, height: 1.15)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StatusBar extends StatefulWidget {
   final EditorTab tab;
   final String langName;
@@ -1462,15 +1637,15 @@ class _StatusBarState extends State<_StatusBar> {
         child: Row(
           children: [
             Text('Ln $line, Col $col'),
-            const SizedBox(width: 16),
-            Text('${stats.lineCount} lines'),
-            const SizedBox(width: 16),
-            Flexible(child: Text(langName, overflow: TextOverflow.ellipsis)),
-            const Spacer(),
-            Flexible(child: Text('${stats.wordCount} words', overflow: TextOverflow.ellipsis)),
             const SizedBox(width: 12),
-            Flexible(child: Text('${text.length} chars', overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 16),
+            Text('${stats.lineCount} ${stats.lineCount == 1 ? 'line' : 'lines'}'),
+            const SizedBox(width: 12),
+            Text('${stats.wordCount} ${stats.wordCount == 1 ? 'word' : 'words'}'),
+            const SizedBox(width: 12),
+            Text('${text.length} chars'),
+            const Spacer(),
+            Flexible(child: Text(langName, overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 12),
             // Read-only, because there is nothing to change: files are read and
             // written as UTF-8, and the line ending in use is whatever the file
             // already contains. These used to be dropdowns that looked editable and

@@ -182,10 +182,12 @@ class _FileExplorerState extends State<FileExplorer> {
         actions: [
           IconButton(
             icon: Icon(
-              _showHidden ? Icons.visibility : Icons.visibility_off_outlined,
+              _showHidden
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
               size: 20,
             ),
-            tooltip: _showHidden ? 'Hide dotfiles' : 'Show dotfiles',
+            tooltip: _showHidden ? 'Hide hidden files' : 'Show hidden files',
             onPressed: () {
               final next = !_showHidden;
               widget.fs.showHidden = next;
@@ -195,7 +197,7 @@ class _FileExplorerState extends State<FileExplorer> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.note_add, size: 20),
+            icon: const Icon(Icons.note_add_outlined, size: 20),
             tooltip: 'New file',
             onPressed: () => _createEntry(isFolder: false),
           ),
@@ -205,8 +207,8 @@ class _FileExplorerState extends State<FileExplorer> {
             onPressed: () => _createEntry(isFolder: true),
           ),
           IconButton(
-            icon: const Icon(Icons.content_copy, size: 20),
-            tooltip: 'New file from template',
+            icon: const Icon(Icons.description_outlined, size: 20),
+            tooltip: 'New file from a template',
             onPressed: () => _createFromTemplate(),
           ),
         ],

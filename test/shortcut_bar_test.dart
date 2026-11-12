@@ -22,10 +22,9 @@ Widget wrap(CodeController controller, {int indentWidth = 4}) => MaterialApp(
     );
 
 void main() {
-  setUp(() => ShortcutBarState.deactivateCtrl());
-
   group('EditorShortcutBar', () {
-    testWidgets('inserting a bracket produces a matched pair with cursor inside',
+    testWidgets(
+        'inserting a bracket produces a matched pair with cursor inside',
         (tester) async {
       final controller = CodeController(text: 'printx');
 
@@ -80,7 +79,7 @@ void main() {
       await tester.pumpWidget(wrap(controller, indentWidth: 4));
       controller.selection = const TextSelection.collapsed(offset: 3);
       await tester.pump();
-      await tester.tap(find.text('TAB'));
+      await tester.tap(find.byIcon(Icons.keyboard_tab));
       await tester.pump();
       await tester.pump(const Duration(seconds: 6));
       addTearDown(controller.dispose);
@@ -88,25 +87,5 @@ void main() {
       expect(controller.text, 'if:    ');
       expect(controller.selection.baseOffset, 7);
     });
-
-    testWidgets('CTRL activates on tap and deactivates on next key',
-        (tester) async {
-      final controller = CodeController(text: 'hello');
-
-      await tester.pumpWidget(wrap(controller));
-      await tester.pump();
-
-      await tester.tap(find.text('CTRL'));
-      await tester.pump();
-      expect(ShortcutBarState.ctrlActive, isTrue,
-          reason: 'CTRL should be active after tap');
-
-      await tester.tap(find.text('{'));
-      await tester.pump();
-      expect(ShortcutBarState.ctrlActive, isFalse,
-          reason: 'CTRL should deactivate after next key');
-      addTearDown(controller.dispose);
-    });
-
   });
 }

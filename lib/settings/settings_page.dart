@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../core/constants.dart';
 import '../core/crash_reporter.dart';
 import '../editor/highlighting/syntax_themes.dart';
+import '../editor/keyboard_help_page.dart';
 import '../execution/termux_runner.dart';
 import 'settings_store.dart';
 
@@ -73,11 +74,35 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        children: [
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Settings'),
+          bottom: const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [
+              Tab(text: 'Editor'),
+              Tab(text: 'Appearance'),
+              Tab(text: 'Git & runs'),
+              Tab(text: 'About'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: _editorSection()),
+            ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: _appearanceSection()),
+            ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: _gitSection()),
+            ListView(padding: const EdgeInsets.symmetric(vertical: 8), children: _aboutSection()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _editorSection() => [
           _sectionHeader('Editor'),
           ListTile(
             title: const Text('Font size'),
@@ -121,6 +146,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ListTile(
             title: const Text('Tab size'),
             trailing: SegmentedButton<int>(
+              showSelectedIcon: false,
               segments: const [
                 ButtonSegment(value: 2, label: Text('2')),
                 ButtonSegment(value: 4, label: Text('4')),
@@ -150,7 +176,7 @@ class _SettingsPageState extends State<SettingsPage> {
               widget.store.showLineNumbers = v;
             },
           ),
-          const Divider(height: 8),
+
           _sectionHeader('Auto-save'),
           SwitchListTile(
             title: const Text('Auto-save'),
@@ -164,19 +190,29 @@ class _SettingsPageState extends State<SettingsPage> {
           if (_autoSave)
             ListTile(
               title: const Text('Auto-save delay'),
-              subtitle: Slider(
-                min: 500,
-                max: 5000,
-                divisions: 9,
-                label: '${(_autoSaveDelay / 1000).toStringAsFixed(1)}s',
-                value: _autoSaveDelay.toDouble(),
-                onChanged: (v) {
-                  setState(() => _autoSaveDelay = v.round());
-                  widget.store.autoSaveDelayMs = v.round();
-                },
+              subtitle: Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      min: 500,
+                      max: 5000,
+                      divisions: 9,
+                      label: '${(_autoSaveDelay / 1000).toStringAsFixed(1)}s',
+                      value: _autoSaveDelay.toDouble(),
+                      onChanged: (v) {
+                        setState(() => _autoSaveDelay = v.round());
+                        widget.store.autoSaveDelayMs = v.round();
+                      },
+                    ),
+                  ),
+                  Text('${(_autoSaveDelay / 1000).toStringAsFixed(1)}s',
+                      style: const TextStyle(fontSize: 12)),
+                ],
               ),
             ),
-          const Divider(height: 8),
+  ];
+
+  List<Widget> _appearanceSection() => [
           _sectionHeader('Appearance'),
           RadioGroup<ThemeMode>(
             groupValue: _themeMode,
@@ -198,7 +234,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
-          const Divider(height: 8),
+
           _sectionHeader('Syntax Theme'),
           RadioGroup<String>(
             groupValue: _syntaxThemeId,
@@ -214,7 +250,7 @@ class _SettingsPageState extends State<SettingsPage> {
               )).toList(),
             ),
           ),
-          const Divider(height: 8),
+
           _sectionHeader('Privacy'),
           SwitchListTile(
             title: const Text('Send crash reports'),
@@ -225,7 +261,9 @@ class _SettingsPageState extends State<SettingsPage> {
               CrashReporter.setCollectionEnabled(v);
             },
           ),
-          const Divider(height: 8),
+  ];
+
+  List<Widget> _gitSection() => [
           _sectionHeader('Git Identity'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -253,7 +291,7 @@ class _SettingsPageState extends State<SettingsPage> {
               onChanged: (v) => widget.store.gitEmail = v,
             ),
           ),
-          const Divider(height: 8),
+
           _sectionHeader('Termux Integration'),
           if (_termuxChecking)
             const ListTile(
@@ -288,7 +326,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: const Text('Setup'),
               ),
             ),
-          const Divider(height: 8),
+
           _sectionHeader('Workspace'),
           ListTile(
             title: Text('Files live in a private folder on this phone'),
@@ -298,9 +336,18 @@ class _SettingsPageState extends State<SettingsPage> {
               'release.',
             ),
           ),
-          const Divider(height: 8),
+  ];
+
+  List<Widget> _aboutSection() => [
           _sectionHeader('About'),
           ListTile(title: const Text('B Code'), subtitle: Text('Version ${_version.isEmpty ? '' : _version.split('+').first} · com.bcode.editor')),
+          ListTile(
+            leading: const Icon(Icons.keyboard),
+            title: const Text('Keyboard shortcuts'),
+            subtitle: const Text('Keys for undo, find, run and more'),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const KeyboardHelpPage())),
+          ),
           ListTile(
             leading: const Icon(Icons.bug_report_outlined),
             title: const Text('Report a Bug'),
@@ -314,11 +361,8 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () => _showSupportDevDialog(context),
           ),
           const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
 
+  ];
   void _setTheme(ThemeMode mode) {
     setState(() => _themeMode = mode);
     widget.store.themeMode = mode;

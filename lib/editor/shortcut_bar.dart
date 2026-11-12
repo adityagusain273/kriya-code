@@ -24,32 +24,14 @@ class EditorShortcutBar extends StatefulWidget {
 }
 
 class ShortcutBarState extends State<EditorShortcutBar> {
-  static bool ctrlActive = false;
-
-  static void deactivateCtrl() {
-    ctrlActive = false;
-  }
-
   static const _pairs = {'(': ')', '[': ']', '{': '}', '"': '"', "'": "'"};
 
   static const _rows = <List<String>>[
-    ['CTRL', 'TAB', 'UNDO', 'REDO', 'FIND', 'SNIP', 'SAVE', '{', '}', '('],
-    [')', '[', ']', '<', '>', '"', "'", ';'],
-    [':', '=', '&', '|', '/', '!', ',', '.'],
+    ['TAB', 'UNDO', 'REDO', 'FIND', 'SNIP', 'SAVE'],
+    ['(', ')', '{', '}', '[', ']', '<', '>', '"', "'", ';', ':', '=', '&', '|', '/'],
   ];
 
   void _onKey(String key) {
-    if (key == 'CTRL') {
-      setState(() => ctrlActive = !ctrlActive);
-      return;
-    }
-
-    if (ctrlActive) {
-      ctrlActive = false;
-      setState(() {});
-      return;
-    }
-
     switch (key) {
       case 'TAB':
         _insert(' ' * widget.indentWidth);
@@ -122,17 +104,21 @@ class ShortcutBarState extends State<EditorShortcutBar> {
         children: [
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Text('Snippets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            child: Text('Snippets',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           ),
           for (final snippet in snippets)
             ListTile(
               dense: true,
               leading: Text(
                 snippet.prefix,
-                style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontWeight: FontWeight.w600),
               ),
               title: Text(snippet.label),
-              subtitle: snippet.description != null ? Text(snippet.description!) : null,
+              subtitle: snippet.description != null
+                  ? Text(snippet.description!)
+                  : null,
               onTap: () {
                 Navigator.pop(ctx);
                 final body = SnippetService.applySnippet(snippet.body);
@@ -146,10 +132,11 @@ class ShortcutBarState extends State<EditorShortcutBar> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF171C23),
-        border: Border(top: BorderSide(color: Colors.white10)),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainer,
+        border: Border(top: BorderSide(color: cs.outlineVariant)),
       ),
       child: SafeArea(
         top: false,
@@ -163,7 +150,6 @@ class ShortcutBarState extends State<EditorShortcutBar> {
                     Expanded(
                       child: _Key(
                         label: key,
-                        isCtrlActive: key == 'CTRL' && ctrlActive,
                         onTap: () => _onKey(key),
                       ),
                     ),
@@ -179,77 +165,70 @@ class ShortcutBarState extends State<EditorShortcutBar> {
 class _Key extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
-  final bool isCtrlActive;
 
-  const _Key({
-    required this.label,
-    required this.onTap,
-    this.isCtrlActive = false,
-  });
+  const _Key({required this.label, required this.onTap});
 
-  static const _controlKeys = {'CTRL', 'TAB', 'UNDO', 'REDO', 'FIND', 'SAVE', 'SNIP'};
+  static const _controlKeys = {'TAB', 'UNDO', 'REDO', 'FIND', 'SAVE', 'SNIP'};
+
+  static const _icons = <String, IconData>{
+    'TAB': Icons.keyboard_tab,
+    'UNDO': Icons.undo,
+    'REDO': Icons.redo,
+    'FIND': Icons.search,
+    'SAVE': Icons.save_outlined,
+    'SNIP': Icons.bolt,
+  };
+
+  static const _captions = <String, String>{
+    'TAB': 'Tab',
+    'UNDO': 'Undo',
+    'REDO': 'Redo',
+    'FIND': 'Find',
+    'SAVE': 'Save',
+    'SNIP': 'Insert',
+  };
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final isControl = _controlKeys.contains(label);
-    final semanticLabel = switch (label) {
-      'CTRL' => 'Control key${isCtrlActive ? ', active' : ''}',
-      'TAB' => 'Tab key',
-      'UNDO' => 'Undo',
-      'REDO' => 'Redo',
-      'FIND' => 'Find',
-      'SAVE' => 'Save file',
-      'SNIP' => 'Snippets',
-      _ => 'Insert $label',
-    };
+    final icon = _icons[label];
+    final color = cs.onSurface.withValues(alpha: 0.85);
     return Semantics(
       button: true,
-      label: semanticLabel,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            height: 36,
-            alignment: Alignment.center,
+      label: isControl ? _captions[label] : 'Insert $label',
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 40,
           decoration: BoxDecoration(
-            color: isCtrlActive ? const Color(0xFF2A5DB0) : null,
-            border: const Border(
-              right: BorderSide(color: Colors.white10, width: 0.5),
-              bottom: BorderSide(color: Colors.white10, width: 0.5),
+            border: Border(
+              right: BorderSide(color: cs.outlineVariant, width: 0.5),
             ),
           ),
-          child: switch (label) {
-            'CTRL' => Text('CTRL',
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: isCtrlActive
-                        ? Colors.white
-                        : const Color(0xFF5B9BF5))),
-            'TAB' => const Text('TAB',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white70)),
-            'UNDO' => const Icon(Icons.undo, size: 16, color: Colors.white70),
-            'REDO' => const Icon(Icons.redo, size: 16, color: Colors.white70),
-            'FIND' =>
-                const Icon(Icons.search, size: 16, color: Colors.white70),
-            'SAVE' => const Icon(Icons.save_outlined,
-                size: 16, color: Colors.white70),
-            'SNIP' => const Icon(Icons.code,
-                size: 16, color: Colors.white70),
-            _ => Text(label,
-                style: TextStyle(
-                  fontSize: isControl ? 12 : 16,
-                  fontFamily: 'monospace',
-                  color: Colors.white,
-                )),
-          },
+          child: icon == null
+              ? Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontFamily: 'monospace',
+                      color: color,
+                    ),
+                  ),
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 16, color: color),
+                    Text(
+                      _captions[label] ?? '',
+                      style: TextStyle(fontSize: 9, color: color, height: 1.1),
+                    ),
+                  ],
+                ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
