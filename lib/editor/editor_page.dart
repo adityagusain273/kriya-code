@@ -799,6 +799,11 @@ class _EditorPageState extends State<EditorPage>
           ),
         );
 
+        final isZoomInstalled = sl<ExtensionInstallStore>().isInstalled('bcode.zoom');
+        // When pinch-to-zoom is active, line numbers are rendered by BCodeZoomView's
+        // fixed unscaled gutter so line numbers never blow up or drift into the code.
+        final showGutterInEditor = showLineNumbers && !isZoomInstalled;
+
         final editor = CodeTheme(
           data: CodeThemeData(styles: syntaxTheme),
           child: CodeField(
@@ -809,12 +814,12 @@ class _EditorPageState extends State<EditorPage>
             background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
             gutterStyle: GutterStyle(
               background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
-              showLineNumbers: showLineNumbers,
+              showLineNumbers: showGutterInEditor,
               showFoldingHandles: false,
               showErrors: false,
-              width: showLineNumbers ? 80 : 0,
-              margin: showLineNumbers ? 8 : 0,
-              textStyle: TextStyle(
+              width: showGutterInEditor ? 80 : 0,
+              margin: showGutterInEditor ? 8 : 0,
+              textStyle: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 12,
                 color: Colors.white38,
@@ -834,12 +839,14 @@ class _EditorPageState extends State<EditorPage>
           ],
         );
 
-        if (sl<ExtensionInstallStore>().isInstalled('bcode.zoom')) {
-          // Wraps `combined`, not `editor`: the syntax-highlighting overlay is a
-          // sibling of the text field, and returning only the editor dropped it, so
-          // turning the extension on made the file lose all its colours.
+        if (isZoomInstalled) {
           return BCodeZoomView(
             key: ValueKey('zoom_${tab.filePath}'),
+            controller: tab.controller,
+            showLineNumbers: showLineNumbers,
+            fontSize: settings.fontSize,
+            fontFamily: fontFamily,
+            gutterBackground: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
             child: combined,
           );
         }

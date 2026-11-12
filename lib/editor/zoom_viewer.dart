@@ -1,30 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_code_editor/flutter_code_editor.dart';
 
-/// Wraps the editor so it can be pinched to zoom.
-///
-/// Two problems had to be solved for this to work at all:
-///
-///  * **The content is a text field**, which installs its own gesture recognisers
-///    for selection and scrolling. [InteractiveViewer] only sees a pinch if its
-///    [ScaleGestureRecognizer] is allowed to claim the gesture arena, so the
-///    recogniser is supplied explicitly instead of relying on the defaults.
-///  * **Scaling a text field scales the text but not the layout around it.** The
-///    content is laid out once and transformed, which keeps the caret and the
-///    selection where the user expects them instead of re-flowing the whole
-///    document on every frame.
-///
-/// [minScale] of 1 keeps the unzoomed appearance identical to having no viewer at
-/// all, so enabling the extension changes nothing until the user pinches.
+/// Wraps the editor so the code can be pinched to zoom in and out,
+/// while keeping line numbers fixed at their standard readable size in the gutter.
 class BCodeZoomView extends StatefulWidget {
   final Widget child;
+  final CodeController? controller;
+  final bool showLineNumbers;
+  final double fontSize;
+  final String? fontFamily;
+  final Color gutterBackground;
   final double minScale;
   final double maxScale;
 
   const BCodeZoomView({
     super.key,
     required this.child,
-    this.minScale = 1.0,
-    this.maxScale = 4.0,
+    this.controller,
+    this.showLineNumbers = false,
+    this.fontSize = 14.0,
+    this.fontFamily,
+    this.gutterBackground = Colors.transparent,
+    this.minScale = 0.5,
+    this.maxScale = 3.0,
   });
 
   @override
@@ -36,6 +34,7 @@ class _BCodeZoomViewState extends State<BCodeZoomView> {
 
   /// Zoom currently applied, so the on-screen indicator can be shown and reset.
   double _scale = 1.0;
+  double _scrollOffset = 0.0;
 
   @override
   void initState() {
@@ -55,56 +54,136 @@ class _BCodeZoomViewState extends State<BCodeZoomView> {
     if ((nextScale - _scale).abs() > 0.001) {
       _scale = nextScale;
       if (mounted) setState(() {});
+    } else if (mounted) {
+      setState(() {});
     }
   }
 
   void _reset() {
     _controller.value = Matrix4.identity();
-    // setState will be called by _syncScale
+  }
+
+  double _calculateLineHeight() {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '0',
+        style: TextStyle(
+          fontFamily: widget.fontFamily ?? 'monospace',
+          fontSize: widget.fontSize,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    return tp.preferredLineHeight;
+  }
+
+  Widget _buildFixedGutter() {
+    final controller = widget.controller;
+    if (controller == null || !widget.showLineNumbers) {
+      return const SizedBox.shrink();
+    }
+
+    final lineCount = controller.code.lines.length;
+    final baseLineHeight = _calculateLineHeight();
+    final lineHeight = baseLineHeight * _scale;
+    final ty = _controller.value.getTranslation().y;
+    final scrollY = _scrollOffset * _scale;
+    final topPadding = 16.0 * _scale;
+
+    return Container(
+      width: 48,
+      color: widget.gutterBackground,
+      child: ClipRect(
+        child: AnimatedBuilder(
+          animation: Listenable.merge([controller, _controller]),
+          builder: (context, _) {
+            return Transform.translate(
+              offset: Offset(0, ty - scrollY),
+              child: Padding(
+                padding: EdgeInsets.only(top: topPadding, bottom: topPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: List.generate(lineCount, (index) {
+                    return SizedBox(
+                      height: lineHeight,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Text(
+                            '${index + 1}',
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                              color: Colors.white38,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return Row(
       children: [
-        InteractiveViewer(
-          transformationController: _controller,
-          minScale: widget.minScale,
-          maxScale: widget.maxScale,
-          // By setting boundaryMargin to zero, we prevent the user from panning
-          // the zoomed document off-screen (so it never "floats in the air").
-          // Additionally, at scale 1.0, the child perfectly fits the viewport,
-          // so InteractiveViewer won't steal single-finger pan gestures, allowing
-          // the text field to scroll normally.
-          boundaryMargin: EdgeInsets.zero,
-          // We use Clip.hardEdge so that when the user zooms in, the scaled text
-          // is properly contained within the editor's viewport and does not 
-          // draw over the tab bar or app bar.
-          clipBehavior: Clip.hardEdge,
-          panEnabled: true,
-          scaleEnabled: true,
-          child: widget.child,
-        ),
-        if (_scale > 1.02)
-          Positioned(
-            right: 12,
-            bottom: 12,
-            child: Material(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(20),
-              child: InkWell(
-                onTap: _reset,
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  child: Text(
-                    '${(_scale * 100).round()}%',
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
+        _buildFixedGutter(),
+        Expanded(
+          child: Stack(
+            children: [
+              NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification.metrics.axis == Axis.vertical) {
+                    final newPixels = notification.metrics.pixels;
+                    if ((newPixels - _scrollOffset).abs() > 0.5) {
+                      _scrollOffset = newPixels;
+                      if (mounted) setState(() {});
+                    }
+                  }
+                  return false;
+                },
+                child: InteractiveViewer(
+                  transformationController: _controller,
+                  minScale: widget.minScale,
+                  maxScale: widget.maxScale,
+                  boundaryMargin: const EdgeInsets.all(1000),
+                  clipBehavior: Clip.hardEdge,
+                  panEnabled: true,
+                  scaleEnabled: true,
+                  child: widget.child,
                 ),
               ),
-            ),
+              if ((_scale - 1.0).abs() > 0.02)
+                Positioned(
+                  right: 12,
+                  bottom: 12,
+                  child: Material(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(20),
+                    child: InkWell(
+                      onTap: _reset,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: Text(
+                          '${(_scale * 100).round()}%',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
+        ),
       ],
     );
   }

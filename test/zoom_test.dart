@@ -141,4 +141,60 @@ void main() {
     expect(controllerOf(tester).value.getMaxScaleOnAxis(), greaterThan(1.0));
     expect(find.textContaining('%'), findsOneWidget);
   });
+
+  testWidgets('allows zooming out below 100% and displays percentage', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BCodeZoomView(
+          minScale: 0.5,
+          child: const SizedBox(width: 200, height: 200),
+        ),
+      ),
+    ));
+
+    controllerOf(tester).value = Matrix4.identity()..scaleByDouble(0.7, 0.7, 0.7, 1);
+    await tester.pump();
+
+    expect(find.text('70%'), findsOneWidget);
+
+    await tester.tap(find.text('70%'));
+    await tester.pump();
+
+    expect(find.textContaining('%'), findsNothing);
+    expect(controllerOf(tester).value.getMaxScaleOnAxis(), 1.0);
+  });
+
+  testWidgets('line numbers in fixed gutter keep 12px font size and do not scale with code', (tester) async {
+    final controller = CodeController(text: 'line 1\nline 2\nline 3\n');
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BCodeZoomView(
+          controller: controller,
+          showLineNumbers: true,
+          minScale: 0.5,
+          maxScale: 3.0,
+          child: const SizedBox(width: 300, height: 300),
+        ),
+      ),
+    ));
+
+    // Initially line numbers 1, 2, 3 are rendered
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+
+    final text1 = tester.widget<Text>(find.text('1'));
+    expect(text1.style?.fontSize, 12.0);
+
+    // Zoom the code to 200%
+    controllerOf(tester).value = Matrix4.identity()..scaleByDouble(2.0, 2.0, 2.0, 1);
+    await tester.pump();
+
+    // Line number font size remains 12px (does not scale to 24px)
+    final text1Zoomed = tester.widget<Text>(find.text('1'));
+    expect(text1Zoomed.style?.fontSize, 12.0);
+    expect(find.text('200%'), findsOneWidget);
+  });
 }
