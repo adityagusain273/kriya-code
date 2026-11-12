@@ -818,11 +818,11 @@ class _EditorPageState extends State<EditorPage>
               showLineNumbers: showLineNumbers,
               showFoldingHandles: false,
               showErrors: false,
-              width: showLineNumbers ? 80 : 0,
+              width: showLineNumbers ? 48 + (fontSize * 2) : 0,
               margin: showLineNumbers ? 8 : 0,
-              textStyle: const TextStyle(
+              textStyle: TextStyle(
                 fontFamily: 'monospace',
-                fontSize: 12,
+                fontSize: fontSize * 0.85,
                 color: Colors.white38,
               ),
             ),

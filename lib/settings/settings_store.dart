@@ -67,7 +67,7 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get wordWrap => prefs.getBool('word_wrap') ?? false;
+  bool get wordWrap => prefs.getBool('word_wrap') ?? true;
   set wordWrap(bool v) {
     prefs.setBool('word_wrap', v);
     notifyListeners();
