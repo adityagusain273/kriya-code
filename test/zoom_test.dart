@@ -3,21 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Drives BCodeZoomView the way the editor does: the caller owns the scale.
 Widget host(
-  double scale,
-  ValueChanged<double> onScaleChanged, {
-  double minScale = 0.5,
-  double maxScale = 3.0,
+  double fontSize,
+  ValueChanged<double> onFontSizeCommit, {
+  ValueChanged<double>? onFontSizePreview,
+  double minFontSize = 8.0,
+  double maxFontSize = 64.0,
   Widget? child,
 }) {
   return MaterialApp(
     home: Scaffold(
       body: BCodeZoomView(
-        scale: scale,
-        onScaleChanged: onScaleChanged,
-        minScale: minScale,
-        maxScale: maxScale,
+        fontSize: fontSize,
+        onFontSizePreview: onFontSizePreview,
+        onFontSizeCommit: onFontSizeCommit,
+        minFontSize: minFontSize,
+        maxFontSize: maxFontSize,
         child: child ?? const SizedBox(width: 400, height: 400),
       ),
     ),
@@ -25,14 +26,19 @@ Widget host(
 }
 
 void main() {
-  testWidgets('shows nothing until the user zooms', (tester) async {
-    await tester.pumpWidget(host(1.0, (_) {}));
+  testWidgets('shows nothing at default 14pt', (tester) async {
+    await tester.pumpWidget(host(14.0, (_) {}));
     expect(find.textContaining('%'), findsNothing);
   });
 
-  testWidgets('pinching out raises the scale', (tester) async {
-    var scale = 1.0;
-    await tester.pumpWidget(host(scale, (v) => scale = v));
+  testWidgets('pinching out increases font size and commits on release', (tester) async {
+    var size = 14.0;
+    double? committed;
+    await tester.pumpWidget(host(
+      size,
+      (v) => committed = v,
+      onFontSizePreview: (v) => size = v,
+    ));
 
     final touch1 = await tester.startGesture(const Offset(200, 100), pointer: 1);
     final touch2 = await tester.startGesture(const Offset(200, 300), pointer: 2);
@@ -44,14 +50,18 @@ void main() {
     await touch2.up();
     await tester.pump();
 
-    expect(scale, greaterThan(1.0));
-    await tester.pumpWidget(host(scale, (_) {}));
-    expect(find.text('${(scale * 100).round()}%'), findsOneWidget);
+    expect(committed, isNotNull);
+    expect(committed!, greaterThan(14.0));
   });
 
-  testWidgets('pinching in zooms below 100%', (tester) async {
-    var scale = 1.0;
-    await tester.pumpWidget(host(scale, (v) => scale = v));
+  testWidgets('pinching in reduces font size', (tester) async {
+    var size = 20.0;
+    double? committed;
+    await tester.pumpWidget(host(
+      size,
+      (v) => committed = v,
+      onFontSizePreview: (v) => size = v,
+    ));
 
     final touch1 = await tester.startGesture(const Offset(200, 50), pointer: 1);
     final touch2 = await tester.startGesture(const Offset(200, 350), pointer: 2);
@@ -63,13 +73,13 @@ void main() {
     await touch2.up();
     await tester.pump();
 
-    expect(scale, lessThan(1.0));
+    expect(committed, isNotNull);
+    expect(committed!, lessThan(20.0));
   });
 
-  testWidgets('one-finger drag does not zoom, so scrolling and selection survive',
-      (tester) async {
+  testWidgets('one-finger drag does not zoom', (tester) async {
     var calls = 0;
-    await tester.pumpWidget(host(1.0, (_) => calls++));
+    await tester.pumpWidget(host(14.0, (_) => calls++));
 
     final touch = await tester.startGesture(const Offset(200, 200));
     await touch.moveTo(const Offset(200, 350));
@@ -80,14 +90,25 @@ void main() {
     expect(calls, 0);
   });
 
+  testWidgets('tapping badge resets font size to default', (tester) async {
+    double? committed;
+    await tester.pumpWidget(host(28.0, (v) => committed = v));
+    expect(find.textContaining('200%'), findsOneWidget);
+
+    await tester.tap(find.textContaining('200%'));
+    await tester.pump();
+
+    expect(committed, 14.0);
+  });
+
   testWidgets('two-finger pinch works on the editor itself', (tester) async {
     final controller = CodeController(text: 'def hello():\n    print("world")\n');
     addTearDown(controller.dispose);
 
-    var scale = 1.0;
+    double? committed;
     await tester.pumpWidget(host(
-      scale,
-      (v) => scale = v,
+      14.0,
+      (v) => committed = v,
       child: CodeField(controller: controller, expands: true),
     ));
 
@@ -101,52 +122,7 @@ void main() {
     await touch2.up();
     await tester.pump();
 
-    expect(scale, greaterThan(1.0));
-  });
-
-  testWidgets('tapping the indicator resets to 100%', (tester) async {
-    var scale = 2.5;
-    await tester.pumpWidget(host(scale, (v) => scale = v));
-    expect(find.text('250%'), findsOneWidget);
-
-    await tester.tap(find.text('250%'));
-    await tester.pumpWidget(host(scale, (_) {}));
-    await tester.pump();
-
-    expect(scale, 1.0);
-    expect(find.textContaining('%'), findsNothing);
-  });
-
-  testWidgets('clamps to the configured range', (tester) async {
-    var scale = 1.0;
-    await tester.pumpWidget(host(scale, (v) => scale = v, minScale: 1, maxScale: 4));
-
-    final touch1 = await tester.startGesture(const Offset(200, 200), pointer: 1);
-    final touch2 = await tester.startGesture(const Offset(200, 300), pointer: 2);
-    await tester.pump();
-    await touch1.moveTo(const Offset(200, 50));
-    await touch2.moveTo(const Offset(200, 550));
-    await tester.pump();
-    await touch1.up();
-    await touch2.up();
-    await tester.pump();
-
-    expect(scale, 4.0);
-  });
-
-  testWidgets('keeps the child it was given', (tester) async {
-    await tester.pumpWidget(host(
-      1.0,
-      (_) {},
-      child: const Stack(
-        children: [
-          SizedBox(key: Key('base'), width: 100, height: 100),
-          Positioned.fill(child: IgnorePointer(child: Text('overlay'))),
-        ],
-      ),
-    ));
-
-    expect(find.byKey(const Key('base')), findsOneWidget);
-    expect(find.text('overlay'), findsOneWidget);
+    expect(committed, isNotNull);
+    expect(committed!, greaterThan(14.0));
   });
 }

@@ -1,29 +1,31 @@
 import 'package:flutter/material.dart';
 
-/// Wraps the editor so a two-finger pinch changes the code size.
+/// Wraps the editor so a two-finger pinch dynamically scales the font size,
+/// matching the Acode pinch-to-zoom extension architecture.
 ///
-/// The zoom factor is owned by the caller and applied to the editor font size,
-/// so text reflows and the caret keeps landing where it is tapped. Transforming
-/// the painted editor instead (as an InteractiveViewer does) moved the whole
-/// panel around without ever feeling like the code zoomed.
-///
-/// Raw pointer events are used deliberately: a ScaleGestureRecognizer competes
-/// in the gesture arena and would steal the editor's one-finger scroll and
-/// text selection. A Listener observes the same pointers without claiming them.
+/// Features:
+/// - Direct font-size scaling (text reflows naturally, line numbers align)
+/// - Threshold and move confirmation to prevent accidental zooms while scrolling
+/// - Throttled preview updates during gestures
+/// - Clamped font limits (min 8.0, max 64.0)
+/// - Persists directly to settings upon gesture completion (onZoomEnd)
+/// - Reset to default on chip tap
 class BCodeZoomView extends StatefulWidget {
   final Widget child;
-  final double scale;
-  final ValueChanged<double>? onScaleChanged;
-  final double minScale;
-  final double maxScale;
+  final double fontSize;
+  final ValueChanged<double>? onFontSizePreview;
+  final ValueChanged<double>? onFontSizeCommit;
+  final double minFontSize;
+  final double maxFontSize;
 
   const BCodeZoomView({
     super.key,
     required this.child,
-    this.scale = 1.0,
-    this.onScaleChanged,
-    this.minScale = 0.5,
-    this.maxScale = 3.0,
+    required this.fontSize,
+    this.onFontSizePreview,
+    this.onFontSizeCommit,
+    this.minFontSize = 8.0,
+    this.maxFontSize = 64.0,
   });
 
   @override
@@ -33,44 +35,91 @@ class BCodeZoomView extends StatefulWidget {
 class _BCodeZoomViewState extends State<BCodeZoomView> {
   final Map<int, Offset> _pointers = {};
   double _startDistance = 0;
-  double? _startScale;
+  double _startFontSize = 14.0;
+  double _currentFontSize = 14.0;
+  bool _pinching = false;
+  bool _moved = false;
+  int _lastUpdateMs = 0;
 
-  void _resetBaseline() {
-    if (_pointers.length == 2) {
-      final positions = _pointers.values.toList();
-      _startDistance = (positions[0] - positions[1]).distance;
-      _startScale = widget.scale;
-    } else {
-      _startDistance = 0;
-      _startScale = null;
+  static const double _moveThreshold = 10.0;
+  static const int _throttleMs = 30;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentFontSize = widget.fontSize;
+  }
+
+  @override
+  void didUpdateWidget(BCodeZoomView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_pinching && widget.fontSize != oldWidget.fontSize) {
+      _currentFontSize = widget.fontSize;
     }
   }
 
   void _onPointerDown(PointerDownEvent event) {
     _pointers[event.pointer] = event.position;
-    _resetBaseline();
+    if (_pointers.length == 2) {
+      final positions = _pointers.values.toList();
+      _startDistance = (positions[0] - positions[1]).distance;
+      _startFontSize = widget.fontSize;
+      _currentFontSize = widget.fontSize;
+      _pinching = true;
+      _moved = false;
+      _lastUpdateMs = 0;
+    }
   }
 
   void _onPointerMove(PointerMoveEvent event) {
     if (!_pointers.containsKey(event.pointer)) return;
     _pointers[event.pointer] = event.position;
-    final startScale = _startScale;
-    if (_pointers.length != 2 || startScale == null || _startDistance <= 0) return;
+
+    if (!_pinching || _pointers.length != 2 || _startDistance <= 0) return;
 
     final positions = _pointers.values.toList();
-    final distance = (positions[0] - positions[1]).distance;
-    final next = (startScale * distance / _startDistance)
-        .clamp(widget.minScale, widget.maxScale);
-    widget.onScaleChanged?.call(next);
+    final currentDistance = (positions[0] - positions[1]).distance;
+    final delta = currentDistance - _startDistance;
+
+    if (!_moved) {
+      if (delta.abs() < _moveThreshold) {
+        return;
+      }
+      _moved = true;
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastUpdateMs < _throttleMs) {
+      return;
+    }
+    _lastUpdateMs = now;
+
+    final nextSize = (_startFontSize * (currentDistance / _startDistance))
+        .clamp(widget.minFontSize, widget.maxFontSize);
+
+    if ((nextSize - _currentFontSize).abs() > 0.2) {
+      setState(() => _currentFontSize = nextSize);
+      widget.onFontSizePreview?.call(nextSize);
+    }
   }
 
   void _onPointerEnd(PointerEvent event) {
     _pointers.remove(event.pointer);
-    _resetBaseline();
+    if (_pinching && _pointers.length < 2) {
+      _pinching = false;
+      if (_moved) {
+        widget.onFontSizeCommit?.call(_currentFontSize);
+      }
+      _startDistance = 0;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final defaultSize = 14.0;
+    final ratio = _currentFontSize / defaultSize;
+    final showBadge = (ratio - 1.0).abs() > 0.08;
+
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: _onPointerDown,
@@ -80,7 +129,7 @@ class _BCodeZoomViewState extends State<BCodeZoomView> {
       child: Stack(
         children: [
           widget.child,
-          if ((widget.scale - 1.0).abs() > 0.02)
+          if (showBadge)
             Positioned(
               right: 12,
               bottom: 12,
@@ -88,12 +137,16 @@ class _BCodeZoomViewState extends State<BCodeZoomView> {
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20),
                 child: InkWell(
-                  onTap: () => widget.onScaleChanged?.call(1.0),
+                  onTap: () {
+                    setState(() => _currentFontSize = defaultSize);
+                    widget.onFontSizePreview?.call(defaultSize);
+                    widget.onFontSizeCommit?.call(defaultSize);
+                  },
                   borderRadius: BorderRadius.circular(20),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     child: Text(
-                      '${(widget.scale * 100).round()}%',
+                      '${(ratio * 100).round()}% (${_currentFontSize.round()}pt)',
                       style: Theme.of(context).textTheme.labelSmall,
                     ),
                   ),

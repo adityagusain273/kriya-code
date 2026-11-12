@@ -61,8 +61,8 @@ class _EditorPageState extends State<EditorPage>
   /// let the field scroll its caret into view.
   final FocusNode _editorFocus = FocusNode();
 
-  /// Multiplier applied to the editor font size by the pinch-to-zoom extension.
-  double _zoomScale = 1.0;
+  /// Live preview of editor font size during pinch-to-zoom gestures.
+  double? _previewFontSize;
   final FileExplorerController _explorerController = FileExplorerController();
 
   @override
@@ -782,7 +782,7 @@ class _EditorPageState extends State<EditorPage>
         // We inject the font family and size into every token style to prevent them from reverting to default.
         final syntaxTheme = <String, TextStyle>{};
         final fontSize =
-            settings.fontSize * (isZoomInstalled ? _zoomScale : 1.0);
+            _previewFontSize ?? settings.fontSize;
         baseTheme.forEach((key, style) {
           syntaxTheme[key] = style.copyWith(
             fontFamily: fontFamily,
@@ -842,8 +842,12 @@ class _EditorPageState extends State<EditorPage>
 
         if (isZoomInstalled) {
           return BCodeZoomView(
-            scale: _zoomScale,
-            onScaleChanged: (value) => setState(() => _zoomScale = value),
+            fontSize: settings.fontSize,
+            onFontSizePreview: (value) => setState(() => _previewFontSize = value),
+            onFontSizeCommit: (value) {
+              setState(() => _previewFontSize = null);
+              settings.fontSize = value;
+            },
             child: combined,
           );
         }

@@ -21,7 +21,10 @@ Widget zoomDecidingCodeView({
     builder: (context, _) {
       final child = const SizedBox(key: Key('editor'), width: 100, height: 100);
       if (extensions.isInstalled('bcode.zoom')) {
-        return BCodeZoomView(child: child);
+        return BCodeZoomView(
+          fontSize: settings.fontSize,
+          child: child,
+        );
       }
       return child;
     },
