@@ -89,15 +89,16 @@ isolate and the per-frame bracket pass in `BCodeController.buildTextSpan`.
 
 ## Manual checks for the extension and export work
 
-- [ ] Fresh install → Extensions → Community → the four official packages
-      appear (Rust, Go, Kotlin, Rails). The official source is present once
-      under Sources and can be removed.
-- [ ] Get on Rust → preview shows version, author, language `.rs`, snippet and
-      theme counts, and the README → Cancel leaves nothing installed (no
-      `com.bcode.extension.rust` folder, no `.incoming-*`).
-- [ ] Install Rust → open a `.rs` file → highlighting applies without reopening
-      the app. Remove it → the same open file falls back to plain text
-      immediately; no restart snackbar.
+- [x] Extensions → Community lists the four official packages (Rust, Go,
+      Kotlin, Rails) from the published index, with no source error. The
+      official source appears once under Sources and can be removed.
+- [x] Get on Rust → preview shows version, author, language `.rs`, snippet and
+      theme counts, and the README.
+- [x] Install Rust → a `.rs` file reads `rust` in the status bar (grammar
+      active, no reopen). Remove it → the same open tab reads `Plain Text`
+      immediately, with no restart prompt.
+- [ ] Cancel on the preview leaves nothing installed (covered by the unit
+      test; not re-run on the device this pass).
 - [ ] Bundled Python highlighting still works after removing an extension.
 - [x] Export project → Include .git → verified on device: the saved zip
       contains `projects/` plus `.git/` with `HEAD` and `refs/`.
@@ -111,11 +112,16 @@ isolate and the per-frame bracket pass in `BCodeController.buildTextSpan`.
 - [x] Scroll a 2000-line file in a profile build → worst frame 83.8 ms
       (target ≤ 32 ms). Recorded above.
 
+## Published extension index
+
+The app reads
+`https://raw.githubusercontent.com/adityagusain273/b-code/main/extensions-index/index.json`,
+served from the public `b-code` repository. The source of truth is
+`extensions-index/` in this repository; copy it across and push to `main` after
+rebuilding the packages. The app repository is private, so it cannot host the
+index: unauthenticated raw requests to it return 404.
+
 ## Known gaps after this pass
 
-- The Community tab shows "1 source(s) could not be loaded" until
-  `extensions-index/` is pushed to `adityagusain273/b-code-app:master`, so the
-  raw index URL resolves. The folder is committed locally and the four packages
-  are built, but GitHub raw is still serving a 404 for it.
 - Scrolling a 2001-line file misses the 32 ms frame target on a 3 GB device.
   No profile has been taken yet, so no fix is proposed.

@@ -12,7 +12,7 @@ new dependency unless the task cannot be done with what is installed, and
 
 | # | Item | Closes | State today |
 |---|---|---|---|
-| 1 | Extension loop: preview, unload, official index | Ecosystem, distribution | Done in code — preview, immediate unload, official index default; index not published yet |
+| 1 | Extension loop: preview, unload, official index | Ecosystem, distribution | Done — preview, immediate unload, official index published and verified on device |
 | 2 | First-run path to a successful Run | Execution promise | Partial — onboarding writes a Hello World, runtime download is not part of the flow |
 | 3 | Store compliance | Launch | Partial — policy text and data-safety draft exist in `store/`, nothing hosted |
 | 4 | Crash and startup budget | Low-end devices | Measured — cold start and PSS pass; 2k-line scroll misses the frame target |

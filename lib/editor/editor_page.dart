@@ -549,18 +549,8 @@ class _EditorPageState extends State<EditorPage>
         return 'JavaScript';
       case 'ts':
         return 'TypeScript';
-      case 'dart':
-        return 'Dart';
       case 'java':
         return 'Java';
-      case 'go':
-        return 'Go';
-      case 'rs':
-        return 'Rust';
-      case 'rb':
-        return 'Ruby';
-      case 'php':
-        return 'PHP';
       case 'html':
       case 'htm':
         return 'HTML';
@@ -570,11 +560,6 @@ class _EditorPageState extends State<EditorPage>
         return 'JSON';
       case 'md':
         return 'Markdown';
-      case 'sh':
-      case 'bash':
-        return 'Shell';
-      case 'sql':
-        return 'SQL';
       default:
         return 'Plain Text';
     }

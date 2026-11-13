@@ -254,10 +254,12 @@ A zero-cost public workflow:
 3. Add an `index.json` to the repo and enable GitHub Pages (or use the raw URL).
 4. Users add `https://you.github.io/bcode-extensions/index.json` as a source.
 
-The official index lives in this repository at `extensions-index/`. Edit a
-manifest under `extensions-index/src/<name>/`, run
-`extensions-index/build-packages.sh` to rebuild the `.bcext`, and the default
-source URL serves the result once the folder is pushed to `master`.
+The official index is maintained in this repository at `extensions-index/` and
+published to the public `adityagusain273/b-code` repository, which is what the
+default source URL serves. Edit a manifest under
+`extensions-index/src/<name>/`, run `extensions-index/build-packages.sh` to
+rebuild the `.bcext`, then copy the folder to the public repo and push it to
+`main`. Keep the two in step: the app reads the public copy.
 
 ## Limits and validation
 

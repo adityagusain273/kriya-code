@@ -40,7 +40,7 @@ class ExtensionBrowseResult {
 /// by an unlisted URL.
 class ExtensionSourceService {
   static const defaultSource =
-      'https://raw.githubusercontent.com/adityagusain273/b-code-app/master/extensions-index/index.json';
+      'https://raw.githubusercontent.com/adityagusain273/b-code/main/extensions-index/index.json';
   static const defaultSources = <String>[defaultSource];
   static const _prefsKey = 'extension_sources';
   static const _seededKey = 'extension_seeded_defaults';
