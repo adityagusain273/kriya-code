@@ -45,7 +45,5 @@ class AppConstants {
   static const androidShPath = '/system/bin/sh';
   static const posixBashPath = '/bin/bash';
 
-  static const supportUpiId = '8630024750@yapl';
-  static const supportUpiNumber = '8630024750';
   static const supportDevName = 'Aditya';
 }

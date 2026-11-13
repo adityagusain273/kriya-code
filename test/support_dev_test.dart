@@ -8,13 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('AppConstants has valid UPI details for support', () {
-    expect(AppConstants.supportUpiId, '8630024750@yapl');
-    expect(AppConstants.supportUpiNumber, '8630024750');
+  test('AppConstants has developer name for support', () {
     expect(AppConstants.supportDevName, 'Aditya');
   });
 
-  testWidgets('SettingsPage shows Support Developer tile and opens modal',
+  testWidgets('SettingsPage shows Support Developer tile and opens modal with clean QR only',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
@@ -49,11 +47,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Buy Aditya a Chai ☕'), findsOneWidget);
-    expect(find.text(AppConstants.supportUpiId), findsOneWidget);
-    expect(find.text(AppConstants.supportUpiNumber), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.text('Scan with any UPI app to pay'), findsOneWidget);
     expect(find.text('Google Pay'), findsOneWidget);
     expect(find.text('PhonePe'), findsOneWidget);
     expect(find.text('Paytm'), findsOneWidget);
+
+    // Ensure personal phone number and raw UPI ID are not exposed as text
+    expect(find.textContaining('8630024750'), findsNothing);
+    expect(find.textContaining('@yapl'), findsNothing);
 
     final closeButton = find.byIcon(Icons.close_rounded);
     expect(closeButton, findsOneWidget);

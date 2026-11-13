@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -611,100 +610,38 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                   Container(
-                    margin: const EdgeInsets.symmetric(vertical: 16),
-                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.symmetric(vertical: 18),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFFF0883E).withValues(alpha: 0.25),
-                          blurRadius: 18,
-                          spreadRadius: 1,
+                          blurRadius: 20,
+                          spreadRadius: 2,
                         ),
                       ],
                     ),
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                       child: Image.asset(
                         'assets/images/support_qr.png',
-                        width: 180,
-                        height: 180,
+                        width: 200,
+                        height: 200,
                         fit: BoxFit.contain,
                       ),
                     ),
                   ),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0D1117),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF30363D)),
-                    ),
-                    child: Column(
-                      children: [
-                        ListTile(
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                          leading: const Icon(Icons.alternate_email_rounded, size: 18, color: Color(0xFF58A6FF)),
-                          title: const Text('UPI ID', style: TextStyle(color: Colors.white54, fontSize: 10)),
-                          subtitle: const Text(
-                            AppConstants.supportUpiId,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF58A6FF)),
-                            tooltip: 'Copy UPI ID',
-                            onPressed: () {
-                              Clipboard.setData(const ClipboardData(text: AppConstants.supportUpiId));
-                              HapticFeedback.lightImpact();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('UPI ID copied to clipboard!'),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const Divider(height: 1, color: Color(0xFF21262D)),
-                        ListTile(
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                          leading: const Icon(Icons.phone_android_rounded, size: 18, color: Color(0xFF7EE787)),
-                          title: const Text('UPI Number', style: TextStyle(color: Colors.white54, fontSize: 10)),
-                          subtitle: const Text(
-                            AppConstants.supportUpiNumber,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF7EE787)),
-                            tooltip: 'Copy UPI Number',
-                            onPressed: () {
-                              Clipboard.setData(const ClipboardData(text: AppConstants.supportUpiNumber));
-                              HapticFeedback.lightImpact();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('UPI Number copied to clipboard!'),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+                  const Text(
+                    'Scan with any UPI app to pay',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                   Wrap(
                     alignment: WrapAlignment.center,
                     spacing: 6,
