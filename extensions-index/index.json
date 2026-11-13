@@ -1,0 +1,40 @@
+{
+  "extensions": [
+    {
+      "id": "com.bcode.extension.rust",
+      "name": "Rust",
+      "version": "1.0.0",
+      "description": "Rust highlighting and a function snippet.",
+      "author": "B Code",
+      "download": "packages/com.bcode.extension.rust-1.0.0.bcext",
+      "homepage": "https://github.com/adityagusain273/b-code-app"
+    },
+    {
+      "id": "com.bcode.extension.go",
+      "name": "Go",
+      "version": "1.0.0",
+      "description": "Go highlighting and a main snippet.",
+      "author": "B Code",
+      "download": "packages/com.bcode.extension.go-1.0.0.bcext",
+      "homepage": "https://github.com/adityagusain273/b-code-app"
+    },
+    {
+      "id": "com.bcode.extension.kotlin",
+      "name": "Kotlin",
+      "version": "1.0.0",
+      "description": "Kotlin highlighting and a main function snippet.",
+      "author": "B Code",
+      "download": "packages/com.bcode.extension.kotlin-1.0.0.bcext",
+      "homepage": "https://github.com/adityagusain273/b-code-app"
+    },
+    {
+      "id": "com.bcode.extension.rails",
+      "name": "Rails",
+      "version": "1.0.0",
+      "description": "A dark Rails theme for the editor.",
+      "author": "B Code",
+      "download": "packages/com.bcode.extension.rails-1.0.0.bcext",
+      "homepage": "https://github.com/adityagusain273/b-code-app"
+    }
+  ]
+}
