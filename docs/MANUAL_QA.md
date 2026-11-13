@@ -53,8 +53,29 @@ internal-testing track). Do not restore app data from another device.
 - [ ] Report a Bug: dialog lists chosen screenshots by name; sends the
       pre-filled email with the local crash log; no crash without
       attachments.
+- [ ] Privacy → **Write crash log** off: trigger an error (open a broken file,
+      or run code that throws), then check `adb shell run-as com.bcode.editor
+      cat app_flutter/crash.log` — the new error must not appear. On again, the
+      next error must appear. This toggle was a no-op before 2026-11-13.
 
-## 8. Stability sweep (10 min, no interaction)
+## 8. Store compliance
+- [ ] `store/screenshots/01_edit.png` and `02_run.png` are captures of this
+      build, not an older one (`bash tool/capture_screenshots.sh edit run`
+      reproduces them; the date on the file must match the build).
+- [ ] `03_github.png` captured from a build with `GITHUB_CLIENT_ID` compiled in
+      and an account signed in, showing at least one changed file plus
+      Pull / Commit / Push. Not capturable from a plain debug build.
+- [ ] `store/data_safety.md` re-read against the code: every host in the
+      network table still exists and no new one was added.
+- [ ] `https://adityagusain273.github.io/b-code/privacy_policy.html` returns
+      200 and its "Last updated" date matches the local `store/privacy_policy.html`
+      (the two drift if the page is not republished).
+- [ ] `https://github.com/adityagusain273/b-code/issues` opens (not 404).
+- [ ] The listing's support email is one that is actually read.
+- [ ] Content-rating answers in `store/data_safety.md` re-checked after any
+      feature that adds sharing, chat, purchases or a browser.
+
+## 9. Stability sweep (10 min, no interaction)
 - [ ] No uncaught exception in `adb logcat` (crash reporter would catch it).
 - [ ] Battery drain consistent with background editor (no runaway timer).
 
@@ -177,6 +198,22 @@ served from the public `b-code` repository. The source of truth is
 rebuilding the packages. The app repository is private, so it cannot host the
 index: unauthenticated raw requests to it return 404.
 
+## Store screenshots
+
+Captured with `tool/capture_screenshots.sh` (see
+[`store/screenshots/README.md`](../store/screenshots/README.md)). The script
+resolves every tap from the UI hierarchy rather than fixed coordinates, so it
+survives a status-bar height or font-scale change; it polls for up to 15 s
+instead of sleeping a fixed amount, because a cold start here takes 4 s.
+
+- [x] `01_edit.png` — `showcase.py`, syntax-coloured, gutter numbers, `python`
+      and `25 lines` in the status bar. Captured 2026-11-13 on RMX2193.
+- [x] `02_run.png` — the same file with the console open, the program's own
+      output and `Python 3.14`. Captured 2026-11-13 on RMX2193.
+- [ ] `03_github.png` — needs `--dart-define=GITHUB_CLIENT_ID=...`. The script
+      SKIPs on a build without one instead of capturing the sign-in screen, so
+      the gap is visible rather than silent.
+
 ## Known gaps after this pass
 
 - Scrolling a 2001-line file: worst frame is down from 75 ms to 40–52 ms (target
@@ -184,3 +221,6 @@ index: unauthenticated raw requests to it return 404.
   The remainder is Flutter painting the whole-file paragraph in `EditableText`,
   which needs a virtualized line renderer to remove. See
   [MANUAL_QA.md](MANUAL_QA.md#scroll-profile-2026-11-13-after-the-gutter-change).
+- `03_github.png` is not captured, and the hosted privacy policy is behind the
+  local copy until someone with push access to
+  `adityagusain273/b-code` publishes it.

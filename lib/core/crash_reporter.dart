@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 class CrashReporter {
   static File? _logFile;
   static const _maxLogBytes = 100 * 1024;
+  static bool _enabled = true;
 
   static final _sensitivePatterns = [
     // Fine-grained personal access tokens.
@@ -41,6 +42,7 @@ class CrashReporter {
   static String redactForTesting(String message) => _redact(message);
 
   static Future<void> init({bool enabled = true}) async {
+    _enabled = enabled;
     FlutterError.onError = (details) {
       final msg = _redact('${details.exceptionAsString()}\n${details.stack}');
       _log('FLUTTER ERROR', msg);
@@ -54,7 +56,9 @@ class CrashReporter {
     };
   }
 
-  static Future<void> setCollectionEnabled(bool enabled) async {}
+  static Future<void> setCollectionEnabled(bool enabled) async {
+    _enabled = enabled;
+  }
 
   static void recordZoneError(Object error, StackTrace stack) {
     final msg = _redact('$error\n$stack');
@@ -68,6 +72,10 @@ class CrashReporter {
   static Future<void> log(String message) async {}
 
   static Future<void> _log(String type, String message) async {
+    // The Settings toggle promised to stop crash reports being written; it was
+    // a no-op, so the promise only held if nobody checked. Off means nothing is
+    // appended from here on, and the log the user already has stays readable.
+    if (!_enabled) return;
     try {
       _logFile ??= await _getFile();
       await _rotateIfNeeded(_logFile!);
@@ -91,6 +99,13 @@ class CrashReporter {
         }
       }
     } catch (_) {}
+  }
+
+  /// Overrides the log location. Tests only: the real path needs
+  /// `path_provider`, which has no implementation under `flutter test`.
+  @visibleForTesting
+  static void useLogFileForTesting(File file) {
+    _logFile = file;
   }
 
   static Future<File> _getFile() async {

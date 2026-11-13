@@ -14,7 +14,7 @@ new dependency unless the task cannot be done with what is installed, and
 |---|---|---|---|
 | 1 | Extension loop: preview, unload, official index | Ecosystem, distribution | Done — preview, immediate unload, official index published and verified on device |
 | 2 | First-run path to a successful Run | Execution promise | Done — onboarding offers Python download with live size/version; editor Run opens download sheet; verified end-to-end on device |
-| 3 | Store compliance | Launch | Partial — policy hosted on GitHub Pages; data-safety, screenshots and content rating still open |
+| 3 | Store compliance | Launch | Done (docs + screenshots); the upload itself is still the gate — see below |
 | 4 | Crash and startup budget | Low-end devices | Partial — cold start, PSS and idle pass; scroll is 75 → 40–52 ms worst frame, still above 32 ms |
 | 5 | Workspace backup/export | Retention | Done — Export project (include/skip .git) round-trips on device |
 | 6 | LSP-lite for Python and JS | IDE intelligence | Missing (keyword/symbol completion only) |
@@ -84,7 +84,7 @@ run and output `Hello from B Code!` in the console panel).*
 ## 3. Store compliance
 
 **Work.** `store/privacy_policy.html`, `store/data_safety.md` and
-`store/listing.md` exist as drafts. What is missing:
+`store/listing.md` exist. What was missing:
 
 - A hosted HTTPS URL for the policy (live at
   `https://adityagusain273.github.io/b-code/privacy_policy.html`) and a support
@@ -101,6 +101,55 @@ run and output `Hello from B Code!` in the console panel).*
 
 **Acceptance.** Internal-testing upload accepted; listing text, policy URL and
 support email resolve; every screenshot matches the build being uploaded.
+
+**Where it stands (2026-11-13).**
+
+Written, all checked against the code in this tree:
+
+- `store/data_safety.md` — the Data Safety form answers, the complete list of
+  network destinations (six rows, not the three the old draft claimed), the
+  crash-log behaviour, permissions, ads, and the content-rating answers with
+  their reasoning.
+- `store/screenshots/README.md` — what each of the three screenshots must show,
+  and why the capture script drives by UI text rather than coordinates.
+- `store/listing.md` — the privacy-policy and support URLs pointed at
+  `adityagusain273/b-code-app`, which is private, so both 404'd. They now point
+  at the GitHub Pages site and the public `b-code` repo.
+
+Captured from the device (Realme C25, 1.0.0+10) with
+`tool/capture_screenshots.sh`: `store/screenshots/01_edit.png` and
+`02_run.png` are real captures. `03_github.png` is deliberately absent — the
+device build has no `GITHUB_CLIENT_ID`, so sign-in reports itself unavailable
+and the script exits with a SKIP rather than writing a screenshot of the
+sign-in prompt.
+
+Two things the audit found and fixed while writing the form:
+
+- *Settings → Send crash reports* was a no-op: `setCollectionEnabled` was an
+  empty method, so the toggle never stopped anything. It is now gated in
+  `CrashReporter._log`, relabelled *Write crash log*, and covered by a test.
+- `android/settings.gradle.kts` declared the `google-services` and
+  `firebase-crashlytics` plugins with `apply false`, and the manifest carried
+  a `firebase_crashlytics_collection_enabled` meta-data flag. Neither was
+  applied, but a reviewer reading the tree could reasonably conclude Firebase
+  was in the app. Both are gone; there is no `google-services.json`.
+
+Two things are still open, neither of which is a code change:
+
+1. **The public privacy-policy page is stale.** `store/privacy_policy.html` was
+   updated (extension index disclosure, the crash-log toggle's real behaviour,
+   the issue URL) but the push to `adityagusain273/b-code` was rejected: the
+   `gh` token has read but not write access to that repo. Publish with an
+   account that can push, or the form still points at a policy that omits
+   extension downloads.
+2. **`store/16kb.md` is the upload gate**, not this item. The first
+   internal-testing upload either passes or it does not; do it before promising
+   a Play date, and fall back to a GitHub Release APK if it is rejected.
+
+**Not verified, and worth doing before the upload:** the GitHub screenshot on a
+build with a real client id, and the whole listing read end to end in the
+Console preview. Neither can be done from this machine, which has no write
+access to the OAuth app's client id.
 
 ## 4. Crash and startup budget
 

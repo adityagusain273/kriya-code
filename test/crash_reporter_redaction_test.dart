@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:b_code/core/crash_reporter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -68,6 +70,38 @@ void main() {
     test('leaves ordinary log lines untouched', () {
       const line = 'at lib/main.dart:42 in init (frame 3)';
       expect(CrashReporter.redactForTesting(line), line);
+    });
+  });
+
+  group('CrashReporter collection toggle', () {
+    // recordZoneError is fire-and-forget (it is a zone callback), so every
+    // assertion polls the file rather than reading it once.
+    Future<String> waitFor(String needle) async {
+      for (var i = 0; i < 40; i++) {
+        final log = await CrashReporter.readLog();
+        if (log.contains(needle)) return log;
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+      return CrashReporter.readLog();
+    }
+
+    test('writes nothing after collection is switched off', () async {
+      final dir = await Directory.systemTemp.createTemp('bcode_crash');
+      addTearDown(() => dir.delete(recursive: true));
+
+      CrashReporter.useLogFileForTesting(File('${dir.path}/crash.log'));
+      await CrashReporter.init(enabled: true);
+      CrashReporter.recordZoneError(StateError('before'), StackTrace.current);
+      expect(await waitFor('before'), contains('before'));
+
+      await CrashReporter.setCollectionEnabled(false);
+      CrashReporter.recordZoneError(StateError('after'), StackTrace.current);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(await CrashReporter.readLog(), isNot(contains('after')));
+
+      await CrashReporter.setCollectionEnabled(true);
+      CrashReporter.recordZoneError(StateError('again'), StackTrace.current);
+      expect(await waitFor('again'), contains('again'));
     });
   });
 }

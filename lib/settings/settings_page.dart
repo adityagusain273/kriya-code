@@ -262,8 +262,10 @@ class _SettingsPageState extends State<SettingsPage> {
 
           _sectionHeader('Privacy'),
           SwitchListTile(
-            title: const Text('Send crash reports'),
-            subtitle: const Text('Help fix crashes by sending anonymous device info'),
+            title: const Text('Write crash log'),
+            subtitle: const Text(
+                'Keeps errors in a private file on this device. Nothing is uploaded; '
+                'you choose what to send when you report a bug.'),
             value: widget.store.crashReportingEnabled,
             onChanged: (v) {
               setState(() => widget.store.crashReportingEnabled = v);

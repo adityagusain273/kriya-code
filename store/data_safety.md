@@ -1,118 +1,184 @@
 # B Code — Play Console Data Safety
 
-> Authoritative as of targetSdk 35 hardening. Every claim below is backed by a
-> code path; if you change the network or storage behaviour of the app, update
-> this file in the same commit. An inaccurate Data Safety form is a policy
-> violation, not a documentation nit.
+Every answer below was checked against the code in this tree (targetSdk 36,
+version 1.0.0+10). If you change network or storage behaviour, update this file
+in the same commit: an inaccurate Data Safety form is a policy violation, not a
+documentation nit.
 
-## Summary of actual network behaviour
+## Does the app collect or share user data? — **No**
 
-B Code makes **exactly three** categories of outbound HTTPS request, all pinned:
+B Code has no backend and no SDK that phones home. The developer receives
+nothing from the app: no analytics, no crash upload, no account database.
 
-| Destination | Purpose | Transport |
+Data does leave the device, but only as a direct consequence of an action the
+user took, and only to the service that action targets:
+
+| Data | Destination | When | Encryption in transit |
+|---|---|---|---|
+| GitHub OAuth token | `github.com`, `api.github.com` | Device-flow sign-in, then every GitHub API call | TLS, issuing-CA pinned |
+| Repository contents | `github.com` (libgit2 clone/push/fetch) | Clone, push, pull, commit | TLS (system trust store) |
+| Nothing else | — | — | — |
+
+Files, terminal output, run output and crash logs are never uploaded. There is
+no telemetry endpoint in the app or in any dependency.
+
+## Network destinations — the complete list
+
+Five HTTPS hosts, each reachable only through a user action:
+
+| Host | Purpose | Trigger | Pinning |
+|---|---|---|---|
+| `github.com` | OAuth device flow (code + token exchange), verification page | *GitHub → Continue with GitHub* | `lib/core/pinned_http.dart` (issuing CA) |
+| `api.github.com` | List repos/branches/commits, revoke token | Sign-in, repo browsing, sign-out | same |
+| `github.com` via libgit2 | clone / push / fetch | *Clone to Workspace*, *Push*, *Pull* | system CAs (git2dart's own TLS stack) |
+| `packages.termux.dev` | Runtime `.deb` packages + SHA-256 index | *Runtimes → Download* | same (`PinnedHttpClient`) |
+| `raw.githubusercontent.com` | Official extension index (`extensions-index/index.json`) | Opening *Extensions → Community* | system CAs |
+| `<any https host the user types>` | Third-party extension index or `.bcext` package | User adds a source or installs from URL | none by design (user's choice of host) |
+
+Two more are local only and never leave the device:
+
+- `127.0.0.1` — the preview and live-reload servers bind loopback with an
+  ephemeral port and a per-session token
+  (`lib/editor/preview/live_server.dart`, `preview_server.dart`).
+- `127.0.0.1` — the terminal's own PTY, and the `ServerMonitor` port probe.
+
+`NetworkHelper.isOnline` resolves `github.com` for a reachability check; it
+sends no request body and no identifier.
+
+## Per-question answers (Play form)
+
+**Does your app collect or share any of the required user data types?**
+No.
+
+**Is all of the collected user data encrypted in transit?**
+Yes — but the honest scope is: everything the app itself sends over HTTPS is
+TLS, and the trust-relevant channels (GitHub OAuth/API, the Termux package
+host) additionally pin the issuing CA. Two exceptions worth knowing, both
+outside the app's control:
+
+- `libgit2` (clone/push/fetch) uses its own TLS stack and the system trust
+  store. It is encrypted, but not pinned.
+- Extension sources and `.bcext` downloads use plain `http.Client` with default
+  validation, because the host is whatever the user typed.
+
+**Do you provide a way for users to request that their data is deleted?**
+Yes, and it is mostly moot because nothing is held server-side. *GitHub → Sign
+out* revokes the OAuth grant at GitHub (`GitHubApiClient.revokeToken`) and
+deletes the local token. *Settings → Report a Bug → clear log* deletes the
+local crash log. Uninstalling removes everything.
+
+**Does the app collect data from children?**
+No, and it is not directed at children.
+
+## What is stored on the device
+
+| Data | Location | Lifetime |
 |---|---|---|
-| `github.com/login/device/code`, `github.com/login/oauth/access_token` | OAuth device-flow token exchange | HTTPS, TLS certificate pinning |
-| `api.github.com` | List repos / branches / commits, clone, push, pull | HTTPS, TLS certificate pinning |
-| `packages.termux.dev` | Optional language-runtime downloads, user-initiated | HTTPS, TLS certificate pinning; every downloaded package is also verified against the published SHA-256 index (`lib/core/runtime_download_service.dart`) |
+| Code files | `app_flutter/projects` (app-private) | Until the user deletes them |
+| GitHub OAuth token | `EncryptedSharedPreferences` (AES-256-GCM, key in Android Keystore) | Until sign-out |
+| Crash log | `app_flutter/crash.log`, capped 100 KB with rotation | Until cleared or uninstalled |
+| Settings, extension sources | `shared_prefs/FlutterSharedPreferences.xml` | Until uninstalled |
+| Downloaded runtimes | `files/runtimes/<id>` | Until removed in *Runtimes* |
 
-There is no analytics SDK, no crash-reporting SDK, no advertising SDK, no
-Firebase, and no telemetry endpoint. `android/app/google-services.json` is not
-present in the repository and the `google-services` / `crashlytics` Gradle
-plugins are declared with `apply false` and never applied.
+`android:allowBackup="false"`, `fullBackupContent="false"`, and
+`dataExtractionRules` that exclude every domain, so none of the above leaves the
+device through Google backup or device-to-device transfer.
 
-## Data collection declarations
+## Crash log — local only
 
-### Crash logs — collected, NOT transmitted
+`lib/core/crash_reporter.dart` writes exception type, message and stack to
+`app_flutter/crash.log`. It is never uploaded by the app.
 
-`lib/core/crash_reporter.dart` writes stack traces and error text to a local
-file at `app_flutter/crash.log` (capped at 100 KB with rotation). It is
-**never** uploaded by the app.
+- The *Settings → Report a Bug* dialog builds a `mailto:` draft containing the
+  device model, Android version, app version and the last 4 KB of that log.
+  Nothing is sent until the user presses send in their own mail app.
+- Redaction before writing: `ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_` tokens,
+  `github_pat_` tokens, `Bearer …`, `Basic …`, JWTs, `client_secret=` and
+  `access_token=` (see `test/crash_reporter_redaction_test.dart`).
+- *Settings → Write crash log* turns writing off. It previously did nothing
+  (`setCollectionEnabled` was an empty method); it now actually gates `_log`.
+  Turning it off leaves the existing file untouched and readable.
 
-- Data: exception type, message, stack trace, and a user-supplied description.
-- Destination: a file in the app's private storage, on the device only.
-- Automatically readable by the app; only leaves the device if the user opens
-  Settings → report a bug and sends the pre-filled email themselves.
-- Redaction: bearer tokens, `ghp_`/`gho_` prefixes, `client_secret=`, and
-  `access_token=` are scrubbed from log lines before they are written.
-
-### GitHub account — collected, transmitted to GitHub
-
-Only if the user connects a GitHub account.
-
-- Data: an OAuth access token with the scopes `repo,read:user`, plus the API
-  calls that token authorises.
-- Destination: `api.github.com` and `github.com`.
-- Purpose: cloning, committing, pushing, and pulling the user's repositories.
-- Opt-out: *Settings → Sign out* revokes the token via GitHub's token API and
-  deletes the local copy.
-
-### Files — collected, NOT transmitted
-
-Projects are stored in app-private storage (`app_flutter/projects`). B Code
-requests no storage permission and does not read shared storage. Files are never
-uploaded anywhere except as part of a git push the user explicitly triggers.
-
-## Security
-
-- Network: cleartext traffic is disabled globally
-  (`android:usesCleartextTraffic="false"`). The only cleartext exception is
-  `127.0.0.1` / `localhost`, required by the built-in live-preview server.
-- Trust anchors: the three pinned hosts (GitHub OAuth/API and the Termux
-  package host) are validated **only** against the bundled issuing CA described
-  below, not the system trust store. A user-installed proxy CA is therefore not
-  trusted for them. The libgit2 transport used by clone/push/pull validates
-  against the system CAs.
-- Certificate pinning: `api.github.com`, `github.com`, and `packages.termux.dev`
-  are trusted only to a pinned issuing CA (Sectigo Public Server Authentication
-  Root E46 for GitHub, ISRG Root YR for Termux), verified during the TLS
-  handshake on the same connection that carries the request
-  (`lib/core/pinned_http.dart`). Pinning the CA rather than the leaf survives
-  GitHub's ~90-day and Let's Encrypt's ~60-day certificate renewals; `dart run
-  tool/check_cert_pins.dart` fails CI if a host moves to another authority.
-  Git traffic from `git2dart`/libgit2 uses its own TLS stack and is **not**
-  covered by these pins.
-- Secrets at rest: the GitHub token is stored in `EncryptedSharedPreferences`
-  (AES-256-GCM) with the key held in the Android Keystore.
-- Backup: `android:allowBackup="false"`, `android:fullBackupContent="false"`, and
-  `dataExtractionRules` that exclude every domain. The token store, the Keystore
-  material, the crash log, and downloaded runtimes never leave the device via
-  Google backup or device-to-device transfer.
-- Code execution: user code and downloaded language runtimes execute as the app
-  UID inside the app's private directory. B Code requests no permission to run
-  another app's code, with the sole exception of the user's explicit opt-in to
-  Termux's `RUN_COMMAND` permission for user-initiated commands.
-
-## Permissions requested
+## Permissions
 
 | Permission | Why |
 |---|---|
-| `INTERNET` | GitHub API, git transport, runtime downloads, live preview |
-| `com.termux.permission.RUN_COMMAND` | Only used if the user opts into Termux as an execution target. Termux enforces its own grant. |
+| `INTERNET` | GitHub, git transport, runtime downloads, extension index, live preview |
+| `com.termux.permission.RUN_COMMAND` | Only if the user installs Termux and opts in; Termux enforces its own grant |
 
-No storage, camera, microphone, contacts, location, or phone permission is
-requested. `MANAGE_EXTERNAL_STORAGE` and the legacy
-`READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE` permissions have been
-removed.
+No storage, camera, microphone, contacts, location, phone or notification
+permission. There is no `READ_MEDIA_IMAGES`; the bug-report attachment picker
+uses the Android photo picker, which grants a single chosen image and needs no
+permission. `MANAGE_EXTERNAL_STORAGE` was removed deliberately.
 
-## Play Console answers
+No advertising ID is requested and no ad SDK is present. There are no
+`play-services-ads`, Firebase or Crashlytics dependencies: the
+`google-services` and `crashlytics` Gradle plugins were dropped from
+`android/settings.gradle.kts`, there is no `google-services.json`, and the
+`firebase_crashlytics_collection_enabled` manifest meta-data was removed.
 
-- Does the app collect or share any of the required user data types?
-  **Yes — Credentials** (GitHub OAuth token, user-initiated, linked to an
-  account the user signs into).
-- Is all of the collected user data encrypted in transit? **Yes.**
-- Do you provide a way for users to request that their data is deleted?
-  **Yes** — *Settings → Sign out* revokes and deletes the stored token.
-- Does the app collect data from children? **No** — the app is not directed at
-  children.
-- Is this app a "news" app, "health", "finance", or other regulated category?
-  **No.**
-- Does the app contain ads? **No.**
-- Is the app an "app-accessibility" tool or does it declare itself as one?
-  **No.**
+## Ads
 
-## Content rating
+**Does the app contain ads?** No. There is no ad SDK and no ad unit.
 
-- Category: Developer Tools
-- Violence / sexual content / language / controlled substances: None
-- User interaction: the user writes and runs their own code locally. Nothing is
-  published or shared publicly unless the user pushes to their own repository.
+## App access
+
+All functionality is available without signing in. GitHub features require a
+GitHub account; the code runs offline with no account at all. Play Console
+*App access* answer: **All functionality is available without special access**,
+with a note that GitHub sign-in uses GitHub's own device flow.
+
+## Content rating questionnaire
+
+Category: **Tools / Developer tools** (not a game).
+
+| Question | Answer |
+|---|---|
+| Violence (cartoon, realistic, sexual, references to) | None |
+| Sexual content (suggestive, nudity, explicit) | None |
+| Profanity or crude humour | None |
+| Drugs, alcohol, tobacco, gambling | None |
+| Horror, fear, scary content | None |
+| User-generated content shared with other users | No. There is no feed, chat, comment or public profile. The only "sharing" is a git push to the user's own repository, under their own credentials. |
+| User interaction between users | No |
+| Sharing of user-generated content | No (see above) |
+| Location, personal data, or ID sharing | No |
+| In-app purchases | No. *Support Developer* shows a static UPI QR code — there is no billing flow and nothing is unlocked. |
+| Unrestricted web access / in-app browser | No. The preview WebView is confined to `127.0.0.1` (see below). |
+| Ads | No |
+
+The one item a reviewer will notice is arbitrary code execution: the terminal
+and the Run button execute code the user wrote or downloaded. That is the
+product, not incidental content — it does not change any answer above, but it
+is the reason the listing should keep saying "developer tools" rather than
+"learn to code". No rating authority asks about code execution directly, and
+none of the answers above should be softened to hide it.
+
+Expected result: **Rated for 3+ / PEGI 3 / ESRB EVERYONE** in every territory.
+
+## WebView hardening (why "unrestricted web access" is No)
+
+`lib/editor/preview/preview_page.dart` blocks `file`, `content`, `data`,
+`intent`, `javascript`, `ftp`, `ws` and `wss` navigation, allows only the
+loopback origin, and disables `allowFileAccess` / `allowContentAccess`.
+
+## Financial features
+
+- In-app purchases: none.
+- Subscriptions: none.
+- Real-money gambling, loot boxes, contests: none.
+- The *Support Developer* dialog shows a UPI QR image and a "Scan with any UPI
+  app" line. No payment SDK is bundled, no transaction is initiated by the app,
+  and no feature is gated behind it. If Play's reviewer treats this as a
+  payment feature, the safe answer is "No — external donation link only, not
+  processed by the app"; do not enable Play's payments declaration for it.
+
+## Target audience and content
+
+- Target age groups: **18+ only** is the honest minimum given unrestricted
+  terminal access and the ability to clone and run arbitrary code from the
+  internet. Do not select any under-18 group: it would pull the app into the
+  Families policy and require ad and data-safety attestations the app is not
+  built for.
+- Appeals to children: no.
+- News / health / finance / government / regulated category: none.
