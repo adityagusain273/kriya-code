@@ -87,6 +87,54 @@ build, so it is not a debug-only artifact. Profiling before changing anything
 is the next step; the likely candidates are whole-file tokenization on the UI
 isolate and the per-frame bracket pass in `BCodeController.buildTextSpan`.
 
+### Scroll profile, 2026-11-13 (after the gutter change)
+
+Same device and build type. Frames were timed inside the app with
+`SchedulerBinding.addTimingsCallback`; `totalSpan` is build start to raster
+finish, which is stricter than the frame numbers the earlier pass recorded, so
+compare the *change*, not the absolute value against the 83.8 ms row above. The
+callback was the only thing added for the measurement and it is not in the
+shipped tree (it costs microseconds per frame).
+The scroll was a repeated 600 px fling (200 ms per swipe, 100 ms apart) over a
+2001-line Python file.
+
+| Measurement | Before | After | Target |
+|---|---|---|---|
+| Average UI build per frame | 32.0 ms | 15.3 ms | — |
+| Average raster per frame | 13.5 ms | 10.0 ms | — |
+| Typical frame (build + raster) | ~46 ms | ~25 ms | ≤ 32 ms |
+| Worst frame | 75 ms | 40–52 ms | ≤ 32 ms |
+
+What the profile ruled out:
+
+- **Whole-file tokenization and the bracket pass are not on the scroll path.**
+  `BCodeController.buildTextSpan` was called **0 times per frame** while
+  scrolling (4 calls total, ~1.1 ms each, on the frame that opened the file).
+  `highlight.parse` and `_colorizeBrackets` run on text change only.
+- **The cost was proportional to the number of lines in the file**, not to the
+  number of tokens. With the gutter out of the picture, a 2001-line file that had
+  no grammar at all measured 12.5 ms of build against 13.5 ms for the highlighted
+  one, and 200 lines measured 6.9 ms. Token count makes no difference; line count
+  does.
+- **The line-number gutter was the single biggest line item.** The package builds
+  it as a `Table` with one row per line (2001 rows, ~8000 widgets), all walked on
+  every repaint. Turning it off took the 2001-line build from 32.0 ms to 14.0 ms
+  and the raster from 13.5 ms to 9.3 ms. `lib/editor/line_number_gutter.dart`
+  replaces it with a `CustomPainter` that lays out only the ~25 visible numbers
+  (~1.8 ms of build).
+
+What is left: the remaining ~13.5 ms of UI build is Flutter painting the
+whole-file paragraph inside `EditableText` (`RenderEditable` → `TextPainter`).
+That cost is per line in the file, not per visible line, and no Dart-level change
+in this app can cut it. Closing the last gap means rendering a window of lines
+instead of one 2001-line paragraph (the `re_editor` / virtualized-editor
+approach), which is a different piece of work from this item.
+
+Also measured on this build: cold start 1771 ms (force-stopped relaunch with the
+session restored; two later runs on a warm, throttled device read 3017 ms and
+3661 ms, so the cold-start number is the noisy one here), idle PSS 157 MB with
+one 2001-line tab open, 137 MB with a 9-line file.
+
 ## Manual checks for the extension and export work
 
 - [x] Extensions → Community lists the four official packages (Rust, Go,
@@ -111,6 +159,14 @@ isolate and the per-frame bracket pass in `BCodeController.buildTextSpan`.
       workspace; no `projects.zip` is left in the explorer.
 - [x] Scroll a 2000-line file in a profile build → worst frame 83.8 ms
       (target ≤ 32 ms). Recorded above.
+- [x] Line numbers still line up with the code after the viewport-only gutter
+      replaced the package's per-line table (manual eye-check: numbers on the
+      right, one per line, no drift after scrolling to the bottom of a 2001-line
+      file).
+- [x] Turn line numbers off in Settings → the code moves back to the left edge
+      with no leftover column.
+- [x] Word wrap on: numbers still align with the wrapped lines the same way they
+      did before this change (the old gutter drifted here too).
 
 ## Published extension index
 
@@ -123,5 +179,8 @@ index: unauthenticated raw requests to it return 404.
 
 ## Known gaps after this pass
 
-- Scrolling a 2001-line file misses the 32 ms frame target on a 3 GB device.
-  No profile has been taken yet, so no fix is proposed.
+- Scrolling a 2001-line file: worst frame is down from 75 ms to 40–52 ms (target
+  ≤ 32 ms) after replacing the line-number table with a viewport-only painter.
+  The remainder is Flutter painting the whole-file paragraph in `EditableText`,
+  which needs a virtualized line renderer to remove. See
+  [MANUAL_QA.md](MANUAL_QA.md#scroll-profile-2026-11-13-after-the-gutter-change).

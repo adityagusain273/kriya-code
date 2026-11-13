@@ -15,7 +15,7 @@ new dependency unless the task cannot be done with what is installed, and
 | 1 | Extension loop: preview, unload, official index | Ecosystem, distribution | Done — preview, immediate unload, official index published and verified on device |
 | 2 | First-run path to a successful Run | Execution promise | Done — onboarding offers Python download with live size/version; editor Run opens download sheet; verified end-to-end on device |
 | 3 | Store compliance | Launch | Partial — policy hosted on GitHub Pages; data-safety, screenshots and content rating still open |
-| 4 | Crash and startup budget | Low-end devices | Measured — cold start and PSS pass; 2k-line scroll misses the frame target |
+| 4 | Crash and startup budget | Low-end devices | Partial — cold start, PSS and idle pass; scroll is 75 → 40–52 ms worst frame, still above 32 ms |
 | 5 | Workspace backup/export | Retention | Done — Export project (include/skip .git) round-trips on device |
 | 6 | LSP-lite for Python and JS | IDE intelligence | Missing (keyword/symbol completion only) |
 | 7 | Git safety: branch, stash, conflicts | Git depth | Partial — clone/commit/push/diff/fast-forward pull |
@@ -120,6 +120,22 @@ support email resolve; every screenshot matches the build being uploaded.
 
 **Acceptance.** Numbers written into `docs/MANUAL_QA.md` with the device model
 and build hash, and no new crash cluster in the first week.
+
+**Where it stands (2026-11-13).** Profiled on the device instead of guessing:
+the per-frame cost is proportional to the number of *lines in the file*, and the
+line-number column was half of it. `flutter_code_editor` builds that column as a
+`Table` with one row per line, so a 2001-line file walked ~8000 widgets on every
+repaint. `lib/editor/line_number_gutter.dart` replaces it with a `CustomPainter`
+that lays out the ~25 numbers a viewport can show. Worst frame went from 75 ms to
+40–52 ms; average UI build from 32.0 ms to 15.3 ms. Tokenization and the bracket
+pass in `BCodeController.buildTextSpan` were ruled out — that method is not
+called at all while scrolling (0 calls per frame).
+
+The remaining ~13.5 ms is `RenderEditable` painting the whole-file paragraph;
+only a windowed line renderer removes it. That is tracked as its own item, not
+silently absorbed here: closing this one to ≤ 32 ms means replacing the single
+`TextField` with a virtualized editor, which is a rewrite of the text surface
+(find, selection, IME, autocompletion) rather than a fix to it.
 
 ## 5. Workspace backup/export
 

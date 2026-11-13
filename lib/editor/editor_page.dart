@@ -11,6 +11,7 @@ import '../core/network_helper.dart';
 import 'autocomplete_bar.dart';
 import 'highlighting/syntax_themes.dart';
 import 'highlighting/highlight_service.dart';
+import 'line_number_gutter.dart';
 import '../execution/console_panel.dart';
 import '../execution/local/local_runner.dart';
 import '../execution/models.dart';
@@ -66,6 +67,32 @@ class _EditorPageState extends State<EditorPage>
   /// Live preview of editor font size during pinch-to-zoom gestures.
   double? _previewFontSize;
   final FileExplorerController _explorerController = FileExplorerController();
+
+  /// Vertical scroll offset of the code field, feeding the line-number column.
+  final ValueNotifier<double> _gutterScroll = ValueNotifier<double>(0);
+
+  /// Height of one code line as the field lays it out.
+  ///
+  /// `CodeField` merges the theme's `titleMedium` (fontSize *and* height) with
+  /// the caller's `textStyle`, and token styles inherit that height, so a
+  /// `TextPainter` over the same style reports the exact line pitch. Guessing
+  /// from `fontSize` alone made the numbers drift a line every screen.
+  static double _lineHeight(BuildContext context, String fontFamily, double fontSize) {
+    final title = Theme.of(context).textTheme.titleMedium;
+    final style = TextStyle(
+      color: title?.color,
+      fontSize: title?.fontSize,
+      height: title?.height,
+    ).merge(TextStyle(fontFamily: fontFamily, fontSize: fontSize));
+    final painter = TextPainter(
+      text: TextSpan(text: '0', style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final height = painter.preferredLineHeight;
+    painter.dispose();
+    return height;
+  }
 
   @override
   void initState() {
@@ -123,6 +150,7 @@ class _EditorPageState extends State<EditorPage>
 
   void _onTabsChanged() {
     if (!mounted) return;
+    _gutterScroll.value = 0;
     final tab = sl<TabManager>().active;
     _autocomplete.setLanguage(tab?.languageId);
     if (tab != null) {
@@ -190,6 +218,7 @@ class _EditorPageState extends State<EditorPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _editorFocus.dispose();
+    _gutterScroll.dispose();
     _explorerController.dispose();
     sl<TabManager>().removeListener(_onTabsChanged);
     sl<SettingsStore>().removeListener(_onSettingsChanged);
@@ -792,53 +821,79 @@ class _EditorPageState extends State<EditorPage>
           );
         });
 
-        final codeField = NotificationListener<ScrollNotification>(
-          onNotification: (_) => false,
-          child: ListenableBuilder(
-            listenable: tab.controller,
-            builder: (_, __) {
-              _autocomplete.setLanguage(tab.languageId);
-              _autocomplete.onTextChanged(
-                tab.controller.text,
-                tab.controller.selection.baseOffset,
+        final gutterWidth = showLineNumbers ? 48 + (fontSize * 2) : 0.0;
+        final gutterTextStyle = TextStyle(
+          fontFamily: fontFamily,
+          fontSize: fontSize,
+          color: Colors.white38,
+        );
+        final gutter = gutterWidth == 0
+            ? null
+            : LineNumberGutter(
+                scrollPixels: _gutterScroll,
+                lineCount: tab.controller.code.lines.length,
+                lineHeight: _lineHeight(context, fontFamily, fontSize),
+                textStyle: gutterTextStyle,
+                width: gutterWidth,
+                topPadding: 16,
               );
-              return const SizedBox.shrink();
-            },
+
+        final autocomplete = ListenableBuilder(
+          listenable: tab.controller,
+          builder: (_, __) {
+            _autocomplete.setLanguage(tab.languageId);
+            _autocomplete.onTextChanged(
+              tab.controller.text,
+              tab.controller.selection.baseOffset,
+            );
+            return const SizedBox.shrink();
+          },
+        );
+
+        final editor = NotificationListener<Notification>(
+          onNotification: (n) {
+            if (n is ScrollUpdateNotification) {
+              if (n.metrics.axis == Axis.vertical) {
+                _gutterScroll.value = n.metrics.pixels;
+              }
+            } else if (n is ScrollMetricsNotification) {
+              if (n.metrics.axis == Axis.vertical) {
+                _gutterScroll.value = n.metrics.pixels;
+              }
+            }
+            return false;
+          },
+          child: CodeTheme(
+            data: CodeThemeData(styles: syntaxTheme),
+            child: CodeField(
+              controller: tab.controller,
+              focusNode: _editorFocus,
+              wrap: wordWrap,
+              expands: true,
+              background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
+              gutterStyle: GutterStyle.none,
+              textStyle: TextStyle(
+                fontFamily: fontFamily,
+                fontSize: fontSize,
+              ),
+            ),
           ),
         );
 
-        final editor = CodeTheme(
-          data: CodeThemeData(styles: syntaxTheme),
-          child: CodeField(
-            controller: tab.controller,
-            focusNode: _editorFocus,
-            wrap: wordWrap,
-            expands: true,
-            background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
-            gutterStyle: GutterStyle(
-              background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
-              showLineNumbers: showLineNumbers,
-              showFoldingHandles: false,
-              showErrors: false,
-              width: showLineNumbers ? 48 + (fontSize * 2) : 0,
-              margin: showLineNumbers ? 8 : 0,
-              textStyle: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: fontSize * 0.85,
-                color: Colors.white38,
-              ),
-            ),
-            textStyle: TextStyle(
-              fontFamily: fontFamily,
-              fontSize: fontSize,
-            ),
-          ),
-        );
+        final editorWithGutter = gutter == null
+            ? editor
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(width: gutterWidth, child: gutter),
+                  Expanded(child: editor),
+                ],
+              );
 
         final combined = Stack(
           children: [
-            editor,
-            Positioned.fill(child: IgnorePointer(child: codeField)),
+            editorWithGutter,
+            Positioned.fill(child: IgnorePointer(child: autocomplete)),
           ],
         );
 
