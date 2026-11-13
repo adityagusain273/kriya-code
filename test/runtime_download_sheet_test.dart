@@ -32,7 +32,7 @@ class FakeRuntimeDownloadService extends RuntimeDownloadService {
   Future<RuntimePreview?> inspect(String runtimeId) async {
     return const RuntimePreview(
       runtimeId: 'cpython',
-      version: '3.12',
+      version: '3.14',
       packageCount: 5,
       sizeBytes: 25 * 1024 * 1024,
     );

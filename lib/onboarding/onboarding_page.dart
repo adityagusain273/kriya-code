@@ -532,10 +532,10 @@ class _OnboardingPageState extends State<OnboardingPage>
     final installed = _downloads.isInstalled('cpython') ||
         state.phase == RuntimeDownloadPhase.installed;
     final spec = specForRuntime('cpython');
-    final versionStr = _pythonPreview?.version ?? spec?.approxVersion ?? '3.12';
+    final versionStr = _pythonPreview?.version ?? spec?.approxVersion ?? '3.14';
     final sizeStr = _pythonPreview != null
         ? _formatBytes(_pythonPreview!.sizeBytes)
-        : '≈${spec?.defaultSizeMb ?? 24} MB';
+        : '≈${spec?.defaultSizeMb ?? 10} MB';
 
     if (installed) {
       return Container(

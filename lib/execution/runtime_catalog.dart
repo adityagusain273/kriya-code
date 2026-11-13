@@ -36,8 +36,8 @@ const runtimeCatalog = <String, RuntimeSpec>{
     description: 'Run .py files offline on your device',
     extensionIds: ['bcode.lang.python'],
     packages: ['python', 'libandroid-support', 'ncurses', 'openssl', 'libffi'],
-    defaultSizeMb: 24,
-    approxVersion: '3.12',
+    defaultSizeMb: 10,
+    approxVersion: '3.14',
   ),
   'clang': RuntimeSpec(
     runtimeId: 'clang',
