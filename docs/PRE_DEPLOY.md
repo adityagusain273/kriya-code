@@ -14,7 +14,7 @@ new dependency unless the task cannot be done with what is installed, and
 |---|---|---|---|
 | 1 | Extension loop: preview, unload, official index | Ecosystem, distribution | Done — preview, immediate unload, official index published and verified on device |
 | 2 | First-run path to a successful Run | Execution promise | Done — onboarding offers Python download with live size/version; editor Run opens download sheet; verified end-to-end on device |
-| 3 | Store compliance | Launch | Partial — policy text and data-safety draft exist in `store/`, nothing hosted |
+| 3 | Store compliance | Launch | Partial — policy hosted on GitHub Pages; data-safety, screenshots and content rating still open |
 | 4 | Crash and startup budget | Low-end devices | Measured — cold start and PSS pass; 2k-line scroll misses the frame target |
 | 5 | Workspace backup/export | Retention | Done — Export project (include/skip .git) round-trips on device |
 | 6 | LSP-lite for Python and JS | IDE intelligence | Missing (keyword/symbol completion only) |
@@ -86,8 +86,9 @@ run and output `Hello from B Code!` in the console panel).*
 **Work.** `store/privacy_policy.html`, `store/data_safety.md` and
 `store/listing.md` exist as drafts. What is missing:
 
-- A hosted HTTPS URL for the policy (GitHub Pages from this repo is enough) and
-  a support email that someone reads.
+- A hosted HTTPS URL for the policy (live at
+  `https://adityagusain273.github.io/b-code/privacy_policy.html`) and a support
+  email that someone reads.
 - Data-safety answers that match the code: files stay on device, GitHub token
   is stored encrypted, no analytics, no ads, network used only for the user's
   own GitHub and runtime downloads.
