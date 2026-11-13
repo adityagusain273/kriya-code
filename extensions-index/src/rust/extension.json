@@ -1,0 +1,29 @@
+{
+  "manifestVersion": 1,
+  "id": "com.bcode.extension.rust",
+  "name": "Rust",
+  "version": "1.0.0",
+  "description": "Rust highlighting and a function snippet.",
+  "author": "B Code",
+  "license": "MIT",
+  "homepage": "https://github.com/adityagusain273/b-code-app",
+  "contributes": {
+    "languages": [
+      {
+        "id": "rust",
+        "name": "Rust",
+        "extensions": ["rs"],
+        "grammar": "rust",
+        "indentWidth": 4
+      }
+    ],
+    "snippets": {
+      "rust": {
+        "fn": {
+          "label": "Function",
+          "body": ["fn name() {", "\t$0", "}"]
+        }
+      }
+    }
+  }
+}

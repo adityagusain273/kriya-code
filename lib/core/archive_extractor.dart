@@ -179,16 +179,20 @@ class ArchiveExtractor {
   static Future<void> extractWithProgress(
     File archiveFile,
     String extractDir,
-    void Function(int entries, int bytes)? onProgress,
-  ) async {
+    void Function(int entries, int bytes)? onProgress, {
+    int totalBytesLimit = maxTotalBytes,
+    int entryLimit = maxEntries,
+    int compressedBytesLimit = maxCompressedBytes,
+  }) async {
     if (!archiveFile.existsSync()) {
       throw ArchiveExtractionException(
           'No such archive: ${p.basename(archiveFile.path)}');
     }
 
-    if (await archiveFile.length() > maxCompressedBytes) {
-      throw const ArchiveExtractionException(
-        'Refusing to extract: the compressed archive is larger than 256 MB.',
+    if (await archiveFile.length() > compressedBytesLimit) {
+      throw ArchiveExtractionException(
+        'Refusing to extract: the compressed archive is larger than '
+        '${compressedBytesLimit ~/ (1024 * 1024)} MB.',
       );
     }
 
@@ -212,9 +216,9 @@ class ArchiveExtractor {
 
       for (final entry in archive) {
         entryCount++;
-        if (entryCount > maxEntries) {
+        if (entryCount > entryLimit) {
           throw ArchiveExtractionException(
-            'Refusing to extract: the archive has more than $maxEntries entries.',
+            'Refusing to extract: the archive has more than $entryLimit entries.',
           );
         }
 
@@ -240,9 +244,10 @@ class ArchiveExtractor {
 
         // Declared sizes are checked before any content is decompressed, so
         // the caps limit memory and not just disk.
-        if (entry.size < 0 || totalBytes + entry.size > maxTotalBytes) {
-          throw const ArchiveExtractionException(
-            'Refusing to extract: the archive expands beyond 512 MB.',
+        if (entry.size < 0 || totalBytes + entry.size > totalBytesLimit) {
+          throw ArchiveExtractionException(
+            'Refusing to extract: the archive expands beyond '
+            '${totalBytesLimit ~/ (1024 * 1024)} MB.',
           );
         }
 
@@ -256,7 +261,7 @@ class ArchiveExtractor {
         // second write would otherwise clobber the first with different content.
         written.add(outPath);
 
-        final sink = _CappedFileSink(outPath, maxTotalBytes - totalBytes);
+        final sink = _CappedFileSink(outPath, totalBytesLimit - totalBytes);
         try {
           entry.writeContent(sink);
         } finally {

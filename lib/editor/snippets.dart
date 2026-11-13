@@ -138,7 +138,20 @@ class SnippetService {
   };
 
   static final Map<String, List<Snippet>> _loadedSnippets = {};
+  static final Map<String, Map<String, List<Snippet>>> _externalSnippets = {};
   static bool _assetsLoaded = false;
+
+  static void registerExternal(
+    String extensionId,
+    String languageId,
+    List<Snippet> snippets,
+  ) {
+    (_externalSnippets[extensionId] ??= {})[languageId] = snippets;
+  }
+
+  static void unregisterExternal(String extensionId) {
+    _externalSnippets.remove(extensionId);
+  }
 
   static Future<void> loadAssets() async {
     if (_assetsLoaded) return;
@@ -185,6 +198,11 @@ class SnippetService {
     }
     for (final s in assetSnippets) {
       map[s.prefix] = s;
+    }
+    for (final snippets in _externalSnippets.values) {
+      for (final s in snippets[languageId] ?? const <Snippet>[]) {
+        map[s.prefix] = s;
+      }
     }
     
     return map.values.toList();

@@ -985,6 +985,44 @@ class _EditorPageState extends State<EditorPage>
     _revealImported(imported.path);
   }
 
+  Future<void> _exportProject() async {
+    await _exportProjectDialog();
+  }
+
+  Future<void> _exportProjectDialog() async {
+    final includeGit = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export project'),
+        content: const Text(
+          'Zip the workspace and save it with the file picker. A .git folder '
+          'makes the archive much larger.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Skip .git'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Include .git'),
+          ),
+        ],
+      ),
+    );
+    if (includeGit == null || !mounted) return;
+    await exportWorkspaceToDevice(
+      context,
+      include:
+          includeGit ? null : (path) => !path.split('/').contains('.git'),
+      label: includeGit ? '' : '-no-git',
+    );
+  }
+
   /// Opens the explorer with [absolutePath] expanded, so a freshly imported folder is
   /// not left collapsed at the root behind a row the user has to go and find.
   void _revealImported(String absolutePath) {
@@ -1135,6 +1173,9 @@ class _EditorPageState extends State<EditorPage>
                 case 'extract_archive':
                   _importAndExtractArchive();
                   break;
+                case 'export_project':
+                  _exportProject();
+                  break;
                 case 'terminal':
                   ConsolePanel.show(context);
                   break;
@@ -1215,6 +1256,12 @@ class _EditorPageState extends State<EditorPage>
                 value: 'extract_archive',
                 child: _MenuItem(
                     icon: Icons.folder_zip, label: 'Unzip a project'),
+              ),
+              const PopupMenuItem(
+                height: 40,
+                value: 'export_project',
+                child: _MenuItem(
+                    icon: Icons.archive_outlined, label: 'Export project'),
               ),
               PopupMenuItem(
                 height: 40,
@@ -1310,6 +1357,7 @@ class _EditorPageState extends State<EditorPage>
                     onOpenFile: _importAndOpenFile,
                     onOpenFolder: _importFolder,
                     onExtractArchive: _importAndExtractArchive,
+                    onExportProject: _exportProject,
                   )
                 : Focus(
                     onKeyEvent: _onKeyEvent,
@@ -1648,10 +1696,12 @@ class _EmptyState extends StatefulWidget {
   final VoidCallback onOpenFile;
   final VoidCallback onOpenFolder;
   final VoidCallback onExtractArchive;
+  final VoidCallback onExportProject;
   const _EmptyState({
     required this.onOpenFile,
     required this.onOpenFolder,
     required this.onExtractArchive,
+    required this.onExportProject,
   });
 
   @override
@@ -1718,6 +1768,11 @@ class _EmptyStateState extends State<_EmptyState> {
                   onPressed: widget.onExtractArchive,
                   icon: const Icon(Icons.folder_zip_outlined, size: 18),
                   label: const Text('Unzip Project'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: widget.onExportProject,
+                  icon: const Icon(Icons.archive_outlined, size: 18),
+                  label: const Text('Export Project'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () async {

@@ -8,6 +8,7 @@ import '../core/archive_extractor.dart';
 import '../core/di.dart';
 import 'device_import_service.dart';
 import 'fs_service.dart';
+import 'workspace_archive.dart';
 
 /// Brings work into the workspace from the device.
 ///
@@ -106,6 +107,75 @@ Future<bool> exportFileToDevice(BuildContext context, String path) async {
       _toast(context, 'Could not export that file: $e', isError: true);
     }
     return false;
+  }
+}
+
+/// Zips the workspace and saves it through the system file dialog.
+///
+/// `include` lets the caller drop `.git` or other heavy paths; the whole tree is
+/// taken when it is null. The zip is built inside the workspace because the
+/// native SAF bridge only exports paths inside it, and is deleted once the user
+/// has finished with the save dialog.
+Future<bool> exportWorkspaceToDevice(
+  BuildContext context, {
+  bool Function(String relativePath)? include,
+  String? label,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final fs = sl<FsService>();
+  final rootName = p.basename(fs.rootPath);
+  final archive = File(p.join(fs.rootPath, '$rootName${label ?? 'project'}.zip'));
+  final exportName = p.basename(archive.path);
+  final progress = ValueNotifier<DeviceImportProgress?>(null);
+  if (!context.mounted) {
+    progress.dispose();
+    return false;
+  }
+  final dialog = _ProgressDialog(
+    context: context,
+    notifier: progress,
+    render: (v) => v == null
+        ? 'Zipping $rootName…'
+        : 'Zipping · ${v.files} files (${formatBytes(v.bytes)})',
+  );
+
+  try {
+    if (await archive.exists()) await archive.delete();
+    final result = await WorkspaceArchive().build(
+      Directory(fs.rootPath),
+      archive,
+      include: include,
+      onProgress: (files, bytes) {
+        progress.value = DeviceImportProgress(
+          name: rootName,
+          files: files,
+          bytes: bytes,
+        );
+      },
+    );
+    final saved = await DeviceImportService.instance
+        .exportFile(archive.path, suggestedName: exportName);
+    if (saved) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(
+          'Exported $rootName · ${result.files} files · '
+          '${formatBytes(result.bytes)}',
+        ),
+      ));
+    }
+    return saved;
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(
+      content: Text('Could not export the project: $e'),
+      backgroundColor: ThemeData().colorScheme.error,
+    ));
+    return false;
+  } finally {
+    dialog.close();
+    progress.dispose();
+    if (await archive.exists()) {
+      await archive.delete().catchError((_) => archive);
+    }
   }
 }
 

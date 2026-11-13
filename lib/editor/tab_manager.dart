@@ -162,6 +162,19 @@ class TabManager extends ChangeNotifier {
     }
   }
 
+  void dropLanguages(Iterable<String> languageIds) {
+    final removed = languageIds.toSet();
+    if (removed.isEmpty) return;
+    var changed = false;
+    for (final tab in tabs) {
+      if (!removed.contains(tab.languageId)) continue;
+      tab.languageId = null;
+      tab.controller.language = null;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
   Future<EditorTab> open(String path) async {
     final existing = tabs.indexWhere((t) => t.filePath == path);
     if (existing != -1) {

@@ -88,6 +88,16 @@ class SyntaxThemes {
     monokaiTheme,
   ];
 
+  static void register(SyntaxTheme theme) {
+    if (all.any((existing) => existing.id == theme.id)) return;
+    all.add(theme);
+  }
+
+  static void unregisterExtension(String extensionId) {
+    final prefix = 'ext.$extensionId.';
+    all.removeWhere((theme) => theme.id.startsWith(prefix));
+  }
+
   static SyntaxTheme fromId(String id) {
     return all.firstWhere(
       (t) => t.id == id,

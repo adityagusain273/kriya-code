@@ -1,0 +1,29 @@
+{
+  "manifestVersion": 1,
+  "id": "com.bcode.extension.go",
+  "name": "Go",
+  "version": "1.0.0",
+  "description": "Go highlighting and a main function snippet.",
+  "author": "B Code",
+  "license": "MIT",
+  "contributes": {
+    "languages": [
+      {
+        "id": "go",
+        "name": "Go",
+        "extensions": ["go"],
+        "grammar": "go",
+        "indentWidth": 4,
+        "insertSpaces": false
+      }
+    ],
+    "snippets": {
+      "go": {
+        "main": {
+          "label": "Main function",
+          "body": ["package main", "", "func main() {", "\t$0", "}"]
+        }
+      }
+    }
+  }
+}

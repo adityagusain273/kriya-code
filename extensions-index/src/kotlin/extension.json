@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 1,
+  "id": "com.bcode.extension.kotlin",
+  "name": "Kotlin",
+  "version": "1.0.0",
+  "description": "Kotlin highlighting and a main function snippet.",
+  "author": "B Code",
+  "license": "MIT",
+  "contributes": {
+    "languages": [
+      {
+        "id": "kotlin",
+        "name": "Kotlin",
+        "extensions": ["kt", "kts"],
+        "grammar": "kotlin",
+        "indentWidth": 4
+      }
+    ],
+    "snippets": {
+      "kotlin": {
+        "main": {
+          "label": "Main function",
+          "body": ["fun main() {", "\t$0", "}"]
+        }
+      }
+    }
+  }
+}

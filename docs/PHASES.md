@@ -7,6 +7,8 @@
 - [x] Find / replace bar
 - [x] File explorer: create, rename, delete, move; SAF import/export bridge on Android
 - [x] Extension system v1: static registry + stable interfaces, event bus, command registry
+- [x] Installable `.bcext` packages: languages, snippets, themes; install from file,
+      HTTPS URL or a static index; public/private distribution with no server
 - [x] Language packs: Python, C, C++, Java (grammar + run config each)
 - [x] Execution facade: local runtimes via bundled Termux packages
 - [x] Local exec bridge (`ExecPlugin`) ready for bundled runtimes
@@ -16,6 +18,14 @@
 
 ## Phase 2 — local runtimes & store launch
 
+Execution order and acceptance tests for this phase: [PRE_DEPLOY.md](PRE_DEPLOY.md).
+
+- [ ] Finish the extension loop: install preview, unload without restart, official index
+- [ ] First-run path that ends in a working Run
+- [ ] Workspace export (zip) before users lose projects on uninstall
+- [ ] Measure cold start and idle memory on a 3 GB device
+- [ ] LSP-lite (outline, go-to-definition, diagnostics) for Python and JS
+- [ ] Git branch switch, stash, and a pull that explains conflicts
 - [ ] Ship CPython + clang as Play Feature Delivery modules into `<filesDir>/runtimes/`
 - [ ] First-run runtime download UX (Play Feature Delivery triggers)
 - [ ] App icon final art + adaptive icons + splash

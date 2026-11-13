@@ -96,8 +96,15 @@ android {
         versionName = flutter.versionName
     }
 
-    packagingOptions {
-        // Exclusions removed to allow x86_64 emulator support
+    packaging {
+        resources {
+            // zstd-jni ships Windows and macOS natives inside its jar. They are
+            // plain resources, not jniLibs, so a jniLibs exclude never sees them.
+            excludes += setOf(
+                "win/**",
+                "darwin/**",
+            )
+        }
     }
 
     signingConfigs {

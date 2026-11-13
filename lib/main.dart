@@ -42,6 +42,9 @@ import 'plugins/builtin/builtin_extensions.dart';
 import 'plugins/host/extension_install_store.dart';
 import 'plugins/host/extension_registry.dart';
 import 'plugins/host/language_registry.dart';
+import 'plugins/packages/extension_installer.dart';
+import 'plugins/packages/extension_loader.dart';
+import 'plugins/packages/extension_source.dart';
 import 'servers/server_monitor.dart';
 import 'settings/settings_store.dart';
 import 'workspace/explorer_prefs.dart';
@@ -296,6 +299,18 @@ Future<void> _bootstrap() async {
   sl.registerSingleton<ExtensionInstallStore>(ExtensionInstallStore(prefs));
 
   final docsSupportDir = await getApplicationSupportDirectory();
+  final extensionInstaller = ExtensionInstaller(
+    rootDir: '${docsSupportDir.path}/extensions',
+  );
+  sl.registerSingleton<ExtensionInstaller>(extensionInstaller);
+  sl.registerSingleton<ExtensionSourceService>(
+    ExtensionSourceService(prefs: prefs),
+  );
+  try {
+    await sl<ExtensionSourceService>().seedDefaults();
+  } catch (e) {
+    debugPrint('Extension sources: could not seed defaults: $e');
+  }
   final localRunner = LocalRunner();
   sl.registerSingleton<LocalRunner>(localRunner);
   // Native executables arrive over this channel, so it pins TLS exactly like
@@ -368,6 +383,13 @@ Future<void> _bootstrap() async {
     ..register(CssPack())
     ..register(JsonPack())
     ..register(MarkdownPack());
+  final extensionLoader = ExtensionLoader(engine: engine);
+  try {
+    extensionLoader.activate(await extensionInstaller.installed());
+  } catch (e) {
+    debugPrint('Extension loading failed: $e');
+  }
+  sl.registerSingleton<ExtensionLoader>(extensionLoader);
   sl.registerSingleton<HighlightEngine>(engine);
 
   sl.registerSingleton<HighlightService>(

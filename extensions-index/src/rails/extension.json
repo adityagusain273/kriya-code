@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 1,
+  "id": "com.bcode.extension.rails",
+  "name": "Rails",
+  "version": "1.0.0",
+  "description": "A dark theme with a warm accent.",
+  "author": "B Code",
+  "license": "MIT",
+  "contributes": {
+    "themes": [
+      {
+        "id": "rails-dark",
+        "name": "Rails Dark",
+        "colors": {
+          "background": "#1b1b1f",
+          "foreground": "#e6e6e6",
+          "keyword": "#cc7832",
+          "string": "#629755",
+          "comment": "#808080",
+          "number": "#6897bb",
+          "built_in": "#ffc66d",
+          "type": "#ffc66d",
+          "function": "#9876aa"
+        }
+      }
+    ]
+  }
+}

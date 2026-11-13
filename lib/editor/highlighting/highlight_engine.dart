@@ -14,6 +14,17 @@ class HighlightEngine {
     }
   }
 
+  bool hasLanguage(String id) => _packs.containsKey(id);
+
+  bool hasExtension(String extension) =>
+      _extMap.containsKey(extension.toLowerCase());
+
+  void unregister(String id) {
+    final pack = _packs.remove(id);
+    if (pack == null) return;
+    _extMap.removeWhere((_, value) => identical(value, pack));
+  }
+
   void registerDeferred(String languageId, Future<LanguagePack> Function() loader) {
     _deferredLoaders[languageId] = loader;
   }
@@ -23,6 +34,7 @@ class HighlightEngine {
     if (_packs.containsKey(languageId)) return _packs[languageId];
     final loader = _deferredLoaders[languageId];
     if (loader == null) return null;
+    _deferredLoaders.remove(languageId);
     final pack = await loader();
     register(pack);
     return pack;
@@ -36,8 +48,9 @@ class HighlightEngine {
     final ext = fileName.substring(dot + 1).toLowerCase();
     if (_extMap.containsKey(ext)) return _extMap[ext]!;
 
-    for (final entry in _deferredLoaders.entries) {
+    for (final entry in _deferredLoaders.entries.toList()) {
       final pack = await entry.value();
+      _deferredLoaders.remove(entry.key);
       if (pack.fileExtensions.contains(ext)) {
         register(pack);
         return pack;

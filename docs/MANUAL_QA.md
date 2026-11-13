@@ -63,3 +63,59 @@ internal-testing track). Do not restore app data from another device.
 - [ ] `.aab` confirmed by bundletool → test-track install → same smoke list.
 - [ ] RASP: installing a re-signed APK (modified signature) shows the
       signature notice but the app does not brick (no silent exit).
+
+## Measurements — 2026-11-13
+
+Device: Realme C25 (RMX2193), MediaTek MT6769V/CZ, arm64-v8a, 3.7 GB RAM,
+Android 11 (API 30), 720×1600 @ 320 dpi. Installed build:
+`com.bcode.editor` 1.0.0 (versionCode 10).
+
+Build: profile APK (`flutter build apk --profile -Pbcode.sideload=true`),
+`build/app/outputs/flutter-apk/app-profile.apk` (not the release artifact).
+
+| Measurement | Result | Target |
+|---|---|---|
+| Cold start, warm (`am start -W TotalTime`) | 1618–1663 ms (5 runs); 1723 ms, 1902 ms later runs | < 3 s |
+| Cold start, first launch after install | 4022 ms, 4706 ms | < 3 s |
+| Idle PSS, app at rest (3-tab session, 2001-line file open) | 147.8–160.2 MB | < 250 MB |
+| Worst frame, scrolling 2001-line Python file | 83.8 ms (p50 ≈ 28 ms, ~27 fps) | ≤ 32 ms |
+
+The scroll target is missed. The frame pacing sits around 27–28 fps while
+scrolling a 2001-line file, with one 83.8 ms stall, so the 32 ms ceiling is
+exceeded both at the median and at the tail. This is measured on the profile
+build, so it is not a debug-only artifact. Profiling before changing anything
+is the next step; the likely candidates are whole-file tokenization on the UI
+isolate and the per-frame bracket pass in `BCodeController.buildTextSpan`.
+
+## Manual checks for the extension and export work
+
+- [ ] Fresh install → Extensions → Community → the four official packages
+      appear (Rust, Go, Kotlin, Rails). The official source is present once
+      under Sources and can be removed.
+- [ ] Get on Rust → preview shows version, author, language `.rs`, snippet and
+      theme counts, and the README → Cancel leaves nothing installed (no
+      `com.bcode.extension.rust` folder, no `.incoming-*`).
+- [ ] Install Rust → open a `.rs` file → highlighting applies without reopening
+      the app. Remove it → the same open file falls back to plain text
+      immediately; no restart snackbar.
+- [ ] Bundled Python highlighting still works after removing an extension.
+- [x] Export project → Include .git → verified on device: the saved zip
+      contains `projects/` plus `.git/` with `HEAD` and `refs/`.
+- [x] Export project → Skip .git → verified on device: the zip has no `.git`
+      entries at all, directory entries included.
+- [x] Export → Unzip Project on the same archive → the tree comes back with
+      `.git` and the nested `Python projects/` folder, opened by the explorer
+      without a restart.
+- [x] Dismiss the save dialog → the temporary zip is deleted from the
+      workspace; no `projects.zip` is left in the explorer.
+- [x] Scroll a 2000-line file in a profile build → worst frame 83.8 ms
+      (target ≤ 32 ms). Recorded above.
+
+## Known gaps after this pass
+
+- The Community tab shows "1 source(s) could not be loaded" until
+  `extensions-index/` is pushed to `adityagusain273/b-code-app:master`, so the
+  raw index URL resolves. The folder is committed locally and the four packages
+  are built, but GitHub raw is still serving a 404 for it.
+- Scrolling a 2001-line file misses the 32 ms frame target on a 3 GB device.
+  No profile has been taken yet, so no fix is proposed.

@@ -110,12 +110,11 @@ class DeviceImportService {
   /// The native side has handled `exportFile` since the SAF channel was added,
   /// but nothing in Dart called it, so a file that arrived by import or clone
   /// could only leave the app through `git push`.
-  Future<bool> exportFile(String path) async {
+  Future<bool> exportFile(String path, {String? suggestedName}) async {
     try {
-      final name = path.split('/').last;
       return await _channel.invokeMethod<bool>('exportFile', {
             'path': path,
-            'suggestedName': name,
+            'suggestedName': suggestedName ?? path.split('/').last,
           }) ??
           false;
     } on MissingPluginException {

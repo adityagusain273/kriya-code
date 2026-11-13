@@ -11,7 +11,7 @@ Built with Flutter for a future path to iOS and desktop.
 |---|---|
 | Editor core | Syntax highlighting (100+ grammars via `highlight`), line numbers, auto-indent, find/replace, multi-tab editing with session restore |
 | File explorer | Create / rename / delete / move files & folders, path-escape protection, SAF import/export bridge |
-| Extension system | Stable plugin API (`BCodeExtension`, `LanguageContribution`, `RunConfig`) with a central registry; 4 builtin language packs: Python, C, C++, Java |
+| Extension system | Stable extension API with a central registry; 10 builtin language packs: Python, C, C++, Java, JavaScript, TypeScript, HTML, CSS, JSON, Markdown. Installable `.bcext` packages add languages, snippets and themes from a file, URL or static index — no code execution |
 | Code execution | Local-first runner. Runtimes are installed on demand like a VS Code extension, SHA256-verified, with version and size shown first. Termux is an optional fallback. See [docs/ON_DEVICE_EXECUTION.md](docs/ON_DEVICE_EXECUTION.md). |
 | GitHub | OAuth Device Flow login (no secret embedded), repo browser, commit history, clone → edit → pull / commit / push / view diffs via `git2dart` (libgit2) |
 | Shared workspace | Optional: `/storage/emulated/0/BCode` so Termux and other apps can edit the same files. Off by default, no permission on first launch, app-private workspace otherwise |
@@ -70,5 +70,7 @@ Execution architecture relies on local binaries: `LocalRunner` talks to `ExecPlu
 ## Docs
 
 - [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md) — store-submission placeholder
-- [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md) — how to write a language pack
+- [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md) — extension package format, creation and publishing
+- [`docs/ACODE_COMPARISON.md`](docs/ACODE_COMPARISON.md) — competitor comparison and post-launch roadmap
+- [`docs/PRE_DEPLOY.md`](docs/PRE_DEPLOY.md) — launch blockers, ordered work and the performance decision
 - [`docs/PHASES.md`](docs/PHASES.md) — roadmap and out-of-scope log
