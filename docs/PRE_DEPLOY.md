@@ -18,7 +18,7 @@ new dependency unless the task cannot be done with what is installed, and
 | 4 | Crash and startup budget | Low-end devices | Partial — cold start, PSS and idle pass; scroll is 75 → 40–52 ms worst frame, still above 32 ms |
 | 5 | Workspace backup/export | Retention | Done — Export project (include/skip .git) round-trips on device |
 | 6 | LSP-lite for Python and JS | IDE intelligence | Missing (keyword/symbol completion only) |
-| 7 | Git safety: branch, stash, conflicts | Git depth | Partial — clone/commit/push/diff/fast-forward pull |
+| 7 | Git safety: branch, stash, conflicts | Git depth | Done — branch list/create/switch, stash save/pop, divergence-aware pull with merge, conflict list |
 
 ## 1. Finish the extension loop
 
@@ -234,6 +234,29 @@ branch with unpushed commits — correct, but it reads as broken. Add:
 **Acceptance.** On a repo with an upstream change and a local commit: pull
 explains the divergence, merge resolves when the files do not overlap, and
 stash/restore returns the working tree byte-for-byte.
+
+**Where it stands (2026-11-13).** `lib/github/git_service.dart` (there is no
+`lib/git/`) now covers all four bullets, and `git_workspace_page.dart` exposes
+them: a branch button lists local and remote branches, creates from HEAD and
+switches (refusing when tracked files are modified), a stash button saves and
+restores, and a diverged pull is answered with a merge dialog.
+
+- `divergence()` returns ahead/behind against `origin/<branch>`. `pull` fetches
+  first, then refuses a diverged or ahead-only branch with both counts and
+  changes nothing; only a clean fast-forward reaches `reset --hard`.
+- `mergeBranch()` computes the merge in memory (`Merge.commits`) and reports
+  the conflicting paths before the working tree is touched. A clean merge is
+  written as a two-parent commit, so no merge state is left behind.
+- Stash save is tracked-only (no `-u`); untracked files stay put. `pop`/`apply`
+  keep the entry when the working tree would be overwritten. A merge that would
+  overwrite an untracked file is refused before it starts, because libgit2's
+  safe checkout replaces untracked files without asking.
+- Rebase is deliberately not offered: a conflict cannot be predicted without
+  replaying commits, which is exactly the destructive path this item avoids.
+
+Tests: 26 in `test/git_service_test.dart`, including a pull against a local
+bare remote that diverges by one commit on each side, and a merge whose files
+overlap (HEAD, worktree and index all unchanged afterwards).
 
 ## Language choice: should any of this be rewritten in Rust?
 

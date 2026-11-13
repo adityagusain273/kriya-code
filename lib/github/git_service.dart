@@ -14,6 +14,17 @@ class GitIdentity {
   const GitIdentity({required this.name, required this.email});
 }
 
+/// How far the local branch and its remote-tracking branch have moved apart.
+class GitDivergence {
+  final int ahead;
+  final int behind;
+
+  const GitDivergence({required this.ahead, required this.behind});
+
+  bool get hasDiverged => ahead > 0 && behind > 0;
+  bool get canFastForward => ahead == 0 && behind > 0;
+}
+
 class GitIdentityProvider {
   GitIdentity get identity {
     final store = sl<SettingsStore>();
@@ -144,33 +155,33 @@ class GitService {
     }
   }
 
-  /// Commits on `branch` that the remote does not have.
+  /// Ahead/behind counts between the local `branch` and `origin/<branch>`.
   ///
-  /// Callers must check this before a hard reset. `reset --hard` rewinds HEAD to
-  /// `origin/<branch>`, which discards every local commit made since the fork
-  /// point. The confirmation dialog used to gate on the working tree only, so
-  /// "commit locally, then pull" lost the commits with no prompt at all.
-  Future<Result<int>> unpushedCommitCount(
+  /// A missing remote-tracking ref means nothing has been fetched yet, so every
+  /// local commit is ahead and nothing is behind.
+  Future<Result<GitDivergence>> divergence(
     Repository repo,
     String branch,
   ) async {
-    // Reference.lookup throws when the ref does not exist rather than returning
-    // null, so a missing tracking ref has to be probed for.
     try {
-      final localRef = Reference.lookup(repo: repo, name: 'refs/heads/$branch');
-      final localOid = localRef.target;
-
-      final remoteOid = _tryRefTarget(repo, 'refs/remotes/origin/$branch');
-
-      if (remoteOid == null) {
-        // No tracking ref yet, so everything reachable from the branch is local.
-        return Ok(_countCommits(repo, localOid, null));
+      final localOid = _tryRefTarget(repo, 'refs/heads/$branch');
+      if (localOid == null) {
+        return Err('Branch $branch does not exist.');
       }
-
+      final remoteOid = _tryRefTarget(repo, 'refs/remotes/origin/$branch');
+      if (remoteOid == null) {
+        return Ok(GitDivergence(
+          ahead: _countCommits(repo, localOid, null),
+          behind: 0,
+        ));
+      }
       final counts = repo.aheadBehind(local: localOid, upstream: remoteOid);
-      return Ok(counts.isNotEmpty ? counts.first : 0);
+      return Ok(GitDivergence(
+        ahead: counts.isNotEmpty ? counts.first : 0,
+        behind: counts.length > 1 ? counts[1] : 0,
+      ));
     } catch (e) {
-      return Err('Could not compare with the remote: $e');
+      return Err('Could not compare with origin/$branch: $e');
     }
   }
 
@@ -229,10 +240,19 @@ class GitService {
       if (localOid != null) {
         final counts = repo.aheadBehind(local: localOid, upstream: remoteOid);
         final ahead = counts.isNotEmpty ? counts.first : 0;
+        final behind = counts.length > 1 ? counts[1] : 0;
+        if (ahead > 0 && behind > 0) {
+          return Err(
+            'Pull stopped: the branches diverged. origin/$branch has $behind '
+            'commit(s) you do not have, and you have $ahead commit(s) it does '
+            'not. Nothing was changed. Use Merge origin/$branch to combine both, '
+            'then push.',
+          );
+        }
         if (ahead > 0) {
           return Err(
             'Pull stopped: $ahead local commit(s) are not on origin/$branch. '
-            'Push them first.',
+            'Push them first. Nothing was changed.',
           );
         }
       }
@@ -243,6 +263,342 @@ class GitService {
       return Err('Pull failed: $e');
     }
   }
+
+  /// Name of the branch HEAD points at, or an error on an unborn HEAD.
+  Future<Result<String>> currentBranch(Repository repo) async {
+    try {
+      return Ok(repo.head.shorthand);
+    } catch (e) {
+      return Err('Could not read HEAD: $e');
+    }
+  }
+
+  Future<Result<List<String>>> localBranches(Repository repo) async {
+    try {
+      final names = Branch.list(repo: repo, type: GitBranch.local)
+          .map((branch) => branch.name)
+          .toList()
+        ..sort();
+      return Ok(names);
+    } catch (e) {
+      return Err('Could not list local branches: $e');
+    }
+  }
+
+  /// Remote-tracking branches, named as they appear to git ("origin/main").
+  Future<Result<List<String>>> remoteBranches(Repository repo) async {
+    try {
+      final names = Branch.list(repo: repo, type: GitBranch.remote)
+          .map((branch) => branch.name)
+          .toList()
+        ..sort();
+      return Ok(names);
+    } catch (e) {
+      return Err('Could not list remote branches: $e');
+    }
+  }
+
+  /// Creates [name] at the current HEAD without switching to it.
+  Future<Result<void>> createBranch(Repository repo, String name) async {
+    final branchName = name.trim();
+    if (branchName.isEmpty) {
+      return const Err('Branch name is empty.');
+    }
+    if (!Branch.isNameValid(branchName)) {
+      return Err('"$branchName" is not a valid branch name.');
+    }
+    try {
+      if (_tryRefTarget(repo, 'refs/heads/$branchName') != null) {
+        return Err('Branch $branchName already exists.');
+      }
+      final head = repo.head;
+      final target = Commit.lookup(repo: repo, oid: head.target);
+      Branch.create(repo: repo, name: branchName, target: target).free();
+      return const Ok(null);
+    } catch (e) {
+      return Err('Could not create $branchName: $e');
+    }
+  }
+
+  /// Moves HEAD to an existing local branch.
+  ///
+  /// Refuses when tracked files are modified so a checkout cannot overwrite
+  /// work in progress. Untracked files are left to libgit2's safe checkout,
+  /// which only fails when the target branch would overwrite them.
+  Future<Result<void>> switchBranch(Repository repo, String name) async {
+    final branchName = name.trim();
+    final refName = 'refs/heads/$branchName';
+    if (_tryRefTarget(repo, refName) == null) {
+      return Err('Branch $branchName does not exist.');
+    }
+
+    final dirty = await _trackedChanges(repo);
+    final paths = dirty.valueOrNull;
+    if (paths != null && paths.isNotEmpty) {
+      return Err(
+        '${paths.length} uncommitted change(s) in the working tree. '
+        'Commit or stash them before switching to $branchName. Nothing was changed.',
+      );
+    }
+
+    try {
+      Checkout.reference(repo: repo, name: refName);
+      repo.setHead(refName);
+      return const Ok(null);
+    } catch (e) {
+      // A safe checkout can write some paths before it hits the one it must
+      // not overwrite. HEAD did not move, so put the tree back to match it.
+      try {
+        Checkout.head(repo: repo);
+      } catch (_) {}
+      return Err(
+        'Could not switch to $branchName: $e. '
+        'Commit, stash or move any files the other branch would overwrite.',
+      );
+    }
+  }
+
+  /// Modified, staged or deleted tracked files, without untracked ones.
+  Future<Result<List<String>>> _trackedChanges(Repository repo) async {
+    final paths = await _workdirPaths(repo, includeUntracked: false);
+    return paths.fold(
+      (value) => Ok(value.tracked),
+      (message) => Err(message),
+    );
+  }
+
+  /// Files present in the working tree but tracked by neither HEAD nor index.
+  Future<Result<List<String>>> _untrackedPaths(Repository repo) async {
+    final paths = await _workdirPaths(repo, includeUntracked: true);
+    return paths.fold(
+      (value) => Ok(value.untracked),
+      (message) => Err(message),
+    );
+  }
+
+  /// Working-tree paths split by tracked/untracked.
+  ///
+  /// `treeToWorkdirWithIndex` is the only variant that reports staged additions
+  /// (a file in the index but not in HEAD); untracked files only appear when
+  /// they are asked for, because build output must not block a branch switch or
+  /// a merge.
+  Future<Result<({List<String> tracked, List<String> untracked})>>
+      _workdirPaths(Repository repo, {required bool includeUntracked}) async {
+    Tree? tree;
+    try {
+      final head = repo.head;
+      tree = Commit.lookup(repo: repo, oid: head.target).tree;
+    } catch (_) {
+      // Unborn HEAD: nothing is tracked yet.
+    }
+
+    Diff? diff;
+    try {
+      diff = Diff.treeToWorkdirWithIndex(
+        repo: repo,
+        tree: tree,
+        flags: includeUntracked
+            ? const {GitDiff.includeUntracked, GitDiff.recurseUntrackedDirs}
+            : const {GitDiff.normal},
+      );
+      final tracked = <String>[];
+      final untracked = <String>[];
+      for (final delta in diff.deltas) {
+        (delta.status == GitDelta.untracked ? untracked : tracked)
+            .add(_deltaPath(delta));
+      }
+      return Ok((tracked: tracked, untracked: untracked));
+    } catch (e) {
+      return Err('Could not read the working tree: $e');
+    } finally {
+      diff?.free();
+    }
+  }
+
+  /// Saves the tracked working-tree changes and reverts them.
+  ///
+  /// Returns false when there was nothing to stash. Untracked files are left
+  /// alone, matching `git stash` without `-u`.
+  Future<Result<bool>> stashSave(
+    Repository repo,
+    GitIdentity identity, {
+    String? message,
+  }) async {
+    final changes = await _trackedChanges(repo);
+    final paths = changes.valueOrNull;
+    if (paths != null && paths.isEmpty) {
+      return const Ok(false);
+    }
+    try {
+      final stasher = Signature.create(
+        name: identity.name,
+        email: identity.email,
+      );
+      Stash.create(repo: repo, stasher: stasher, message: message);
+      return const Ok(true);
+    } catch (e) {
+      return Err('Stash failed: $e');
+    }
+  }
+
+  Future<Result<int>> stashCount(Repository repo) async {
+    try {
+      return Ok(Stash.list(repo).length);
+    } catch (e) {
+      return Err('Could not read the stash: $e');
+    }
+  }
+
+  /// Restores a stash without dropping it, for when `pop` would conflict.
+  Future<Result<void>> stashApply(Repository repo, {int index = 0}) async {
+    try {
+      Stash.apply(repo: repo, index: index);
+      return const Ok(null);
+    } catch (e) {
+      return Err(
+        'Could not apply the stash: $e. The stash entry is still there; '
+        'commit or stash your current changes first.',
+      );
+    }
+  }
+
+  /// Restores a stash and drops it on success.
+  Future<Result<void>> stashPop(Repository repo, {int index = 0}) async {
+    try {
+      Stash.pop(repo: repo, index: index);
+      return const Ok(null);
+    } catch (e) {
+      return Err(
+        'Could not restore the stash: $e. The stash entry is still there and '
+        'your current changes are intact.',
+      );
+    }
+  }
+
+  /// Merges [name] into the current branch.
+  ///
+  /// [name] may be a local branch ("feature"), a remote-tracking branch
+  /// ("origin/main") or a full ref. The merge result is computed in memory
+  /// first, so conflicting files are reported before the working tree is
+  /// touched; a clean merge is written as a two-parent commit.
+  Future<Result<void>> mergeBranch(
+    Repository repo,
+    String name,
+    GitIdentity identity,
+  ) async {
+    final refName = _resolveRef(repo, name);
+    if (refName == null) {
+      return Err('No local or remote branch named $name.');
+    }
+
+    final dirty = await _trackedChanges(repo);
+    final paths = dirty.valueOrNull;
+    if (paths != null && paths.isNotEmpty) {
+      return Err(
+        '${paths.length} uncommitted change(s) in the working tree. '
+        'Commit or stash them before merging. Nothing was changed.',
+      );
+    }
+
+    try {
+      final current = repo.head.shorthand;
+      final localOid = _tryRefTarget(repo, 'refs/heads/$current');
+      final theirOid = _tryRefTarget(repo, refName);
+      if (localOid == null || theirOid == null) {
+        return Err('Could not resolve $current or $name.');
+      }
+      if (localOid == theirOid) {
+        return const Ok(null);
+      }
+
+      final counts = repo.aheadBehind(local: localOid, upstream: theirOid);
+      final ahead = counts.isNotEmpty ? counts.first : 0;
+      final behind = counts.length > 1 ? counts[1] : 0;
+      if (behind == 0) {
+        // Nothing on $name that the current branch does not already have.
+        return const Ok(null);
+      }
+      if (ahead == 0) {
+        repo.reset(oid: theirOid, resetType: GitReset.hard);
+        return const Ok(null);
+      }
+
+      final ourCommit = Commit.lookup(repo: repo, oid: localOid);
+      final theirCommit = Commit.lookup(repo: repo, oid: theirOid);
+      final mergeIndex = Merge.commits(
+        repo: repo,
+        ourCommit: ourCommit,
+        theirCommit: theirCommit,
+      );
+      try {
+        if (mergeIndex.hasConflicts) {
+          final files = mergeIndex.conflicts.keys.toList()..sort();
+          return Err(
+            'Merge stopped: ${files.length} file(s) conflict:\n${files.join('\n')}\n'
+            'Your changes are intact; nothing was merged.',
+          );
+        }
+        // libgit2's safe checkout overwrites untracked files silently, so a
+        // merge that would replace one has to be refused before it starts.
+        final untracked = await _untrackedPaths(repo);
+        final blockers = (untracked.valueOrNull ?? const <String>[])
+            .where(mergeIndex.find)
+            .toList();
+        if (blockers.isNotEmpty) {
+          return Err(
+            'Merge stopped: untracked file(s) would be overwritten:\n'
+            '${blockers.join('\n')}\n'
+            'Move or delete them first. Nothing was changed.',
+          );
+        }
+        final treeOid = mergeIndex.writeTree(repo);
+        final signature =
+            Signature.create(name: identity.name, email: identity.email);
+        final mergedOid = Commit.create(
+          repo: repo,
+          updateRef: 'HEAD',
+          author: signature,
+          committer: signature,
+          message: 'Merge $name into $current',
+          tree: Tree.lookup(repo: repo, oid: treeOid),
+          parents: [ourCommit, theirCommit],
+        );
+        try {
+          Checkout.commit(
+            repo: repo,
+            commit: Commit.lookup(repo: repo, oid: mergedOid),
+          );
+        } catch (e) {
+          // The merge commit is already on the branch; an untracked file the
+          // merge would overwrite can still stop the checkout. Put the branch
+          // back before reporting, so HEAD and the tree agree again.
+          repo.setHead('refs/heads/$current');
+          repo.reset(oid: localOid, resetType: GitReset.hard);
+          return Err('Merge failed: $e. The branch was put back to $current.');
+        }
+        return const Ok(null);
+      } finally {
+        mergeIndex.free();
+      }
+    } catch (e) {
+      return Err('Merge failed: $e');
+    }
+  }
+
+  String? _resolveRef(Repository repo, String name) {
+    if (name.startsWith('refs/') && _tryRefTarget(repo, name) != null) {
+      return name;
+    }
+    for (final candidate in ['refs/heads/$name', 'refs/remotes/$name']) {
+      if (_tryRefTarget(repo, candidate) != null) return candidate;
+    }
+    return null;
+  }
+
+  static String _deltaPath(DiffDelta delta) =>
+      delta.status == GitDelta.deleted || delta.newFile.path.isEmpty
+          ? delta.oldFile.path
+          : delta.newFile.path;
 
   Future<Result<List<GitDiffEntry>>> workingDirDiff(Repository repo) async {
     Tree? tree;
@@ -261,11 +617,7 @@ class GitService {
       for (var i = 0; i < deltas.length; i++) {
         final delta = deltas[i];
         entries.add(GitDiffEntry(
-          // For a deletion the "new" side is the absent one, and reading its
-          // path is either empty or a null dereference. Use the old side.
-          path: delta.status == GitDelta.deleted
-              ? delta.oldFile.path
-              : delta.newFile.path,
+          path: _deltaPath(delta),
           isNew: delta.status == GitDelta.added,
           isDeleted: delta.status == GitDelta.deleted,
           patch: i < patches.length ? patches[i].text : '',
