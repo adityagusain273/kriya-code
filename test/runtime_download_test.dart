@@ -342,6 +342,50 @@ Filename: pool/main/g/golang/golang_1.0_x86_64.deb
       expect(insecure.stateFor('cpython').error, contains('https'));
     });
 
+    test('download skips already verified packages and resumes', () async {
+      final pkgsDir = Directory('${testDir.path}/cpython/pkgs')..createSync(recursive: true);
+      final pythonPkg = File('${pkgsDir.path}/python_1.0_aarch64.deb');
+      pythonPkg.writeAsBytesSync(List.filled(body, 65));
+
+      int sendCount = 0;
+      client.onSend = (_) async {
+        sendCount++;
+        return http.StreamedResponse(
+          Stream.value(List.filled(body, 65)),
+          200,
+          contentLength: body,
+        );
+      };
+
+      await service.download('cpython');
+
+      expect(service.isInstalled('cpython'), isTrue);
+      expect(sendCount, packageCount - 1);
+    });
+
+    test('cancel resets state to idle and preserves verified packages', () async {
+      final pkgsDir = Directory('${testDir.path}/cpython/pkgs')..createSync(recursive: true);
+      final pythonPkg = File('${pkgsDir.path}/python_1.0_aarch64.deb');
+      pythonPkg.writeAsBytesSync(List.filled(body, 65));
+
+      client.onSend = (_) async {
+        service.cancel('cpython');
+        return http.StreamedResponse(
+          Stream.value(List.filled(body, 65)),
+          200,
+          contentLength: body,
+        );
+      };
+
+      await service.download('cpython');
+
+      final state = service.stateFor('cpython');
+      expect(state.phase, RuntimeDownloadPhase.idle);
+      expect(state.error, isNull);
+      expect(service.isInstalled('cpython'), isFalse);
+      expect(pythonPkg.existsSync(), isTrue);
+    });
+
     test('catalog covers all local runtime ids used by language packs', () {
       expect(runtimeCatalog.keys, containsAll(['cpython', 'clang', 'openjdk']));
       for (final spec in runtimeCatalog.values) {

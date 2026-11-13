@@ -15,6 +15,8 @@ class RuntimeSpec {
   /// pack that does not exist.
   final List<String> extensionIds;
   final List<String> packages;
+  final int defaultSizeMb;
+  final String approxVersion;
 
   const RuntimeSpec({
     required this.runtimeId,
@@ -22,6 +24,8 @@ class RuntimeSpec {
     required this.description,
     required this.extensionIds,
     required this.packages,
+    this.defaultSizeMb = 25,
+    this.approxVersion = '1.0',
   });
 }
 
@@ -32,6 +36,8 @@ const runtimeCatalog = <String, RuntimeSpec>{
     description: 'Run .py files offline on your device',
     extensionIds: ['bcode.lang.python'],
     packages: ['python', 'libandroid-support', 'ncurses', 'openssl', 'libffi'],
+    defaultSizeMb: 24,
+    approxVersion: '3.12',
   ),
   'clang': RuntimeSpec(
     runtimeId: 'clang',
@@ -39,6 +45,8 @@ const runtimeCatalog = <String, RuntimeSpec>{
     description: 'Compile and run .c and .cpp files offline',
     extensionIds: ['bcode.lang.c', 'bcode.lang.cpp'],
     packages: ['clang', 'binutils', 'ncurses', 'zlib', 'libc++'],
+    defaultSizeMb: 42,
+    approxVersion: '18',
   ),
   'openjdk': RuntimeSpec(
     runtimeId: 'openjdk',
@@ -46,6 +54,8 @@ const runtimeCatalog = <String, RuntimeSpec>{
     description: 'Run .java files offline on your device',
     extensionIds: ['bcode.lang.java'],
     packages: ['openjdk-17'],
+    defaultSizeMb: 38,
+    approxVersion: '17',
   ),
   'nodejs': RuntimeSpec(
     runtimeId: 'nodejs',
@@ -53,6 +63,8 @@ const runtimeCatalog = <String, RuntimeSpec>{
     description: 'Run JavaScript files offline on your device',
     extensionIds: ['bcode.lang.javascript', 'bcode.lang.typescript'],
     packages: ['nodejs'],
+    defaultSizeMb: 32,
+    approxVersion: '20',
   ),
   'bash': RuntimeSpec(
     runtimeId: 'bash',
@@ -60,6 +72,8 @@ const runtimeCatalog = <String, RuntimeSpec>{
     description: 'Full bash shell for terminal, npm, pip, git',
     extensionIds: [],
     packages: ['bash', 'coreutils', 'findutils', 'grep', 'sed', 'gawk', 'curl', 'wget', 'git', 'openssh'],
+    defaultSizeMb: 12,
+    approxVersion: '5.2',
   ),
 };
 

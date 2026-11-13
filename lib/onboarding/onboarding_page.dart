@@ -6,6 +6,8 @@ import '../workspace/fs_service.dart';
 import '../editor/tab_manager.dart';
 import '../editor/editor_page.dart';
 import '../settings/settings_store.dart';
+import '../execution/runtime_catalog.dart';
+import '../execution/runtime_download_service.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
@@ -30,13 +32,28 @@ class _OnboardingPageState extends State<OnboardingPage>
 
   static const int _totalSteps = 2;
 
+  RuntimeDownloadService get _downloads => sl<RuntimeDownloadService>();
+  RuntimePreview? _pythonPreview;
+
   @override
   void initState() {
     super.initState();
+    _downloads.addListener(_onDownloadChange);
+    _loadPythonPreview();
+  }
+
+  void _onDownloadChange() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _loadPythonPreview() async {
+    final preview = await _downloads.inspect('cpython');
+    if (mounted) setState(() => _pythonPreview = preview);
   }
 
   @override
   void dispose() {
+    _downloads.removeListener(_onDownloadChange);
     _pageCtrl.dispose();
     _welcomeAnim.dispose();
     _langAnim.dispose();
@@ -69,7 +86,7 @@ class _OnboardingPageState extends State<OnboardingPage>
 
   void _finish() {
     sl<SettingsStore>().onboardingComplete = true;
-    if (mounted) return;
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(builder: (_) => const EditorPage()),
     );
@@ -504,6 +521,155 @@ class _OnboardingPageState extends State<OnboardingPage>
     );
   }
 
+  String _formatBytes(int bytes) {
+    final mb = bytes / (1024 * 1024);
+    if (mb >= 1) return '${mb.toStringAsFixed(1)} MB';
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+
+  Widget _buildPythonRuntimeCard(ColorScheme cs) {
+    final state = _downloads.stateFor('cpython');
+    final installed = _downloads.isInstalled('cpython') ||
+        state.phase == RuntimeDownloadPhase.installed;
+    final spec = specForRuntime('cpython');
+    final versionStr = _pythonPreview?.version ?? spec?.approxVersion ?? '3.12';
+    final sizeStr = _pythonPreview != null
+        ? _formatBytes(_pythonPreview!.sizeBytes)
+        : '≈${spec?.defaultSizeMb ?? 24} MB';
+
+    if (installed) {
+      return Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: cs.primaryContainer.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.primary.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle_rounded, color: cs.primary, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Python $versionStr runtime installed · Ready to run offline',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.phase == RuntimeDownloadPhase.resolving ||
+        state.phase == RuntimeDownloadPhase.downloading ||
+        state.phase == RuntimeDownloadPhase.installing) {
+      return Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  state.phase == RuntimeDownloadPhase.installing
+                      ? 'Installing Python runtime…'
+                      : state.currentPackage.isNotEmpty
+                          ? 'Downloading ${state.currentPackage}…'
+                          : 'Preparing download…',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                TextButton(
+                  onPressed: () => _downloads.cancel('cpython'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            LinearProgressIndicator(
+              value: state.phase == RuntimeDownloadPhase.installing ? null : state.progress,
+            ),
+            if (state.totalBytes > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '${_formatBytes(state.receivedBytes)} of ${_formatBytes(state.totalBytes)}',
+                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.terminal_rounded, size: 24, color: cs.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Download Python runtime ($sizeStr)',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                Text(
+                  'Python $versionStr to run code offline without Termux',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                ),
+                if (state.phase == RuntimeDownloadPhase.failed && state.error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      state.error!,
+                      style: TextStyle(fontSize: 10, color: cs.error),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(
+            onPressed: () => _downloads.download('cpython'),
+            style: FilledButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            ),
+            child: Text(
+              state.phase == RuntimeDownloadPhase.failed ? 'Retry' : 'Download',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQuickStart(ColorScheme cs) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
@@ -544,6 +710,10 @@ class _OnboardingPageState extends State<OnboardingPage>
             subtitle: 'Opens a working Hello World file ready to run with the top Play button',
             onTap: () => setState(() => _createStarterExample = true),
           ),
+          if (_createStarterExample &&
+              !(_selectedLanguages.contains('html') ||
+                  _selectedLanguages.contains('javascript')))
+            _buildPythonRuntimeCard(cs),
           const SizedBox(height: 12),
           _starterOptionCard(
             cs: cs,

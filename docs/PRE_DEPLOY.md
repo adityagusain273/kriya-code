@@ -13,7 +13,7 @@ new dependency unless the task cannot be done with what is installed, and
 | # | Item | Closes | State today |
 |---|---|---|---|
 | 1 | Extension loop: preview, unload, official index | Ecosystem, distribution | Done — preview, immediate unload, official index published and verified on device |
-| 2 | First-run path to a successful Run | Execution promise | Partial — onboarding writes a Hello World, runtime download is not part of the flow |
+| 2 | First-run path to a successful Run | Execution promise | Done — onboarding offers Python download with live size/version; editor Run opens download sheet; verified end-to-end on device |
 | 3 | Store compliance | Launch | Partial — policy text and data-safety draft exist in `store/`, nothing hosted |
 | 4 | Crash and startup budget | Low-end devices | Measured — cold start and PSS pass; 2k-line scroll misses the frame target |
 | 5 | Workspace backup/export | Retention | Done — Export project (include/skip .git) round-trips on device |
@@ -72,12 +72,14 @@ at the first minute.
 2. Runtime download must be cancellable, resumable, and honest about progress
    and failures — recheck `RuntimeDownloadService` against a flaky connection
    and a mid-download cancel.
-3. If the user skips the download, the Run tap on that file must open the
+3. If the user skips the download, the Run tap on that file opens the
    runtime download sheet rather than a generic error.
 
 **Acceptance.** Fresh install on a clean device → onboarding → download Python
 → back in the editor → Run → `Hello from B Code!` in the console, with no
-Termux installed and no second trip to Settings.
+Termux installed and no second trip to Settings. *(Verified on device Realme C25
+Android 11: both Flow A via onboarding download and Flow B via editor Play button sheet
+run and output `Hello from B Code!` in the console panel).*
 
 ## 3. Store compliance
 

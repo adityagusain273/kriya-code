@@ -12,9 +12,11 @@ import 'autocomplete_bar.dart';
 import 'highlighting/syntax_themes.dart';
 import 'highlighting/highlight_service.dart';
 import '../execution/console_panel.dart';
+import '../execution/local/local_runner.dart';
 import '../execution/models.dart';
 import '../execution/runner_service.dart';
 import '../execution/ui/downloads_page.dart';
+import '../execution/ui/runtime_download_sheet.dart';
 import '../github/ui/github_page.dart';
 import '../lsp/autocomplete_engine.dart';
 import '../plugins/api/run_config.dart';
@@ -678,6 +680,21 @@ class _EditorPageState extends State<EditorPage>
     await tabs.save();
     final contribution = registry.byId(langId);
     final config = contribution?.runConfig;
+
+    if (config?.hasLocal == true) {
+      final runtimeId = config!.local!.runtimeId;
+      final local = sl<LocalRunner>();
+      final hasLocal = await local.hasRuntime(runtimeId);
+      if (!hasLocal) {
+        if (!mounted) return;
+        final installed = await showRuntimeDownloadSheet(
+          context,
+          runtimeId: runtimeId,
+        );
+        if (!installed || !mounted) return;
+      }
+    }
+
     // Open the console before awaiting: output used to appear only after the
     // process had already exited, so a long script looked like it did nothing.
     if (mounted) ConsolePanel.show(context);

@@ -280,7 +280,12 @@ class RuntimeDownloadService extends ChangeNotifier {
         sizeBytes: refs.fold<int>(0, (sum, r) => sum + r.sizeBytes),
       );
     } catch (_) {
-      return null;
+      return RuntimePreview(
+        runtimeId: runtimeId,
+        version: spec.approxVersion,
+        packageCount: spec.packages.length,
+        sizeBytes: spec.defaultSizeMb * 1024 * 1024,
+      );
     }
   }
 
@@ -359,10 +364,11 @@ class RuntimeDownloadService extends ChangeNotifier {
     }
     if (_active.contains(runtimeId)) return;
     _active.add(runtimeId);
+    List<TermuxPackageRef>? refs;
     try {
       _update(runtimeId, const RuntimeDownloadState(
           phase: RuntimeDownloadPhase.resolving));
-      final refs = await resolvePackages(spec);
+      refs = await resolvePackages(spec);
 
       // Refuse to install anything we cannot verify. A .deb that reaches the
       // extractor is unpacked into filesDir/runtimes/<id>/bin and marked
@@ -389,6 +395,20 @@ class RuntimeDownloadService extends ChangeNotifier {
       for (final ref in refs) {
         if (_cancelled.contains(runtimeId)) throw StateError('Cancelled');
 
+        final fileName = ref.fileName.split('/').last;
+        final file = File('${pkgsDir.path}/$fileName');
+
+        if (await _isPackageValid(file, ref)) {
+          received += ref.sizeBytes;
+          _update(runtimeId, stateFor(runtimeId).copyWith(
+            phase: RuntimeDownloadPhase.downloading,
+            totalBytes: total,
+            receivedBytes: received,
+            currentPackage: ref.name,
+          ));
+          continue;
+        }
+
         _update(runtimeId, stateFor(runtimeId).copyWith(
           phase: RuntimeDownloadPhase.downloading,
           totalBytes: total,
@@ -396,8 +416,6 @@ class RuntimeDownloadService extends ChangeNotifier {
           currentPackage: ref.name,
         ));
 
-        final fileName = ref.fileName.split('/').last;
-        final file = File('${pkgsDir.path}/$fileName');
         final requestUri = Uri.parse('$repoBase/${ref.fileName}');
         if (requestUri.host != expectedRepoHost) {
           throw StateError('Refusing cross-host download for ${ref.name}');
@@ -443,7 +461,6 @@ class RuntimeDownloadService extends ChangeNotifier {
           await sink.flush();
         } finally {
           await sink.close();
-          await sink.flush();
           digestSink.close();
         }
 
@@ -493,27 +510,65 @@ class RuntimeDownloadService extends ChangeNotifier {
         totalBytes: total,
       ));
     } catch (e) {
-      // Report first. Doing the cleanup before surfacing the error delayed the
-      // user-visible failure behind filesystem I/O.
-      _fail(runtimeId, e.toString());
+      final isCancel = e is StateError && e.message == 'Cancelled';
+      if (isCancel) {
+        _active.remove(runtimeId);
+        _cancelled.remove(runtimeId);
+        _update(
+          runtimeId,
+          stateFor(runtimeId).copyWith(
+            phase: RuntimeDownloadPhase.idle,
+            error: null,
+          ),
+        );
+      } else {
+        _fail(runtimeId, e.toString());
+      }
 
-      // Then remove anything already fetched. A partially populated pkgs/
-      // directory is not a security problem on its own -- every file is verified
-      // before the next download starts -- but leaving hundreds of megabytes
-      // behind after a failed or cancelled install is not acceptable.
-      //
-      // Deliberately not awaited: `download()` is awaited by the UI, and holding
-      // it open on filesystem I/O delays the error the user needs to see.
-      unawaited(_discardPackages(spec.runtimeId));
+      unawaited(_discardUnverifiedPackages(spec.runtimeId, refs));
     }
   }
 
-  Future<void> _discardPackages(String runtimeId) async {
+  Future<bool> _isPackageValid(File file, TermuxPackageRef ref) async {
+    if (!await file.exists()) return false;
+    final length = await file.length();
+    if (ref.sizeBytes > 0 && length != ref.sizeBytes) {
+      await file.delete().catchError((_) => file);
+      return false;
+    }
+    final expected = ref.sha256;
+    if (expected == null || expected.isEmpty) {
+      await file.delete().catchError((_) => file);
+      return false;
+    }
+    final digest = await sha256.bind(file.openRead()).first;
+    if (digest.toString().toLowerCase() != expected.toLowerCase()) {
+      await file.delete().catchError((_) => file);
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _discardUnverifiedPackages(
+    String runtimeId, [
+    List<TermuxPackageRef>? refs,
+  ]) async {
     try {
       final rootDir = Directory(await runtimesRootResolver());
       final pkgs = Directory('${rootDir.path}/$runtimeId/pkgs');
-      if (await pkgs.exists()) {
+      if (!await pkgs.exists()) return;
+      if (refs == null || refs.isEmpty) {
         await pkgs.delete(recursive: true);
+        return;
+      }
+      final refMap = {for (final r in refs) r.fileName.split('/').last: r};
+      await for (final entity in pkgs.list()) {
+        if (entity is! File) continue;
+        final name = entity.path.split('/').last;
+        final ref = refMap[name];
+        if (ref == null || !await _isPackageValid(entity, ref)) {
+          await entity.delete().catchError((_) => entity);
+        }
       }
     } catch (_) {}
   }
@@ -542,7 +597,7 @@ class RuntimeDownloadService extends ChangeNotifier {
       final bytes = refs.fold<int>(0, (s, r) => s + r.sizeBytes);
       return (bytes / (1024 * 1024)).ceil();
     } catch (_) {
-      return null;
+      return spec.defaultSizeMb;
     }
   }
 
