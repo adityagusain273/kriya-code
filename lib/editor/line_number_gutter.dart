@@ -19,6 +19,7 @@ class LineNumberGutter extends StatelessWidget {
     required this.lineHeight,
     required this.textStyle,
     required this.width,
+    this.errorLines = const {},
     this.topPadding = 0,
   });
 
@@ -27,6 +28,9 @@ class LineNumberGutter extends StatelessWidget {
   final double lineHeight;
   final TextStyle textStyle;
   final double width;
+
+  /// Zero-based lines with a diagnostic, painted as a marker beside the number.
+  final Set<int> errorLines;
 
   /// Space the field keeps above its first line (`InputDecoration.contentPadding`).
   final double topPadding;
@@ -41,6 +45,7 @@ class LineNumberGutter extends StatelessWidget {
           lineHeight: lineHeight,
           textStyle: textStyle,
           width: width,
+          errorLines: errorLines,
           topPadding: topPadding,
         ),
         child: const SizedBox.expand(),
@@ -56,6 +61,7 @@ class LineNumberPainter extends CustomPainter {
     required this.lineHeight,
     required this.textStyle,
     required this.width,
+    required this.errorLines,
     required this.topPadding,
   }) : super(repaint: scrollPixels);
 
@@ -64,8 +70,10 @@ class LineNumberPainter extends CustomPainter {
   final double lineHeight;
   final TextStyle textStyle;
   final double width;
+  final Set<int> errorLines;
   final double topPadding;
   static const double _rightMargin = 8;
+  static const double _markerSize = 7;
 
   /// One laid-out paragraph per number, reused across frames.
   final LinkedHashMap<int, TextPainter> _numbers = LinkedHashMap<int, TextPainter>();
@@ -112,6 +120,14 @@ class LineNumberPainter extends CustomPainter {
     if (first >= lineCount) return;
     final y = topPadding - pixels;
     for (var i = first; i <= last; i++) {
+      if (errorLines.contains(i)) {
+        final top = y + i * lineHeight + (lineHeight - _markerSize) / 2;
+        canvas.drawCircle(
+          Offset(_markerSize / 2 + 1, top + _markerSize / 2),
+          _markerSize / 2,
+          Paint()..color = const Color(0xFFEF5350),
+        );
+      }
       final painter = _number(i + 1);
       // A paragraph laid out at maxWidth keeps its own (shorter) width, so the
       // column's right edge has to be applied here: textAlign alone is a no-op
@@ -126,6 +142,7 @@ class LineNumberPainter extends CustomPainter {
       old.lineCount != lineCount ||
       old.lineHeight != lineHeight ||
       old.width != width ||
+      old.errorLines != errorLines ||
       old.topPadding != topPadding ||
       old.textStyle != textStyle;
 }

@@ -17,7 +17,7 @@ new dependency unless the task cannot be done with what is installed, and
 | 3 | Store compliance | Launch | Done (docs + screenshots); the upload itself is still the gate — see below |
 | 4 | Crash and startup budget | Low-end devices | Partial — cold start, PSS and idle pass; scroll is 75 → 40–52 ms worst frame, still above 32 ms |
 | 5 | Workspace backup/export | Retention | Done — Export project (include/skip .git) round-trips on device |
-| 6 | LSP-lite for Python and JS | IDE intelligence | Missing (keyword/symbol completion only) |
+| 6 | LSP-lite for Python and JS | IDE intelligence | Done — outline, go-to-definition and inline diagnostics, no language server |
 | 7 | Git safety: branch, stash, conflicts | Git depth | Done — branch list/create/switch, stash save/pop, divergence-aware pull with merge, conflict list |
 
 ## 1. Finish the extension loop
@@ -217,6 +217,58 @@ implementation, no completion rewrite.
 **Acceptance.** On a 500-line Python file and a 500-line JS file: outline
 matches the file structure, tapping a symbol jumps to the definition, and a
 deliberately broken bracket shows one inline diagnostic that clears on fix.
+
+**Where it stands (2026-11-14).** Done, in `lib/lsp/` plus two thin widgets.
+No language server, no protocol, no new dependency.
+
+- `source_scan.dart` is the shared pass: comments, string bodies, regex literals
+  and line starts are masked out of the source while keeping every offset
+  1:1, so a `def` inside a docstring and a bracket inside a string are both
+  invisible to the checks below. `visualIndent` (tab = next multiple of 8) is
+  shared so a symbol and its diagnostic land on the same column.
+- `outline_parser.dart` builds a tree of declarations: Python by indentation
+  (`class`/`def`, nested methods attached to their class, a block ending before
+  the next declaration at the same or a shallower level), JavaScript by `class`,
+  `function`, and top-level `const`/`let`/`var` (arrow and `function` right-hand
+  sides become functions, a block ends on its closing brace). Anything the
+  patterns do not recognise yields no symbols rather than an exception.
+- `diagnostics.dart` runs four cheap rules: unbalanced brackets (one diagnostic
+  per line, a mismatched opener dropped so one stray closer is one error, not a
+  cascade), unterminated string literals, and Python indentation — mixed tabs and
+  spaces, an indent with no block above it, an unindent that matches no outer
+  level, and a block opener with no body. Continuation lines are excluded: a line
+  inside brackets, after a trailing backslash, or following the closing quotes of
+  a multi-line literal may be indented by anything, and treating those as new
+  statements is what produced false positives.
+- `definition_provider.dart` resolves the word under the caret nearest-first: the
+  active buffer, then the other open tabs, then `WorkspaceSymbolIndex` — a
+  lazily built, 30-second cache of declarations under the workspace root, capped
+  at 400 files and 256 KB per file, skipping `node_modules`/`build`/`.git`-style
+  directories. A definition in an open tab wins over the same name on disk,
+  because an unsaved buffer is the newer copy.
+- UI: `SymbolOutlineSheet` (a searchable, indented sheet opened from the
+  command palette → *Go to Symbol*), `DiagnosticsBar` (one row per problem,
+  capped at three with a count, tap to jump), and a red marker in the
+  `LineNumberGutter` for lines with a diagnostic. Go to definition is a palette
+  entry; it opens the file and puts the caret on the declaration.
+
+Checked for false positives rather than only for the happy path: 517 Python
+files from the 3.12 standard library (2.6k-line `argparse.py` included) and 400
+JavaScript/TypeScript files from two real repositories produce **zero**
+diagnostics. A 200k-line minified bundle parses without throwing. On a 2013-line
+Python file the full diagnostics pass is ~13 ms and the outline ~5 ms, so the
+400 ms debounce is not on the typing path.
+
+Deliberately out: anything that needs a real parse (type errors, unresolved
+names, unused imports), completion, and hover. The scope said diagnostics must be
+trustworthy, and every one of those needs symbol resolution this deliberately
+does not do.
+
+Tests: 35 in `test/lsp_lite_test.dart` — outline extraction and nesting on a
+500-line Python file and a 500-line JS file, definition resolution within the
+file / another open tab / the workspace index, and diagnostics emitted and
+cleared on a deliberately broken bracket, plus the four real-world indentation
+shapes that were false positives before they were fixed.
 
 ## 7. Git safety
 

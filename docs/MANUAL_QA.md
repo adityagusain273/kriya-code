@@ -214,6 +214,31 @@ instead of sleeping a fixed amount, because a cold start here takes 4 s.
       SKIPs on a build without one instead of capturing the sign-in screen, so
       the gap is visible rather than silent.
 
+## LSP-lite checks (Python and JavaScript)
+
+- [ ] Open a 500-line Python file → command palette → **Go to Symbol** → the
+      sheet lists the classes with their methods indented under them, and the
+      line numbers in the rows match the file.
+- [ ] Type in the sheet's search box → the list narrows to matching names and
+      "No matches" appears for nonsense.
+- [ ] Tap a method → the sheet closes and the caret lands on that `def`, with
+      the line scrolled into view.
+- [ ] Open a JS file → **Go to Symbol** lists top-level `function`, `class` and
+      `const` declarations, and a `const` inside a function body is not listed.
+- [ ] Put the caret on a call to a function defined in the same file → **Go to
+      Definition** moves the caret to the `def`/declaration.
+- [ ] Put the caret on a call to a function defined in another file of the
+      workspace → **Go to Definition** opens that file and lands on the
+      declaration. A name declared nowhere reports "No definition found".
+- [ ] Delete one closing bracket in a Python file → within a moment one red row
+      appears above the status bar naming the line, and a red dot appears in the
+      line-number gutter. Put the bracket back → the row and the dot disappear.
+- [ ] Break a string (delete the closing quote) → the same one-row report; fix
+      it → it clears.
+- [ ] Open a file with a triple-quoted docstring followed by `% (...)` or with
+      a wrapped `if` condition → no diagnostics (these were false positives and
+      are covered by tests, but confirm on device).
+
 ## Known gaps after this pass
 
 - Scrolling a 2001-line file: worst frame is down from 75 ms to 40–52 ms (target

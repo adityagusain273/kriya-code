@@ -20,6 +20,9 @@ import '../execution/ui/downloads_page.dart';
 import '../execution/ui/runtime_download_sheet.dart';
 import '../github/ui/github_page.dart';
 import '../lsp/autocomplete_engine.dart';
+import '../lsp/diagnostics.dart';
+import '../lsp/definition_provider.dart';
+import '../lsp/source_scan.dart';
 import '../plugins/api/run_config.dart';
 import '../plugins/host/extension_install_store.dart';
 import '../plugins/host/language_registry.dart';
@@ -39,11 +42,13 @@ import '../workspace/file_explorer.dart';
 import '../workspace/file_icons.dart';
 import '../workspace/fs_service.dart';
 import 'command_palette.dart';
+import 'diagnostics_bar.dart';
 import 'line_commands.dart';
 import 'zoom_viewer.dart';
 import 'global_search.dart';
 import 'quick_open.dart';
 import 'shortcut_bar.dart';
+import 'symbol_outline.dart';
 
 class EditorPage extends StatefulWidget {
   const EditorPage({super.key});
@@ -59,6 +64,16 @@ class _EditorPageState extends State<EditorPage>
   TabController? _tabController;
   int _tabControllerLength = -1;
   final AutocompleteEngine _autocomplete = AutocompleteEngine();
+
+  /// Diagnostics for the active tab, recomputed on a debounce rather than per
+  /// keystroke: a full pass over a 500-line file is cheap, but doing it inside
+  /// the build that every edit triggers would make typing feel it.
+  List<Diagnostic> _diagnostics = const [];
+  EditorTab? _diagnosticsTab;
+  Timer? _diagnosticsTimer;
+
+  late final DefinitionProvider _definitions =
+      DefinitionProvider(fs: sl<FsService>());
 
   /// Attached to the visible editor so a global-search result can pull focus and
   /// let the field scroll its caret into view.
@@ -141,6 +156,8 @@ class _EditorPageState extends State<EditorPage>
       if (tabs.activeIndex >= 0) _closeTabWithConfirm(tabs.activeIndex);
     });
     setEditCallback(const Key('close_all'), _closeAllWithConfirm);
+    setEditCallback(const Key('go_to_symbol'), _goToSymbol);
+    setEditCallback(const Key('goto_definition'), _goToDefinition);
     sl<TabManager>().addListener(_onTabsChanged);
     sl<SettingsStore>().addListener(_onSettingsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -159,6 +176,15 @@ class _EditorPageState extends State<EditorPage>
     } else {
       _autocomplete.dismiss();
     }
+    if (!identical(tab, _diagnosticsTab)) {
+      _diagnostics = const [];
+      _diagnosticsTab = tab;
+    }
+    if (tab == null) {
+      _diagnosticsTimer?.cancel();
+    } else {
+      _scheduleDiagnostics(tab);
+    }
     setState(() {});
     // A search result can arrive while its tab is already the active one, so the
     // tab-index listener is not the only place this has to be honoured.
@@ -169,6 +195,90 @@ class _EditorPageState extends State<EditorPage>
 
   void _onSettingsChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _scheduleDiagnostics(EditorTab tab) {
+    _diagnosticsTimer?.cancel();
+    _diagnosticsTimer = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      final active = sl<TabManager>().active;
+      if (active == null || !identical(active, tab)) return;
+      final found = CodeDiagnostics.analyze(tab.controller.text, tab.languageId);
+      if (_sameDiagnostics(found, _diagnostics)) return;
+      setState(() {
+        _diagnostics = found;
+        _diagnosticsTab = tab;
+      });
+    });
+  }
+
+  static bool _sameDiagnostics(List<Diagnostic> a, List<Diagnostic> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  Future<void> _goToSymbol() async {
+    final tab = sl<TabManager>().active;
+    if (tab == null) return;
+    if (sourceLanguageFor(tab.languageId) == null) {
+      _showMessage('The outline is available for Python and JavaScript');
+      return;
+    }
+    await SymbolOutlineSheet.show(context, tab);
+    // The sheet only records the target; the editor owns the scroll-into-view.
+    if (mounted) _revealPendingMatch();
+  }
+
+  Future<void> _goToDefinition() async {
+    final tab = sl<TabManager>().active;
+    if (tab == null) return;
+    if (sourceLanguageFor(tab.languageId) == null) {
+      _showMessage('Go to definition is available for Python and JavaScript');
+      return;
+    }
+
+    final controller = tab.controller;
+    final offset = controller.selection.baseOffset;
+    final open = sl<TabManager>()
+        .tabs
+        .map((t) => DocumentSnapshot(t.filePath, t.controller.text))
+        .toList();
+
+    final location = await _definitions.resolve(
+      active: DocumentSnapshot(tab.filePath, controller.text),
+      offset: offset < 0 ? 0 : offset,
+      languageId: tab.languageId,
+      open: open,
+    );
+    if (!mounted) return;
+
+    if (location == null) {
+      _showMessage('No definition found');
+      return;
+    }
+
+    Haptics.selection();
+    if (location.path == tab.filePath) {
+      tab.revealAt(location.offset);
+      _editorFocus.requestFocus();
+      return;
+    }
+
+    try {
+      final opened = await sl<TabManager>().open(location.path);
+      opened.revealAt(location.offset);
+    } catch (e) {
+      _showMessage('Could not open ${location.path}: $e');
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _syncTabController(int length) {
@@ -225,6 +335,7 @@ class _EditorPageState extends State<EditorPage>
     clearRunCallbacks();
     _tabController?.dispose();
     _autocomplete.dispose();
+    _diagnosticsTimer?.cancel();
     unawaited(_previewServer.stop().catchError((Object _) {}));
     final liveServer = _liveServer;
     if (liveServer != null) {
@@ -821,6 +932,7 @@ class _EditorPageState extends State<EditorPage>
           );
         });
 
+        final errorLines = _diagnostics.map((d) => d.line).toSet();
         final gutterWidth = showLineNumbers ? 48 + (fontSize * 2) : 0.0;
         final gutterTextStyle = TextStyle(
           fontFamily: fontFamily,
@@ -835,6 +947,7 @@ class _EditorPageState extends State<EditorPage>
                 lineHeight: _lineHeight(context, fontFamily, fontSize),
                 textStyle: gutterTextStyle,
                 width: gutterWidth,
+                errorLines: errorLines,
                 topPadding: 16,
               );
 
@@ -846,6 +959,7 @@ class _EditorPageState extends State<EditorPage>
               tab.controller.text,
               tab.controller.selection.baseOffset,
             );
+            _scheduleDiagnostics(tab);
             return const SizedBox.shrink();
           },
         );
@@ -1421,6 +1535,14 @@ class _EditorPageState extends State<EditorPage>
                     child: _buildCodeView(tab),
                   ),
           ),
+          if (tab != null && _diagnostics.isNotEmpty)
+            DiagnosticsBar(
+              diagnostics: _diagnostics,
+              onSelect: (diagnostic) {
+                tab.revealAt(diagnostic.offset);
+                _editorFocus.requestFocus();
+              },
+            ),
           if (tab != null)
             _StatusBar(
               tab: tab,

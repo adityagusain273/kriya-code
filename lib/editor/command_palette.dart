@@ -162,6 +162,18 @@ class _CommandPaletteState extends State<CommandPalette> {
         onExecute: _editCallbacks[Key('goto_line')],
       ),
       CommandPaletteAction(
+        label: 'Go to Symbol',
+        category: 'Navigate',
+        icon: Icons.list_alt_outlined,
+        onExecute: _editCallbacks[Key('go_to_symbol')],
+      ),
+      CommandPaletteAction(
+        label: 'Go to Definition',
+        category: 'Navigate',
+        icon: Icons.my_location,
+        onExecute: _editCallbacks[Key('goto_definition')],
+      ),
+      CommandPaletteAction(
         label: 'Move Line Up',
         category: 'Edit',
         icon: Icons.keyboard_arrow_up,
