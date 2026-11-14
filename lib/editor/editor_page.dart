@@ -24,7 +24,6 @@ import '../lsp/autocomplete_engine.dart';
 import '../lsp/diagnostics.dart';
 import '../lsp/definition_provider.dart';
 import '../lsp/runtime_error_parser.dart';
-import '../lsp/source_scan.dart';
 import '../plugins/api/run_config.dart';
 import '../plugins/host/extension_install_store.dart';
 import '../plugins/host/language_registry.dart';
@@ -246,7 +245,7 @@ class _EditorPageState extends State<EditorPage>
   Future<void> _goToSymbol() async {
     final tab = sl<TabManager>().active;
     if (tab == null) return;
-    if (sourceLanguageFor(tab.languageId) == null) {
+    if (tab.languageId != 'python' && tab.languageId != 'javascript') {
       _showMessage('The outline is available for Python and JavaScript');
       return;
     }
@@ -258,7 +257,7 @@ class _EditorPageState extends State<EditorPage>
   Future<void> _goToDefinition() async {
     final tab = sl<TabManager>().active;
     if (tab == null) return;
-    if (sourceLanguageFor(tab.languageId) == null) {
+    if (tab.languageId != 'python' && tab.languageId != 'javascript') {
       _showMessage('Go to definition is available for Python and JavaScript');
       return;
     }

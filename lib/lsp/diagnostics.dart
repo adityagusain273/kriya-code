@@ -42,6 +42,12 @@ class CodeDiagnostics {
     _unterminatedStrings(scanned, found);
     if (language == SourceLanguage.python) {
       _pythonIndentation(text, scanned, found);
+    } else if (language == SourceLanguage.c ||
+        language == SourceLanguage.cpp ||
+        language == SourceLanguage.java) {
+      _cStyleSyntax(text, scanned, found, language);
+    } else if (language == SourceLanguage.json) {
+      _jsonSyntax(text, scanned, found);
     }
 
     found.sort((a, b) => a.offset.compareTo(b.offset));
@@ -295,6 +301,112 @@ class CodeDiagnostics {
       i++;
     }
     return line.substring(0, i);
+  }
+
+  static void _cStyleSyntax(
+    String text,
+    ScannedSource scanned,
+    List<Diagnostic> out,
+    SourceLanguage language,
+  ) {
+    final lines = scanned.code.split('\n');
+    final rawLines = text.split('\n');
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final raw = i < rawLines.length ? rawLines[i] : line;
+      final lineStart = scanned.lineStart(i);
+
+      // 1. C/C++ Header include check: #include <header.h
+      if (language == SourceLanguage.c || language == SourceLanguage.cpp) {
+        final rawTrim = raw.trim();
+        if (rawTrim.startsWith('#') && rawTrim.contains('include')) {
+          final openAngle = raw.indexOf('<');
+          if (openAngle >= 0 && !raw.contains('>', openAngle)) {
+            out.add(_diagnostic(
+              scanned,
+              lineStart + openAngle,
+              raw.trimRight().length - openAngle,
+              "Unclosed '<' in header include (expected '>')",
+            ));
+          }
+        }
+      }
+
+      // 2. Stray punctuation after semicolon: e.g. return 0;.
+      final semiIdx = line.indexOf(';');
+      if (semiIdx >= 0 && semiIdx + 1 < line.length) {
+        final rest = line.substring(semiIdx + 1);
+        final trimmedRest = rest.trim();
+        if (trimmedRest.length == 1 && '.,:?~`!@#\$%^&*'.contains(trimmedRest)) {
+          final strayOffset = lineStart + semiIdx + 1 + rest.indexOf(trimmedRest);
+          out.add(_diagnostic(
+            scanned,
+            strayOffset,
+            1,
+            "Unexpected '$trimmedRest' after ';'",
+          ));
+        }
+      }
+
+      // 3. Missing semicolon on return statements
+      final trimmed = line.trim();
+      if ((trimmed.startsWith('return ') || trimmed == 'return') &&
+          !trimmed.contains(';') &&
+          !trimmed.endsWith('\\')) {
+        final offset = lineStart + line.indexOf(trimmed);
+        out.add(_diagnostic(
+          scanned,
+          offset,
+          trimmed.length,
+          "Expected ';' after return statement",
+        ));
+      }
+    }
+  }
+
+  static void _jsonSyntax(
+    String text,
+    ScannedSource scanned,
+    List<Diagnostic> out,
+  ) {
+    final lines = scanned.code.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmed = line.trim();
+      final lineStart = scanned.lineStart(i);
+
+      // Single-line trailing comma: e.g. [1, 2,] or {"a": 1,}
+      final singleLineMatch = RegExp(r',(\s*[}\]])').firstMatch(line);
+      if (singleLineMatch != null) {
+        final commaIdx = line.indexOf(',', singleLineMatch.start);
+        out.add(_diagnostic(
+          scanned,
+          lineStart + commaIdx,
+          1,
+          'Trailing commas are not allowed in JSON',
+        ));
+        continue;
+      }
+
+      // Multi-line trailing comma: line ends with , and next line starts with } or ]
+      if (trimmed.endsWith(',')) {
+        for (var j = i + 1; j < lines.length; j++) {
+          final nextTrim = lines[j].trim();
+          if (nextTrim.isEmpty) continue;
+          if (nextTrim.startsWith('}') || nextTrim.startsWith(']')) {
+            final commaIdx = line.lastIndexOf(',');
+            out.add(_diagnostic(
+              scanned,
+              lineStart + commaIdx,
+              1,
+              'Trailing commas are not allowed in JSON',
+            ));
+          }
+          break;
+        }
+      }
+    }
   }
 
   static Diagnostic _diagnostic(

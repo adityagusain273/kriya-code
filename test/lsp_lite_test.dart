@@ -441,8 +441,35 @@ def f():
       );
     });
 
+    test('c unclosed header include', () {
+      final found = CodeDiagnostics.analyze('#include <stdio.h\n\nint main() {}\n', 'c');
+      expect(found, hasLength(1));
+      expect(found.first.line, 0);
+      expect(found.first.message, contains("Unclosed '<' in header include"));
+    });
+
+    test('c stray punctuation after semicolon', () {
+      final found = CodeDiagnostics.analyze('int main() {\n    return 0;.\n}\n', 'c');
+      expect(found, hasLength(1));
+      expect(found.first.line, 1);
+      expect(found.first.message, contains("Unexpected '.' after ';'"));
+    });
+
+    test('c missing semicolon on return', () {
+      final found = CodeDiagnostics.analyze('int main() {\n    return 0\n}\n', 'c');
+      expect(found, hasLength(1));
+      expect(found.first.line, 1);
+      expect(found.first.message, contains("Expected ';' after return statement"));
+    });
+
+    test('json trailing comma', () {
+      final found = CodeDiagnostics.analyze('{\n  "a": 1,\n}\n', 'json');
+      expect(found, hasLength(1));
+      expect(found.first.message, contains("Trailing commas"));
+    });
+
     test('languages with no checks report nothing', () {
-      expect(CodeDiagnostics.analyze('x = (\n', 'dart'), isEmpty);
+      expect(CodeDiagnostics.analyze('x = (\n', 'unsupported_xyz'), isEmpty);
       expect(CodeDiagnostics.analyze('x = (\n', null), isEmpty);
     });
 

@@ -51,6 +51,7 @@ class OutlineParser {
     return switch (language) {
       SourceLanguage.python => _python(scanned),
       SourceLanguage.javascript => _javascript(scanned),
+      _ => const [],
     };
   }
 

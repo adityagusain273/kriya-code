@@ -1,6 +1,12 @@
-/// Languages the LSP-lite features understand. Anything else is left alone
-/// rather than guessed at.
-enum SourceLanguage { python, javascript }
+/// Languages the LSP-lite features understand.
+enum SourceLanguage {
+  python,
+  javascript,
+  c,
+  cpp,
+  java,
+  json,
+}
 
 SourceLanguage? sourceLanguageFor(String? languageId) {
   switch (languageId) {
@@ -9,6 +15,15 @@ SourceLanguage? sourceLanguageFor(String? languageId) {
     case 'javascript':
     case 'typescript':
       return SourceLanguage.javascript;
+    case 'c':
+      return SourceLanguage.c;
+    case 'cpp':
+    case 'c++':
+      return SourceLanguage.cpp;
+    case 'java':
+      return SourceLanguage.java;
+    case 'json':
+      return SourceLanguage.json;
     default:
       return null;
   }
@@ -17,6 +32,10 @@ SourceLanguage? sourceLanguageFor(String? languageId) {
 String languageIdOf(SourceLanguage language) => switch (language) {
       SourceLanguage.python => 'python',
       SourceLanguage.javascript => 'javascript',
+      SourceLanguage.c => 'c',
+      SourceLanguage.cpp => 'cpp',
+      SourceLanguage.java => 'java',
+      SourceLanguage.json => 'json',
     };
 
 /// A quoted literal, as the scanner found it.
