@@ -16,6 +16,7 @@ import 'core/constants.dart';
 import 'core/crash_reporter.dart';
 import 'core/di.dart';
 import 'core/pinned_http.dart';
+import 'core/security/app_integrity.dart';
 import 'editor/highlighting/highlight_engine.dart';
 import 'editor/snippets.dart';
 import 'editor/highlighting/highlight_service.dart';
@@ -221,6 +222,38 @@ Future<void> _initRasp() async {
       CrashReporter.recordZoneError(error, stack);
       if (kDebugMode) debugPrint('SecureApp exception: $error\n$stack');
     },
+  );
+
+  await _recordRepackaging();
+}
+
+/// Compares the installed APK's signing certificate with the one compiled into
+/// this build, and records a mismatch.
+///
+/// A repackaged build has to be re-signed, so its certificate differs from ours.
+/// This is the only check here that catches a patched APK *before* the user is
+/// asked to sign in with their GitHub token.
+///
+/// Trusted and unconfigured builds stay quiet: a crash report a user emails is
+/// for failures, and `--dart-define=BCODE_CERT_SHA256` is absent from debug and
+/// local builds by design. A mismatch is written to the crash log, where the
+/// in-app bug report picks it up, and is deliberately not enforced — refusing to
+/// run would brick the editor for a legitimate user on a re-signed build, which
+/// is a worse outcome than a cracked copy staying alive.
+Future<void> _recordRepackaging() async {
+  final IntegrityReport report;
+  try {
+    report = await AppIntegrity.check();
+  } catch (error) {
+    if (kDebugMode) debugPrint('Repackaging check unavailable: $error');
+    return;
+  }
+  if (kDebugMode) debugPrint('Repackaging check: ${report.verdict.name}');
+  if (!report.isRepackaged) return;
+  CrashReporter.recordZoneError(
+    'App integrity: this build is signed by ${report.signers.join(', ')}, '
+    'which this release does not expect. ${report.reason ?? ''}',
+    StackTrace.current,
   );
 }
 

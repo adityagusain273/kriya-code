@@ -158,4 +158,20 @@ void main() {
       expect(ignore, contains('*.keystore'));
     });
   });
+
+  group('repackaging detection', () {
+    test('the release build compiles in its own signing certificate', () {
+      final workflow = readRepoFile('.github/workflows/build-apk.yml');
+
+      expect(workflow, contains('BCODE_CERT_SHA256'));
+      expect(workflow, contains(r'--dart-define=BCODE_CERT_SHA256=$BCODE_CERT_SHA256'));
+    });
+
+    test('the check runs at startup and reports a mismatch', () {
+      final main = readRepoFile('lib/main.dart');
+
+      expect(main, contains('AppIntegrity.check()'));
+      expect(main, contains('isRepackaged'));
+    });
+  });
 }
