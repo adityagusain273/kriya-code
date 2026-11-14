@@ -117,54 +117,57 @@ class _ConsoleSheetState extends State<_ConsoleSheet>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.15,
-      maxChildSize: 0.9,
-      builder: (context, scrollController) => Container(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.15,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            SizedBox(
-              height: 40,
-              child: TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(text: 'Output'),
-                  Tab(text: 'Terminal'),
-                ],
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white54,
-                indicatorColor: Colors.white,
-                dividerColor: Colors.transparent,
+              SizedBox(
+                height: 40,
+                child: TabBar(
+                  controller: _tabController,
+                  tabs: const [
+                    Tab(text: 'Output'),
+                    Tab(text: 'Terminal'),
+                  ],
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white54,
+                  indicatorColor: Colors.white,
+                  dividerColor: Colors.transparent,
+                ),
               ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _OutputTab(scrollController: scrollController),
-                  const _TerminalTab(),
-                ],
+              const Divider(height: 1),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _OutputTab(scrollController: scrollController),
+                    const _TerminalTab(),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
