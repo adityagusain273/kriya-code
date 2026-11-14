@@ -22,15 +22,18 @@ import '../packages/extension_source.dart';
 class _ExtUi {
   final String id;
   final String title;
-  final String subtitle;
+  final String description;
   final IconData icon;
+  final Color color;
+  final String version = '1.0.0';
   final String? runtimeId;
 
   const _ExtUi({
     required this.id,
     required this.title,
-    required this.subtitle,
+    required this.description,
     required this.icon,
+    required this.color,
     this.runtimeId,
   });
 }
@@ -39,97 +42,112 @@ const _extensions = <_ExtUi>[
   _ExtUi(
     id: 'bcode.lang.python',
     title: 'Python',
-    subtitle: 'Python language pack — highlighting, run support',
+    description: 'Python language pack — highlighting, run support',
     icon: Icons.code_rounded,
+    color: Color(0xFF3B7EA1),
     runtimeId: 'cpython',
   ),
   _ExtUi(
     id: 'bcode.lang.java',
     title: 'Java',
-    subtitle: 'Java language pack — highlighting, run support',
+    description: 'Java language pack — highlighting, run support',
     icon: Icons.local_cafe_rounded,
+    color: Color(0xFFC25E00),
     runtimeId: 'openjdk',
   ),
   _ExtUi(
     id: 'bcode.lang.c',
     title: 'C',
-    subtitle: 'C language pack — highlighting and run support',
+    description: 'C language pack — highlighting and run support',
     icon: Icons.code_rounded,
+    color: Color(0xFF4A7FC1),
     runtimeId: 'clang',
   ),
   _ExtUi(
     id: 'bcode.lang.cpp',
     title: 'C++',
-    subtitle: 'C++ language pack — highlighting and run support',
+    description: 'C++ language pack — highlighting and run support',
     icon: Icons.code_rounded,
+    color: Color(0xFF2F6FB0),
     runtimeId: 'clang',
   ),
   _ExtUi(
     id: 'bcode.lang.javascript',
     title: 'JavaScript',
-    subtitle: 'JavaScript language pack — highlighting, run support',
+    description: 'JavaScript language pack — highlighting, run support',
     icon: Mdi.languageJavascript,
+    color: Color(0xFFB8860B),
     runtimeId: 'nodejs',
   ),
   _ExtUi(
     id: 'bcode.lang.typescript',
     title: 'TypeScript',
-    subtitle: 'TypeScript language pack — highlighting',
+    description: 'TypeScript language pack — highlighting',
     icon: Mdi.languageTypescript,
+    color: Color(0xFF3178C6),
   ),
   _ExtUi(
     id: 'bcode.lang.html',
     title: 'HTML',
-    subtitle: 'HTML language pack — highlighting and live preview',
+    description: 'HTML language pack — highlighting and live preview',
     icon: Mdi.languageHtml5,
+    color: Color(0xFFD84315),
   ),
   _ExtUi(
     id: 'bcode.lang.css',
     title: 'CSS',
-    subtitle: 'CSS language pack — highlighting for stylesheets',
+    description: 'CSS language pack — highlighting for stylesheets',
     icon: Mdi.languageCss3,
+    color: Color(0xFF2A6FB0),
   ),
   _ExtUi(
     id: 'bcode.lang.json',
     title: 'JSON',
-    subtitle: 'JSON language pack — highlighting and validation',
+    description: 'JSON language pack — highlighting and validation',
     icon: Mdi.codeJson,
+    color: Color(0xFF6B7B8C),
   ),
   _ExtUi(
     id: 'bcode.lang.markdown',
     title: 'Markdown',
-    subtitle: 'Markdown language pack — GitHub-flavored syntax highlighting',
+    description: 'Markdown language pack — GitHub-flavored syntax highlighting',
     icon: Icons.description_outlined,
+    color: Color(0xFF5F7183),
   ),
   _ExtUi(
     id: 'bcode.github',
     title: 'GitHub',
-    subtitle: 'Clone, commit, push and sync repositories',
+    description: 'Clone, commit, push and sync repositories',
     icon: Icons.account_tree_outlined,
+    color: Color(0xFF7B8794),
   ),
   _ExtUi(
     id: 'bcode.termux',
     title: 'Termux',
-    subtitle: 'Device shell integration for local toolchains',
+    description: 'Device shell integration for local toolchains',
     icon: Icons.terminal_outlined,
+    color: Color(0xFF00897B),
   ),
   _ExtUi(
     id: 'bcode.zoom',
     title: 'Pinch to Zoom',
-    subtitle: 'Zoom in and out in the editor for comfortable code reading',
+    description: 'Zoom in and out in the editor for comfortable code reading',
     icon: Icons.zoom_in_rounded,
+    color: Color(0xFF1E88E5),
   ),
   _ExtUi(
     id: 'bcode.live_server',
     title: 'Live Server',
-    subtitle: 'Local dev server with live reload for HTML, CSS, and JS',
+    description: 'Local dev server with live reload for HTML, CSS, and JS',
     icon: Icons.play_circle_outline_rounded,
+    color: Color(0xFFE53935),
   ),
   _ExtUi(
     id: 'bcode.icons.material',
     title: 'Material Icon Theme',
-    subtitle: 'Beautiful file and folder icons for your workspace',
+    description: 'Beautiful file and folder icons for your workspace',
     icon: Icons.color_lens_outlined,
+    color: Color(0xFF8E24AA),
   ),
 ];
 
@@ -153,7 +171,8 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
           : null;
 
   final TextEditingController _searchController = TextEditingController();
-  bool _searchVisible = false;
+  bool _exploreOpen = true;
+  bool _installedOpen = true;
   String _query = '';
   bool _busy = false;
   bool _loadingCatalog = false;
@@ -180,7 +199,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     return _extensions
         .where((e) =>
             e.title.toLowerCase().contains(q) ||
-            e.subtitle.toLowerCase().contains(q) ||
+            e.description.toLowerCase().contains(q) ||
             e.id.toLowerCase().contains(q))
         .toList();
   }
@@ -209,16 +228,6 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
           e.id.toLowerCase().contains(q) ||
           e.description.toLowerCase().contains(q);
     }).toList();
-  }
-
-  void _toggleSearch() {
-    setState(() {
-      _searchVisible = !_searchVisible;
-      if (!_searchVisible) {
-        _query = '';
-        _searchController.clear();
-      }
-    });
   }
 
   void _openDownloads({String? runtimeId}) {
@@ -389,8 +398,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                 children: [
                   if (manifest.version.isNotEmpty)
                     Text('Version ${manifest.version}'),
-                  if (manifest.author.isNotEmpty)
-                    Text('By ${manifest.author}'),
+                  if (manifest.author.isNotEmpty) Text('By ${manifest.author}'),
                   if (manifest.description.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(manifest.description),
@@ -461,7 +469,8 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     );
     final target = fs.resolve('${manifest.id}-${manifest.version}.bcext');
     final readmeFile = File(p.join(chosen, 'README.md'));
-    final readme = await readmeFile.exists() ? await readmeFile.readAsString() : null;
+    final readme =
+        await readmeFile.exists() ? await readmeFile.readAsString() : null;
     if (!mounted) return;
     final preview = StagedExtension(
       manifest: manifest,
@@ -686,22 +695,24 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final results = _filtered;
     final theme = Theme.of(context);
-    final hasCommunity = _sources != null ||
-        _installed.isNotEmpty ||
-        _catalog.isNotEmpty ||
-        _loadingCatalog;
+    final results = _filtered;
+    final installedBundled =
+        results.where((ext) => _store.isInstalled(ext.id)).toList();
+    final exploreBundled =
+        results.where((ext) => !_store.isInstalled(ext.id)).toList();
+    final installed = _filteredInstalled;
+    final catalog = _filteredCatalog;
+    final exploreCount = catalog.length + exploreBundled.length;
+    final installedCount = installed.length + installedBundled.length;
+    final searching = _query.trim().isNotEmpty;
+    final showExplore = !searching || exploreCount > 0;
+    final showInstalled = !searching || installedCount > 0;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Extensions'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Search extensions',
-            onPressed: _toggleSearch,
-          ),
           IconButton(
             icon: const Icon(Icons.download_rounded),
             tooltip: 'Downloads',
@@ -721,8 +732,8 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                   _exportExtension();
                 case 'create':
                   _createExtension();
-                case 'source':
-                  _addSource();
+                case 'sources':
+                  _manageSources();
               }
             },
             itemBuilder: (_) => const [
@@ -732,129 +743,135 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
               PopupMenuItem(value: 'export', child: Text('Export .bcext')),
               PopupMenuDivider(),
               PopupMenuItem(value: 'create', child: Text('Create extension')),
-              PopupMenuItem(
-                  value: 'source', child: Text('Add extension source')),
+              PopupMenuItem(value: 'sources', child: Text('Manage sources')),
             ],
           ),
         ],
       ),
       body: Column(
         children: [
-          if (_busy) const LinearProgressIndicator(minHeight: 2),
-          if (_searchVisible)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'Search by name…',
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.close, size: 16),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _query = '');
-                          },
-                        ),
-                  border: const OutlineInputBorder(),
+          if (_busy || _loadingCatalog)
+            const LinearProgressIndicator(minHeight: 2),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search extensions',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                      ),
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHigh,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
                 ),
-                onChanged: (value) => setState(() => _query = value),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide:
+                      BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide:
+                      BorderSide(color: theme.colorScheme.primary, width: 1.2),
+                ),
               ),
             ),
+          ),
           Expanded(
             child: ListView(
+              padding: const EdgeInsets.only(bottom: 24),
               children: [
-                if (hasCommunity) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 8, 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Community extensions',
-                            style: theme.textTheme.titleSmall,
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _manageSources,
-                          child: const Text('Sources'),
-                        ),
-                      ],
-                    ),
+                if (showExplore) ...[
+                  _SectionHeader(
+                    title: 'Explore',
+                    count: exploreCount,
+                    expanded: _exploreOpen,
+                    onTap: () => setState(() => _exploreOpen = !_exploreOpen),
                   ),
-                  if (_loadingCatalog)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                  for (final ext in _filteredInstalled)
-                    _CommunityCard(
-                      title: ext.manifest.name,
-                      subtitle: _describe(
-                        ext.manifest.version,
-                        ext.manifest.author,
-                        ext.manifest.description,
+                  if (_exploreOpen) ...[
+                    if (exploreCount == 0)
+                      _EmptyLine(
+                        _loadingCatalog
+                            ? 'Loading community extensions…'
+                            : searching
+                                ? 'No matching extensions.'
+                                : 'Everything is installed.',
+                      )
+                    else ...[
+                      for (final entry in catalog) _catalogTile(entry),
+                      for (final ext in exploreBundled) _bundledTile(ext),
+                    ],
+                    if (_sourceErrors.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: Text(
+                          '${_sourceErrors.length} source(s) could not be loaded. '
+                          'Check the URL in Manage sources, or install a .bcext directly.',
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: theme.colorScheme.error),
+                        ),
                       ),
-                      installed: true,
-                      onTap: () => _removeExtension(ext),
-                    ),
-                  for (final entry in _filteredCatalog)
-                    _CommunityCard(
-                      title: entry.name,
-                      subtitle: _describe(
-                        entry.version,
-                        entry.author,
-                        entry.description,
+                    if (_sources?.sources.isEmpty ?? false)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'No sources yet. Add an index URL to browse community extensions.',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                            TextButton(
+                              onPressed: _addSource,
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              child: const Text('Add source'),
+                            ),
+                          ],
+                        ),
                       ),
-                      installed: false,
-                      actionLabel:
-                          _installed.any((ext) => ext.manifest.id == entry.id)
-                              ? 'Update'
-                              : 'Get',
-                      onTap: () => _installFromUrl(entry.download),
-                    ),
-                  if (_sourceErrors.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                      child: Text(
-                        '${_sourceErrors.length} source(s) could not be loaded. '
-                        'Check the URL in Sources, or install a .bcext directly.',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.error),
-                      ),
-                    ),
-                  if (_sources?.sources.isEmpty ?? false)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                      child: Text(
-                        'No sources. Add an index URL to browse public extensions, '
-                        'or install a .bcext file directly. Community packages add '
-                        'highlighting, snippets and themes — they cannot execute code.',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
+                  ],
                 ],
-                if (results.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                    child: Text('Bundled', style: theme.textTheme.titleSmall),
+                if (showExplore && showInstalled) const SizedBox(height: 8),
+                if (showInstalled) ...[
+                  _SectionHeader(
+                    title: 'Installed',
+                    count: installedCount,
+                    expanded: _installedOpen,
+                    onTap: () =>
+                        setState(() => _installedOpen = !_installedOpen),
                   ),
-                if (results.isEmpty && _query.trim().isNotEmpty)
-                  _EmptySearchState(query: _query.trim())
-                else
-                  for (final ext in results)
-                    _ExtensionCard(
-                      ext: ext,
-                      installed: _store.isInstalled(ext.id),
-                      onTap: () => _onInstallTap(ext),
-                      downloads: _downloads,
-                    ),
-                if (_query.isEmpty)
+                  if (_installedOpen) ...[
+                    if (installedCount == 0)
+                      const _EmptyLine(
+                        'Nothing installed yet. Download one from Explore.',
+                      )
+                    else ...[
+                      for (final ext in installed) _communityTile(ext),
+                      for (final ext in installedBundled) _bundledTile(ext),
+                    ],
+                  ],
+                ],
+                if (searching && exploreCount == 0 && installedCount == 0)
+                  _EmptySearchState(query: _query.trim()),
+                if (!searching)
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
@@ -872,67 +889,254 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     );
   }
 
-  String _describe(String version, String author, String description) {
-    final parts = <String>[
-      if (version.isNotEmpty) 'v$version',
-      if (author.isNotEmpty) 'by $author',
-      if (description.isNotEmpty) description,
+  Widget _bundledTile(_ExtUi ext) {
+    final installed = _store.isInstalled(ext.id);
+    return ListenableBuilder(
+      listenable: _downloads,
+      builder: (context, _) {
+        final runtimeId = ext.runtimeId;
+        final state = runtimeId == null ? null : _downloads.stateFor(runtimeId);
+        final downloading = state != null &&
+            (state.phase == RuntimeDownloadPhase.resolving ||
+                state.phase == RuntimeDownloadPhase.downloading ||
+                state.phase == RuntimeDownloadPhase.installing);
+
+        Widget trailing;
+        if (downloading) {
+          trailing = IconButton(
+            tooltip: 'Cancel download',
+            onPressed: () => _downloads.cancel(runtimeId!),
+            icon: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                value: state.progress,
+                strokeWidth: 2.5,
+              ),
+            ),
+          );
+        } else if (installed) {
+          trailing = PopupMenuButton<String>(
+            tooltip: 'Extension actions',
+            icon: const Icon(Icons.more_vert, size: 20),
+            onSelected: (value) {
+              if (value == 'downloads') {
+                _openDownloads(runtimeId: ext.runtimeId);
+              } else {
+                _onInstallTap(ext);
+              }
+            },
+            itemBuilder: (_) => [
+              if (ext.runtimeId != null)
+                const PopupMenuItem(
+                  value: 'downloads',
+                  child: Text('Runtime downloads'),
+                ),
+              const PopupMenuItem(
+                value: 'uninstall',
+                child: Text('Uninstall'),
+              ),
+            ],
+          );
+        } else {
+          trailing = IconButton(
+            tooltip: 'Install',
+            onPressed: () => _onInstallTap(ext),
+            icon: const Icon(Icons.download_rounded, size: 22),
+          );
+        }
+
+        return _ExtensionTile(
+          icon: ext.icon,
+          color: ext.color,
+          title: ext.title,
+          meta: 'v${ext.version} · ${installed ? 'Installed' : 'Bundled'}',
+          trailing: trailing,
+          onTap: installed ? null : () => _onInstallTap(ext),
+        );
+      },
+    );
+  }
+
+  Widget _catalogTile(ExtensionCatalogEntry entry) {
+    final updating = _installed.any((ext) => ext.manifest.id == entry.id);
+    final author = entry.author.isEmpty ? '' : ' · by ${entry.author}';
+    return _ExtensionTile(
+      letter: _initial(entry.name),
+      color: _catalogColor(entry.id),
+      title: entry.name,
+      meta: 'v${entry.version}$author',
+      trailing: IconButton(
+        tooltip: updating ? 'Update' : 'Install',
+        onPressed: () => _installFromUrl(entry.download),
+        icon: const Icon(Icons.download_rounded, size: 22),
+      ),
+      onTap: () => _installFromUrl(entry.download),
+    );
+  }
+
+  Widget _communityTile(InstalledExtension ext) {
+    return _ExtensionTile(
+      letter: _initial(ext.manifest.name),
+      color: _catalogColor(ext.manifest.id),
+      title: ext.manifest.name,
+      meta: 'v${ext.manifest.version} · Installed',
+      trailing: PopupMenuButton<String>(
+        tooltip: 'Extension actions',
+        icon: const Icon(Icons.more_vert, size: 20),
+        onSelected: (_) => _removeExtension(ext),
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'remove', child: Text('Remove')),
+        ],
+      ),
+    );
+  }
+
+  String _initial(String name) {
+    final trimmed = name.trim();
+    return trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
+  }
+
+  Color _catalogColor(String id) {
+    const palette = [
+      Color(0xFF3B7EA1),
+      Color(0xFFC25E00),
+      Color(0xFF4A7FC1),
+      Color(0xFF00897B),
+      Color(0xFF8E24AA),
+      Color(0xFFE53935),
+      Color(0xFF1E88E5),
+      Color(0xFF6B7B8C),
     ];
-    return parts.join(' · ');
+    var hash = 0;
+    for (final unit in id.codeUnits) {
+      hash = (hash * 31 + unit) & 0x7fffffff;
+    }
+    return palette[hash % palette.length];
   }
 }
 
-class _CommunityCard extends StatelessWidget {
+class _SectionHeader extends StatelessWidget {
   final String title;
-  final String subtitle;
-  final bool installed;
-  final String actionLabel;
+  final int count;
+  final bool expanded;
   final VoidCallback onTap;
 
-  const _CommunityCard({
+  const _SectionHeader({
     required this.title,
-    required this.subtitle,
-    required this.installed,
+    required this.count,
+    required this.expanded,
     required this.onTap,
-    this.actionLabel = 'Get',
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: ListTile(
-        leading: Icon(
-          installed ? Icons.extension_rounded : Icons.add_box_outlined,
-          size: 28,
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 16, 6),
+        child: Row(
+          children: [
+            AnimatedRotation(
+              turns: expanded ? 0.25 : 0,
+              duration: const Duration(milliseconds: 160),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                size: 22,
+                color: muted,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$count',
+              style: TextStyle(fontSize: 12, color: muted),
+            ),
+          ],
         ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+class _ExtensionTile extends StatelessWidget {
+  final IconData? icon;
+  final String? letter;
+  final Color color;
+  final String title;
+  final String meta;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  const _ExtensionTile({
+    this.icon,
+    this.letter,
+    required this.color,
+    required this.title,
+    required this.meta,
+    this.trailing,
+    this.onTap,
+  }) : assert(icon != null || letter != null);
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      horizontalTitleGap: 14,
+      leading: Container(
+        width: 42,
+        height: 42,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(11),
         ),
-        subtitle: Text(
-          subtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: installed
-            ? OutlinedButton(
-                onPressed: onTap,
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: Theme.of(context).colorScheme.error,
+        child: icon != null
+            ? Icon(icon, size: 22, color: color)
+            : Text(
+                letter!,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: color,
                 ),
-                child: const Text('Remove'),
-              )
-            : FilledButton.tonal(
-                onPressed: onTap,
-                style: FilledButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                ),
-                child: Text(actionLabel),
               ),
       ),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        meta,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, color: muted),
+      ),
+      trailing: trailing,
+      onTap: onTap,
+    );
+  }
+}
+
+class _EmptyLine extends StatelessWidget {
+  final String text;
+
+  const _EmptyLine(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Text(text, style: Theme.of(context).textTheme.bodySmall),
     );
   }
 }
@@ -944,129 +1148,20 @@ class _EmptySearchState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.search_off_rounded, size: 40, color: Colors.white24),
+          Icon(Icons.search_off_rounded, size: 36, color: muted),
           const SizedBox(height: 8),
           Text(
-            query.isEmpty
-                ? 'Type a name to search'
-                : 'No extensions found for "$query"',
-            style: const TextStyle(fontSize: 13, color: Colors.white54),
+            'No extensions found for "$query"',
+            style: TextStyle(fontSize: 13, color: muted),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ExtensionCard extends StatelessWidget {
-  final _ExtUi ext;
-  final bool installed;
-  final VoidCallback onTap;
-  final RuntimeDownloadService downloads;
-
-  const _ExtensionCard({
-    required this.ext,
-    required this.installed,
-    required this.onTap,
-    required this.downloads,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final runtimeId = ext.runtimeId;
-    return ListenableBuilder(
-      listenable: downloads,
-      builder: (context, _) {
-        final state = runtimeId != null ? downloads.stateFor(runtimeId) : null;
-        final isDownloading = state != null &&
-            (state.phase == RuntimeDownloadPhase.resolving ||
-                state.phase == RuntimeDownloadPhase.downloading ||
-                state.phase == RuntimeDownloadPhase.installing);
-
-        Widget trailing;
-        if (isDownloading) {
-          final progress = state.progress;
-          trailing = SizedBox(
-            width: 100,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                LinearProgressIndicator(value: progress),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      state.phase == RuntimeDownloadPhase.downloading
-                          ? (progress != null
-                              ? '${(progress * 100).toInt()}%'
-                              : 'Downloading...')
-                          : state.phase.name,
-                      style: const TextStyle(fontSize: 10),
-                    ),
-                    if (runtimeId != null) ...[
-                      const SizedBox(width: 8),
-                      InkWell(
-                        onTap: () => downloads.cancel(runtimeId),
-                        child: Icon(Icons.cancel_rounded,
-                            size: 16, color: Colors.red.shade300),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          );
-        } else if (installed) {
-          trailing = FilledButton.tonalIcon(
-            onPressed: onTap,
-            icon: const Icon(Icons.delete_outline, size: 18),
-            label: const Text('Delete'),
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              foregroundColor: Colors.red.shade300,
-            ),
-          );
-        } else {
-          trailing = FilledButton.icon(
-            onPressed: onTap,
-            icon: const Icon(Icons.download_rounded, size: 18),
-            label: const Text('Install'),
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-            ),
-          );
-        }
-
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: ListTile(
-            leading: Icon(ext.icon, size: 28),
-            title: Text(ext.title,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(ext.subtitle, style: const TextStyle(fontSize: 12)),
-            trailing: trailing,
-            onTap: runtimeId == null
-                ? null
-                : () {
-                    if (installed) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              DownloadsPage(focusRuntimeId: runtimeId),
-                        ),
-                      );
-                    }
-                  },
-          ),
-        );
-      },
     );
   }
 }

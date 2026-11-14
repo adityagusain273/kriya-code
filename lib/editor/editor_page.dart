@@ -43,6 +43,7 @@ import '../workspace/file_icons.dart';
 import '../workspace/fs_service.dart';
 import 'command_palette.dart';
 import 'diagnostics_bar.dart';
+import 'exit_dialog.dart';
 import 'line_commands.dart';
 import 'zoom_viewer.dart';
 import 'global_search.dart';
@@ -61,6 +62,7 @@ class _EditorPageState extends State<EditorPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _showFind = false;
+  bool _exitPromptOpen = false;
   TabController? _tabController;
   int _tabControllerLength = -1;
   final AutocompleteEngine _autocomplete = AutocompleteEngine();
@@ -1270,6 +1272,52 @@ class _EditorPageState extends State<EditorPage>
     return _indentFuture!;
   }
 
+  /// Back walks the editor's own layers before it asks to leave: drawer, then
+  /// find bar, then the exit prompt. Each layer the user opened should close
+  /// before the one under it.
+  Future<void> _handleBack() async {
+    final scaffold = _scaffoldKey.currentState;
+    if (scaffold?.isDrawerOpen ?? false) {
+      scaffold!.closeDrawer();
+      return;
+    }
+    if (_showFind) {
+      setState(() => _showFind = false);
+      return;
+    }
+    if (_exitPromptOpen) return;
+    _exitPromptOpen = true;
+
+    final tabs = sl<TabManager>();
+    try {
+      final choice = await showExitDialog(
+        context,
+        dirtyFiles: [
+          for (final tab in tabs.tabs)
+            if (tab.dirty) tab.filePath,
+        ],
+      );
+      if (!mounted || choice == null || choice == ExitChoice.cancel) return;
+      if (choice == ExitChoice.save) {
+        try {
+          await tabs.saveAll();
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not save your files: $e')),
+          );
+          return;
+        }
+        if (!mounted) return;
+      }
+      // Popping the root route leaves an empty navigator (a black screen); the
+      // platform call is what actually closes the activity.
+      SystemNavigator.pop();
+    } finally {
+      _exitPromptOpen = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tabs = context.watch<TabManager>();
@@ -1280,35 +1328,7 @@ class _EditorPageState extends State<EditorPage>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final tabs = sl<TabManager>();
-        if (tabs.hasUnsavedChanges) {
-          final save = await showDialog<String>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Unsaved changes'),
-              content: const Text('You have unsaved changes. Save before exiting?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, 'discard'),
-                  child: const Text('Discard'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, 'save'),
-                  child: const Text('Save'),
-                ),
-              ],
-            ),
-          );
-          if (!mounted) return;
-          if (save == 'save') {
-            await tabs.saveAll();
-            if (mounted && context.mounted) Navigator.pop(context);
-          } else if (save == 'discard') {
-            if (mounted && context.mounted) Navigator.pop(context);
-          }
-        } else {
-          if (mounted && context.mounted) Navigator.pop(context);
-        }
+        await _handleBack();
       },
       child: ColoredBox(
         color: Theme.of(context).scaffoldBackgroundColor,

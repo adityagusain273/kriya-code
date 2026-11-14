@@ -17,7 +17,8 @@ class _StubResolver {
 void main() {
   tearDown(sl.reset);
 
-  testWidgets('installing a language extension triggers download and shows error on failure',
+  testWidgets(
+      'installing a language extension triggers download and shows error on failure',
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
@@ -31,12 +32,13 @@ void main() {
     );
     sl.registerSingleton<RuntimeDownloadService>(downloads);
 
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ExtensionsPage())));
+    await tester
+        .pumpWidget(const MaterialApp(home: Scaffold(body: ExtensionsPage())));
     await tester.pump();
 
-    expect(find.text('Install'), findsWidgets);
+    expect(find.byTooltip('Install'), findsWidgets);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Install').first);
+    await tester.tap(find.byTooltip('Install').first);
     await tester.pump();
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 200));
@@ -48,7 +50,8 @@ void main() {
     expect(find.textContaining('Download failed'), findsOneWidget);
 
     // Extension NOT marked installed because download failed
-    expect(sl<ExtensionInstallStore>().isInstalled('bcode.lang.python'), isFalse);
+    expect(
+        sl<ExtensionInstallStore>().isInstalled('bcode.lang.python'), isFalse);
   });
 
   testWidgets('non-language extensions install without popup', (tester) async {
@@ -62,19 +65,23 @@ void main() {
       extractor: (_) async => true,
     ));
 
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ExtensionsPage())));
+    await tester
+        .pumpWidget(const MaterialApp(home: Scaffold(body: ExtensionsPage())));
     await tester.pump();
 
     await tester.scrollUntilVisible(
       find.text('GitHub'),
       200,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      ),
     );
     await tester.pump();
     final githubCard =
         find.ancestor(of: find.text('GitHub'), matching: find.byType(ListTile));
     await tester.tap(
-        find.descendant(of: githubCard, matching: find.widgetWithText(FilledButton, 'Install')));
+        find.descendant(of: githubCard, matching: find.byTooltip('Install')));
     await tester.pump();
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 200));
@@ -98,12 +105,16 @@ void main() {
     sl.registerSingleton<ExtensionInstaller>(installer);
     sl.registerSingleton<ExtensionSourceService>(_FakeSource(prefs));
 
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ExtensionsPage())));
+    await tester
+        .pumpWidget(const MaterialApp(home: Scaffold(body: ExtensionsPage())));
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('Community extensions'), findsOneWidget);
+    expect(find.text('Explore'), findsOneWidget);
     expect(find.text('Rust'), findsOneWidget);
-    await tester.tap(find.text('Get'));
+    final rustRow =
+        find.ancestor(of: find.text('Rust'), matching: find.byType(ListTile));
+    await tester
+        .tap(find.descendant(of: rustRow, matching: find.byTooltip('Install')));
     await tester.pump();
 
     expect(find.byType(AlertDialog), findsOneWidget);
@@ -120,7 +131,8 @@ void main() {
     expect(installer.committed, isEmpty);
     expect(find.text('Remove'), findsNothing);
 
-    await tester.tap(find.text('Get'));
+    await tester
+        .tap(find.descendant(of: rustRow, matching: find.byTooltip('Install')));
     await tester.pump();
     await tester.tap(find.descendant(
       of: find.byType(AlertDialog),
@@ -129,6 +141,22 @@ void main() {
     await tester.pump();
 
     expect(installer.committed, hasLength(1));
+
+    await tester.scrollUntilVisible(
+      find.text('Installed'),
+      300,
+      scrollable: find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pump();
+    final installedRow =
+        find.ancestor(of: find.text('Rust'), matching: find.byType(ListTile));
+    expect(installedRow, findsOneWidget);
+    await tester.tap(find.descendant(
+        of: installedRow, matching: find.byTooltip('Extension actions')));
+    await tester.pumpAndSettle();
     expect(find.text('Remove'), findsOneWidget);
   });
 }
