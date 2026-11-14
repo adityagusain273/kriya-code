@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:b_code/core/di.dart';
 import 'package:b_code/execution/runtime_download_service.dart';
 import 'package:b_code/execution/ui/runtime_download_sheet.dart';
+import 'package:b_code/monetization/entitlement_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:http/http.dart' as http;
@@ -60,11 +61,12 @@ void main() {
   tearDown(sl.reset);
 
   testWidgets('shows runtime title and approximate size when idle', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'bcode_unlocked_runtimes': ['cpython']});
     final prefs = await SharedPreferences.getInstance();
 
     final fake = FakeRuntimeDownloadService(prefs);
     sl.registerSingleton<RuntimeDownloadService>(fake);
+    sl.registerSingleton<EntitlementService>(LocalEntitlementService(prefs));
 
     await tester.pumpWidget(
       const MaterialApp(
@@ -80,13 +82,35 @@ void main() {
     expect(find.textContaining('MB'), findsWidgets);
   });
 
-  testWidgets('tapping Download & Run triggers download and reflects downloading state',
-      (tester) async {
+  testWidgets('shows Unlock & Run when runtime is not unlocked', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
     final fake = FakeRuntimeDownloadService(prefs);
     sl.registerSingleton<RuntimeDownloadService>(fake);
+    sl.registerSingleton<EntitlementService>(LocalEntitlementService(prefs));
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: RuntimeDownloadSheet(runtimeId: 'cpython'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Python Runtime'), findsOneWidget);
+    expect(find.textContaining('Unlock & Run'), findsOneWidget);
+  });
+
+  testWidgets('tapping Download & Run triggers download and reflects downloading state',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({'bcode_unlocked_runtimes': ['cpython']});
+    final prefs = await SharedPreferences.getInstance();
+
+    final fake = FakeRuntimeDownloadService(prefs);
+    sl.registerSingleton<RuntimeDownloadService>(fake);
+    sl.registerSingleton<EntitlementService>(LocalEntitlementService(prefs));
 
     await tester.pumpWidget(
       const MaterialApp(
@@ -106,11 +130,12 @@ void main() {
   });
 
   testWidgets('shows error and Retry & Run when download fails', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'bcode_unlocked_runtimes': ['cpython']});
     final prefs = await SharedPreferences.getInstance();
 
     final fake = FakeRuntimeDownloadService(prefs);
     sl.registerSingleton<RuntimeDownloadService>(fake);
+    sl.registerSingleton<EntitlementService>(LocalEntitlementService(prefs));
 
     await tester.pumpWidget(
       const MaterialApp(
@@ -132,11 +157,12 @@ void main() {
   });
 
   testWidgets('auto-dismisses with true when phase becomes installed', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({'bcode_unlocked_runtimes': ['cpython']});
     final prefs = await SharedPreferences.getInstance();
 
     final fake = FakeRuntimeDownloadService(prefs);
     sl.registerSingleton<RuntimeDownloadService>(fake);
+    sl.registerSingleton<EntitlementService>(LocalEntitlementService(prefs));
 
     bool? sheetResult;
     await tester.pumpWidget(

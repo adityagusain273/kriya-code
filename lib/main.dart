@@ -38,6 +38,7 @@ import 'github/api_client.dart';
 import 'github/auth/device_flow_auth.dart';
 import 'github/auth/token_store.dart';
 import 'github/git_service.dart';
+import 'monetization/ad_service.dart';
 import 'monetization/entitlement_service.dart';
 import 'plugins/builtin/builtin_extensions.dart';
 import 'plugins/host/extension_install_store.dart';
@@ -437,7 +438,12 @@ Future<void> _bootstrap() async {
   );
   sl<TabManager>().attachSettings(settingsStore);
 
-  sl.registerSingleton<EntitlementService>(const FreeEntitlementService());
+  final entitlementService = LocalEntitlementService(prefs);
+  sl.registerSingleton<EntitlementService>(entitlementService);
+
+  final adService = AdMobAdService();
+  sl.registerSingleton<AdService>(adService);
+  unawaited(adService.initialize());
   sl.registerSingleton<ServerMonitor>(ServerMonitor(prefs));
 }
 Future<void> _execSelfTest(String workspaceRoot) async {

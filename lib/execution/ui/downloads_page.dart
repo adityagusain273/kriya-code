@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/di.dart';
+import '../../monetization/entitlement_service.dart';
+import '../../monetization/pro_paywall_sheet.dart';
+import '../../monetization/runtime_unlock_flow.dart';
 import '../runtime_catalog.dart';
 import '../runtime_download_service.dart';
 
@@ -58,20 +61,42 @@ class _DownloadsPageState extends State<DownloadsPage> {
     return '${(bytes / 1024).toStringAsFixed(0)} KB';
   }
 
+  Future<void> _requestDownload(RuntimeSpec spec) async {
+    final unlocked = await ensureRuntimeUnlocked(
+      context,
+      runtimeId: spec.runtimeId,
+      runtimeTitle: spec.title,
+    );
+    if (unlocked) {
+      _downloads.download(spec.runtimeId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final specs = runtimeCatalog.values.toList();
+    final entitlements = sl<EntitlementService>();
+    final isPro = entitlements.isRuntimeUnlocked('');
+
     return Scaffold(
       appBar: AppBar(title: const Text('Downloads')),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
+          if (!isPro)
+            _MissionBanner(
+              onGoAdFree: () async {
+                final activated = await showProPaywallSheet(context);
+                if (activated && mounted) setState(() {});
+              },
+            ),
           for (final spec in specs)
             _DownloadCard(
               spec: spec,
               state: _downloads.stateFor(spec.runtimeId),
               installed: _downloads.isInstalled(spec.runtimeId),
-              onDownload: () => _downloads.download(spec.runtimeId),
+              unlocked: entitlements.isRuntimeUnlocked(spec.runtimeId),
+              onDownload: () => _requestDownload(spec),
               onCancel: () => _downloads.cancel(spec.runtimeId),
               onDelete: () => _downloads.remove(spec.runtimeId),
               sizeLabel: _sizeLabel,
@@ -87,6 +112,7 @@ class _DownloadCard extends StatelessWidget {
   final RuntimeSpec spec;
   final RuntimeDownloadState state;
   final bool installed;
+  final bool unlocked;
 
   final VoidCallback onDownload;
   final VoidCallback onCancel;
@@ -100,6 +126,7 @@ class _DownloadCard extends StatelessWidget {
     required this.spec,
     required this.state,
     required this.installed,
+    required this.unlocked,
     required this.onDownload,
     required this.onCancel,
     required this.onDelete,
@@ -174,13 +201,19 @@ class _DownloadCard extends StatelessWidget {
                       onPressed: onDownload,
                     ),
                   if (!downloading)
-                    FilledButton(
+                    FilledButton.icon(
+                      icon: Icon(
+                        unlocked
+                            ? Icons.download_rounded
+                            : Icons.lock_open_rounded,
+                        size: 16,
+                      ),
                       onPressed: onDownload,
                       style: FilledButton.styleFrom(
                           visualDensity: VisualDensity.compact),
-                      child: Text(phase == RuntimeDownloadPhase.failed
+                      label: Text(phase == RuntimeDownloadPhase.failed
                           ? 'Retry'
-                          : 'Download'),
+                          : (unlocked ? 'Download' : 'Unlock')),
                     ),
                   if (downloading)
                     TextButton(
@@ -245,3 +278,68 @@ class _DownloadCard extends StatelessWidget {
     );
   }
 }
+
+class _MissionBanner extends StatelessWidget {
+  final VoidCallback onGoAdFree;
+
+  const _MissionBanner({required this.onGoAdFree});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B2232),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF2A364F)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.favorite_rounded, color: Color(0xFFFF5252), size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Advertising helps keep B Code free for students',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: onGoAdFree,
+                borderRadius: BorderRadius.circular(6),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Text(
+                    'GO AD FREE',
+                    style: TextStyle(
+                      color: Color(0xFF00E676),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '1 short video unlocks a compiler permanently. Zero banner ads inside your editor.',
+            style: TextStyle(
+              color: Colors.white60,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

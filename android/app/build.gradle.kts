@@ -94,6 +94,7 @@ android {
         targetSdk = resolvedTargetSdk
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["admobAppId"] = (project.findProperty("bcode.admobAppId") as String?) ?: "ca-app-pub-1244539971368385~1987349483"
     }
 
     packaging {

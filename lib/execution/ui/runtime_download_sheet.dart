@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/di.dart';
+import '../../monetization/entitlement_service.dart';
+import '../../monetization/runtime_unlock_flow.dart';
 import '../runtime_catalog.dart';
 import '../runtime_download_service.dart';
 
@@ -271,13 +273,28 @@ class _RuntimeDownloadSheetState extends State<RuntimeDownloadSheet> {
                 ),
               ],
               FilledButton.icon(
-                icon: const Icon(Icons.download_rounded),
-                label: Text(
-                  phase == RuntimeDownloadPhase.failed
-                      ? 'Retry & Run ($sizeStr)'
-                      : 'Download & Run ($sizeStr)',
+                icon: Icon(
+                  sl<EntitlementService>().isRuntimeUnlocked(widget.runtimeId)
+                      ? Icons.download_rounded
+                      : Icons.lock_open_rounded,
                 ),
-                onPressed: () => _downloads.download(widget.runtimeId),
+                label: Text(
+                  !sl<EntitlementService>().isRuntimeUnlocked(widget.runtimeId)
+                      ? 'Unlock & Run ($sizeStr)'
+                      : (phase == RuntimeDownloadPhase.failed
+                          ? 'Retry & Run ($sizeStr)'
+                          : 'Download & Run ($sizeStr)'),
+                ),
+                onPressed: () async {
+                  final unlocked = await ensureRuntimeUnlocked(
+                    context,
+                    runtimeId: widget.runtimeId,
+                    runtimeTitle: spec?.title ?? widget.runtimeId,
+                  );
+                  if (unlocked) {
+                    _downloads.download(widget.runtimeId);
+                  }
+                },
               ),
               const SizedBox(height: 8),
               TextButton(
