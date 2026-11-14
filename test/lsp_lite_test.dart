@@ -322,6 +322,17 @@ void main() {
       );
     });
 
+    test('a block statement missing a colon is flagged on that statement', () {
+      final found = CodeDiagnostics.analyze(
+        'if __name__ == "__main__"\n'
+        '    main()\n',
+        'python',
+      );
+      expect(found, hasLength(1));
+      expect(found.first.line, 0);
+      expect(found.first.message, "Expected ':' at end of statement");
+    });
+
     test('an indent with no block above it', () {
       final found = CodeDiagnostics.analyze('def f():\n    a = 1\n      b = 2\n', 'python');
       expect(found.any((d) => d.message == 'Unexpected indent'), isTrue);

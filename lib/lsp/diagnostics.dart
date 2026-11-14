@@ -179,10 +179,54 @@ class CodeDiagnostics {
       }
 
       previousIndent = indent;
-      previousOpenedBlock =
-          codeLines[statement.end].trimRight().endsWith(':');
+      final trimmedCode = code.trim();
+      final endsWithColon = codeLines[statement.end].trimRight().endsWith(':');
+      final isHeader = _isBlockHeader(trimmedCode);
+
+      if (isHeader && !endsWithColon) {
+        final lineText = codeLines[statement.end];
+        final trimmedRight = lineText.trimRight();
+        final startOffset = scanned.lineStart(statement.start) + leading.length;
+        final endOffset = scanned.lineStart(statement.end) + trimmedRight.length;
+        out.add(_diagnostic(
+          scanned,
+          startOffset,
+          endOffset > startOffset ? endOffset - startOffset : 1,
+          "Expected ':' at end of statement",
+        ));
+        previousOpenedBlock = true;
+      } else {
+        previousOpenedBlock = endsWithColon;
+      }
       previousHasBody = false;
     }
+  }
+
+  static const _blockKeywords = {
+    'if',
+    'elif',
+    'else',
+    'for',
+    'while',
+    'def',
+    'class',
+    'try',
+    'except',
+    'finally',
+    'with',
+    'match',
+    'case',
+  };
+
+  static bool _isBlockHeader(String trimmed) {
+    if (trimmed.isEmpty) return false;
+    final first = trimmed.split(RegExp(r'[\s(:]')).first;
+    if (first == 'async') {
+      final parts = trimmed.split(RegExp(r'\s+'));
+      return parts.length > 1 &&
+          (parts[1] == 'def' || parts[1] == 'for' || parts[1] == 'with');
+    }
+    return _blockKeywords.contains(first);
   }
 
   /// Consecutive physical lines that form one logical statement: an indented

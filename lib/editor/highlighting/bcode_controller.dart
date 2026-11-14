@@ -2,12 +2,26 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:highlight/highlight.dart';
 
+import '../../lsp/diagnostics.dart';
+import 'diagnostic_highlight_builder.dart';
+
 class BCodeController extends CodeController {
   BCodeController({
     super.text,
     super.language,
     super.params,
   });
+
+  List<Diagnostic> _diagnostics = const [];
+
+  List<Diagnostic> get diagnostics => _diagnostics;
+
+  set diagnostics(List<Diagnostic> val) {
+    if (_diagnostics != val) {
+      _diagnostics = val;
+      notifyListeners();
+    }
+  }
 
   /// Pairs whose closing half the editor inserts automatically, mapped to the
   /// character the user has to type to move past it.
@@ -96,11 +110,22 @@ class BCodeController extends CodeController {
       _colorizeBrackets();
       _decoratedNodes = highlighted.nodes;
     }
-    return super.buildTextSpan(
+    final span = super.buildTextSpan(
       context: context,
       style: style,
       withComposing: withComposing,
     );
+
+    if (_diagnostics.isEmpty) {
+      return span;
+    }
+
+    return DiagnosticHighlightedBuilder(
+      diagnostics: _diagnostics,
+      textLength: text.length,
+      rootStyle: style,
+      textSpan: span,
+    ).build();
   }
 
   List<Node>? _decoratedNodes;

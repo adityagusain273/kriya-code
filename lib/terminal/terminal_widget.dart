@@ -27,6 +27,7 @@ class _TerminalWidgetState extends State<TerminalWidget> {
   late Terminal terminal;
   Pty? pty;
   bool _isRunning = false;
+  bool _termuxInstalled = false;
   bool _useTermux = false;
   bool _useStandalone = false;
   String? _standalonePath;
@@ -48,8 +49,8 @@ class _TerminalWidgetState extends State<TerminalWidget> {
   }
 
   Future<void> _initShell() async {
-    final termuxInstalled = await TermuxRunner.isInstalled();
-    if (termuxInstalled && File(_termuxBash).existsSync()) {
+    _termuxInstalled = await TermuxRunner.isInstalled();
+    if (_termuxInstalled && File(_termuxBash).existsSync()) {
       _useTermux = true;
     } else {
       try {
@@ -253,6 +254,13 @@ class _TerminalWidgetState extends State<TerminalWidget> {
             ),
           ),
           const Spacer(),
+          if (_termuxInstalled)
+            IconButton(
+              icon: const Icon(Icons.open_in_new, size: 16),
+              color: Colors.white54,
+              onPressed: TermuxRunner.openTermux,
+              tooltip: 'Open Termux app',
+            ),
           IconButton(
             icon: const Icon(Icons.content_copy, size: 16),
             color: Colors.white54,

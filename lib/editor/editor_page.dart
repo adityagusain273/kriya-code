@@ -16,12 +16,14 @@ import '../execution/console_panel.dart';
 import '../execution/local/local_runner.dart';
 import '../execution/models.dart';
 import '../execution/runner_service.dart';
+import '../execution/termux_runner.dart';
 import '../execution/ui/downloads_page.dart';
 import '../execution/ui/runtime_download_sheet.dart';
 import '../github/ui/github_page.dart';
 import '../lsp/autocomplete_engine.dart';
 import '../lsp/diagnostics.dart';
 import '../lsp/definition_provider.dart';
+import '../lsp/runtime_error_parser.dart';
 import '../lsp/source_scan.dart';
 import '../plugins/api/run_config.dart';
 import '../plugins/host/extension_install_store.dart';
@@ -179,7 +181,7 @@ class _EditorPageState extends State<EditorPage>
       _autocomplete.dismiss();
     }
     if (!identical(tab, _diagnosticsTab)) {
-      _diagnostics = const [];
+      _diagnostics = tab != null ? tab.controller.diagnostics : const [];
       _diagnosticsTab = tab;
     }
     if (tab == null) {
@@ -205,13 +207,32 @@ class _EditorPageState extends State<EditorPage>
       if (!mounted) return;
       final active = sl<TabManager>().active;
       if (active == null || !identical(active, tab)) return;
+      tab.clearRuntimeDiagnosticsIfModified();
       final found = CodeDiagnostics.analyze(tab.controller.text, tab.languageId);
-      if (_sameDiagnostics(found, _diagnostics)) return;
+      final combined = _combineDiagnostics(found, tab.runtimeDiagnostics);
+      if (_sameDiagnostics(combined, _diagnostics)) return;
       setState(() {
-        _diagnostics = found;
+        _diagnostics = combined;
         _diagnosticsTab = tab;
       });
+      tab.controller.diagnostics = combined;
     });
+  }
+
+  static List<Diagnostic> _combineDiagnostics(
+    List<Diagnostic> staticDiags,
+    List<Diagnostic> runtimeDiags,
+  ) {
+    if (runtimeDiags.isEmpty) return staticDiags;
+    if (staticDiags.isEmpty) return runtimeDiags;
+    final combined = <Diagnostic>[...staticDiags];
+    for (final rd in runtimeDiags) {
+      if (!combined.any((sd) => sd.line == rd.line && sd.offset == rd.offset)) {
+        combined.add(rd);
+      }
+    }
+    combined.sort((a, b) => a.offset.compareTo(b.offset));
+    return List.unmodifiable(combined);
   }
 
   static bool _sameDiagnostics(List<Diagnostic> a, List<Diagnostic> b) {
@@ -828,12 +849,15 @@ class _EditorPageState extends State<EditorPage>
       final local = sl<LocalRunner>();
       final hasLocal = await local.hasRuntime(runtimeId);
       if (!hasLocal) {
-        if (!mounted) return;
-        final installed = await showRuntimeDownloadSheet(
-          context,
-          runtimeId: runtimeId,
-        );
-        if (!installed || !mounted) return;
+        final termuxAvailable = await TermuxRunner.checkAvailability();
+        if (!termuxAvailable) {
+          if (!mounted) return;
+          final installed = await showRuntimeDownloadSheet(
+            context,
+            runtimeId: runtimeId,
+          );
+          if (!installed || !mounted) return;
+        }
       }
     }
 
@@ -849,6 +873,21 @@ class _EditorPageState extends State<EditorPage>
       // native sandbox check requires.
       workDir: p.dirname(sl<FsService>().resolve(tab.filePath)),
     );
+    if (mounted) {
+      final runtimeDiags = RuntimeErrorParser.parse(
+        lines: runner.lines,
+        activeFilePath: tab.filePath,
+        fileContent: tab.controller.text,
+      );
+      tab.setRuntimeDiagnostics(runtimeDiags);
+      final staticDiags = CodeDiagnostics.analyze(tab.controller.text, tab.languageId);
+      final combined = _combineDiagnostics(staticDiags, runtimeDiags);
+      setState(() {
+        _diagnostics = combined;
+        _diagnosticsTab = tab;
+      });
+      tab.controller.diagnostics = combined;
+    }
     if (mounted && runner.lastError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -960,6 +999,7 @@ class _EditorPageState extends State<EditorPage>
         final autocomplete = ListenableBuilder(
           listenable: tab.controller,
           builder: (_, __) {
+            tab.clearRuntimeDiagnosticsIfModified();
             _autocomplete.setLanguage(tab.languageId);
             _autocomplete.onTextChanged(
               tab.controller.text,

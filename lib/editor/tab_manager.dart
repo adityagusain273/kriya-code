@@ -15,6 +15,7 @@ import 'recent_files_service.dart';
 import '../../settings/settings_store.dart';
 import '../../workspace/fs_service.dart';
 import '../../core/di.dart';
+import '../lsp/diagnostics.dart';
 import 'find_replace.dart';
 
 class EditorTab {
@@ -25,6 +26,20 @@ class EditorTab {
   String _savedContent;
   late final FindReplaceController findController;
   Timer? autoSaveTimer;
+  List<Diagnostic> runtimeDiagnostics = const [];
+  String? _textAtLastRun;
+
+  void setRuntimeDiagnostics(List<Diagnostic> diags) {
+    runtimeDiagnostics = diags;
+    _textAtLastRun = controller.text;
+  }
+
+  void clearRuntimeDiagnosticsIfModified() {
+    if (_textAtLastRun != null && controller.text != _textAtLastRun) {
+      runtimeDiagnostics = const [];
+      _textAtLastRun = null;
+    }
+  }
 
   /// Offset the editor should scroll to and select once this tab is on screen.
   ///

@@ -31,6 +31,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _showShortcutBar = widget.store.showShortcutBar;
   late String _fontFamily = widget.store.fontFamily;
   bool _termuxInstalled = false;
+  bool _termuxAllowed = false;
   bool _termuxChecking = true;
   String _version = '';
 
@@ -49,9 +50,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _checkTermux() async {
     final installed = await TermuxRunner.isInstalled();
+    final allowed = installed ? await TermuxRunner.checkAvailability() : false;
     if (mounted) {
       setState(() {
         _termuxInstalled = installed;
+        _termuxAllowed = allowed;
         _termuxChecking = false;
       });
     }
@@ -313,13 +316,47 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               title: Text('Checking Termux...'),
             )
-          else if (_termuxInstalled)
+          else if (_termuxInstalled && _termuxAllowed)
             ListTile(
               leading: const Icon(Icons.check_circle, color: Colors.green),
-              title: const Text('Termux detected'),
+              title: const Text('Termux connected'),
               subtitle: const Text(
-                'Optional. B Code runs code itself; Termux is only used for the '
-                'built-in terminal and as a fallback runtime source.',
+                'Termux RUN_COMMAND permission is granted. Projects are automatically '
+                'synchronized to Termux when running compilers and tools.',
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.open_in_new),
+                    tooltip: 'Open Termux',
+                    onPressed: TermuxRunner.openTermux,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.info_outline),
+                    tooltip: 'Termux configuration info',
+                    onPressed: () => _showTermuxSetupDialog(context),
+                  ),
+                ],
+              ),
+            )
+          else if (_termuxInstalled && !_termuxAllowed)
+            ListTile(
+              leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              title: const Text('Permission required'),
+              subtitle: const Text(
+                'Warning: com.termux.permission.RUN_COMMAND is not granted. '
+                'B Code cannot execute code or commands in Termux without this permission.',
+              ),
+              trailing: FilledButton.tonal(
+                onPressed: () async {
+                  await TermuxRunner.checkAvailability();
+                  await _checkTermux();
+                },
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: const Text('Grant'),
               ),
             )
           else
@@ -327,7 +364,7 @@ class _SettingsPageState extends State<SettingsPage> {
               leading: const Icon(Icons.info_outline),
               title: const Text('Termux not installed'),
               subtitle: const Text(
-                'Not required. Install it for the shell terminal and extra packages.',
+                'Install Termux to compile C/C++, use Node/Python, and access package tools.',
               ),
               trailing: FilledButton.tonal(
                 onPressed: () => _showTermuxSetupDialog(context),
@@ -342,9 +379,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ListTile(
             title: Text('Files live in a private folder on this phone'),
             subtitle: const Text(
-              'The workspace is app-private storage, so no file permission is '
-              'needed. Termux support (shared folder) is planned for a later '
-              'release.',
+              'The workspace is app-private storage, so no storage permission is '
+              'needed. Projects are automatically synchronized to Termux cache '
+              'when executing with Termux.',
             ),
           ),
   ];
@@ -481,24 +518,24 @@ class _SettingsPageState extends State<SettingsPage> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Setup Termux'),
+        title: const Text('Termux Setup & Permissions'),
         content: const SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '1. Install Termux from F-Droid (recommended) or Google Play',
+                '1. Install Termux from F-Droid (recommended)',
                 style: TextStyle(fontSize: 13),
               ),
               SizedBox(height: 8),
               Text(
-                '2. Open Termux and install packages:',
+                '2. Install compilers & runtimes in Termux:',
                 style: TextStyle(fontSize: 13),
               ),
               SizedBox(height: 4),
               Text(
-                '   pkg install python nodejs gcc clang',
+                '   pkg install python nodejs clang make',
                 style: TextStyle(
                   fontSize: 12,
                   fontFamily: 'monospace',
@@ -507,13 +544,30 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               SizedBox(height: 8),
               Text(
-                '3. In Termux, go to Settings → Enable "Allow external apps"',
+                '3. Enable external app execution in Termux:',
                 style: TextStyle(fontSize: 13),
+              ),
+              SizedBox(height: 4),
+              Text(
+                '   echo "allow-external-apps = true" >> ~/.termux/termux.properties',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  backgroundColor: Color(0xFF1E1E1E),
+                ),
               ),
               SizedBox(height: 8),
               Text(
-                '4. B Code will automatically detect Termux on next launch',
+                '4. Grant RUN_COMMAND permission when prompted by B Code.',
                 style: TextStyle(fontSize: 13),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Important Warnings & Consequences:\n'
+                '• If RUN_COMMAND permission is revoked, B Code cannot execute code or commands in Termux.\n'
+                '• If allow-external-apps is not enabled, Termux blocks all execution requests from B Code.\n'
+                '• Workspace projects are automatically synchronized into Termux cache for multi-file builds.',
+                style: TextStyle(fontSize: 12, color: Colors.orange),
               ),
             ],
           ),
@@ -523,13 +577,23 @@ class _SettingsPageState extends State<SettingsPage> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
           ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              launchUrl(Uri.parse('https://f-droid.org/en/packages/com.termux/'));
-            },
-            child: const Text('Get Termux'),
-          ),
+          if (_termuxInstalled)
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                TermuxRunner.openTermux();
+              },
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Open Termux'),
+            )
+          else
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                launchUrl(Uri.parse('https://f-droid.org/en/packages/com.termux/'));
+              },
+              child: const Text('Get Termux'),
+            ),
         ],
       ),
     );

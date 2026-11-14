@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:path/path.dart' as p;
@@ -174,10 +177,19 @@ class RunnerService extends ChangeNotifier {
           return;
         }
 
-        lastError =
-            'Runtime "$runtimeId" is not installed.\n'
-            'Install it from Extensions → Downloads,\n'
-            'or connect Termux from Settings.';
+        final termuxInstalled = await TermuxRunner.isInstalled();
+        if (termuxInstalled) {
+          lastError =
+              'Runtime "$runtimeId" is not installed locally.\n'
+              'Termux was detected, but RUN_COMMAND permission is not granted.\n'
+              'Warning: B Code cannot execute code via Termux without this permission.\n'
+              'Allow it in Settings → Termux Integration or Android App Info.';
+        } else {
+          lastError =
+              'Runtime "$runtimeId" is not installed.\n'
+              'Install it from Extensions → Downloads,\n'
+              'or install Termux from Settings to run with system compilers.';
+        }
       } else {
         lastError = 'No local runtime configured for this language.';
       }
@@ -192,32 +204,171 @@ class RunnerService extends ChangeNotifier {
     }
   }
 
+  static String? _createWorkspaceTar(String workDir, RunRequest request) {
+    try {
+      final dir = Directory(workDir);
+      if (!dir.existsSync()) return null;
+
+      final archive = Archive();
+      int totalBytes = 0;
+      const maxIndividualFileBytes = 2 * 1024 * 1024; // 2MB
+      const maxArchiveBytes = 1024 * 1024; // 1MB compressed cap
+
+      final relMain = p
+          .normalize(p.isAbsolute(request.mainFile)
+              ? p.relative(request.mainFile, from: workDir)
+              : request.mainFile)
+          .replaceAll('\\', '/');
+      final cleanMain =
+          relMain.startsWith('/') ? relMain.substring(1) : relMain;
+      final mainBytes = utf8.encode(request.source);
+      archive.addFile(ArchiveFile(cleanMain, mainBytes.length, mainBytes));
+      totalBytes += mainBytes.length;
+
+      final entities = dir.listSync(recursive: true, followLinks: false);
+      for (final entity in entities) {
+        if (entity is! File) continue;
+        final rel = p
+            .normalize(p.relative(entity.path, from: workDir))
+            .replaceAll('\\', '/');
+        final cleanRel = rel.startsWith('/') ? rel.substring(1) : rel;
+
+        if (cleanRel == cleanMain || cleanRel == p.basename(cleanMain)) {
+          continue;
+        }
+
+        final parts = cleanRel.split('/');
+        if (parts.any((part) =>
+            part.startsWith('.') ||
+            part == 'node_modules' ||
+            part == 'build' ||
+            part == '.dart_tool')) {
+          continue;
+        }
+
+        final stat = entity.statSync();
+        if (stat.size > maxIndividualFileBytes) continue;
+
+        final fileBytes = entity.readAsBytesSync();
+        archive.addFile(ArchiveFile(cleanRel, fileBytes.length, fileBytes));
+        totalBytes += fileBytes.length;
+
+        if (totalBytes > maxArchiveBytes * 4) return null;
+      }
+
+      final tarBytes = TarEncoder().encode(archive);
+      final gzipped = gzip.encode(tarBytes);
+      if (gzipped.length > maxArchiveBytes) return null;
+      return base64Encode(gzipped);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<TermuxResult> _runViaTermux(
     RunRequest request,
     dynamic target,
     String workDir,
   ) async {
-    final runtimeId = target.runtimeId;
-    final argv = <String>[];
-    if (target.buildArgv != null) {
-      argv.addAll(_substitute(target.buildArgv, runtimeId, request, workDir,
-          runtimePrefix: '/data/data/com.termux/files/usr'));
-    }
-    argv.addAll(_substitute(target.runArgv, runtimeId, request, workDir,
-        runtimePrefix: '/data/data/com.termux/files/usr'));
-    argv.addAll(request.args);
+    final runtimeId = target.runtimeId as String;
+    const termuxHome = '/data/data/com.termux/files/home';
+    const termuxPrefix = '/data/data/com.termux/files/usr';
+    const termuxStagingDir = '$termuxHome/.bcode/cache';
+    final needsStaging = !workDir.startsWith(termuxHome);
 
-    if (argv.isEmpty) {
+    final targetWorkDir = needsStaging ? termuxStagingDir : workDir;
+
+    final relMain = p.normalize(
+      p.isAbsolute(request.mainFile)
+          ? p.relative(request.mainFile, from: workDir)
+          : request.mainFile,
+    ).replaceAll(r'\', '/');
+    final cleanMain = relMain.startsWith('/') ? relMain.substring(1) : relMain;
+
+    final buildArgv = target.buildArgv != null
+        ? _substitute(
+            (target.buildArgv as List).cast<String>(),
+            runtimeId,
+            request,
+            targetWorkDir,
+            projectDir: workDir,
+            runtimePrefix: termuxPrefix,
+          )
+        : null;
+    final runArgv = _substitute(
+      (target.runArgv as List).cast<String>(),
+      runtimeId,
+      request,
+      targetWorkDir,
+      projectDir: workDir,
+      runtimePrefix: termuxPrefix,
+    );
+    runArgv.addAll(request.args);
+
+    if (runArgv.isEmpty) {
       return const TermuxResult(
-        success: false, stdout: '', stderr: 'Empty command', exitCode: -1);
+        success: false,
+        stdout: '',
+        stderr: 'Empty command',
+        exitCode: -1,
+      );
     }
 
-    final command = argv.first;
-    final args = argv.length > 1 ? argv.sublist(1) : <String>[];
+    String escape(String s) =>
+        '"${s.replaceAll(r'\', r'\\').replaceAll('"', r'\"').replaceAll(r'$', r'\$')}"';
+
+    if (needsStaging) {
+      final tarB64 = _createWorkspaceTar(workDir, request);
+      final cmdParts = <String>[
+        'export PATH="/data/data/com.termux/files/usr/bin:\$PATH"',
+        'mkdir -p $termuxStagingDir',
+      ];
+
+      if (tarB64 != null) {
+        cmdParts.add(
+          'echo \'$tarB64\' | base64 -d | tar -xz -C $termuxStagingDir',
+        );
+      } else {
+        final encodedSource = base64Encode(utf8.encode(request.source));
+        cmdParts.add(
+          'mkdir -p "\$(dirname "$termuxStagingDir/\$1")" && echo \'$encodedSource\' | base64 -d > $termuxStagingDir/"\$1"',
+        );
+      }
+
+      cmdParts.add('cd $termuxStagingDir');
+      if (buildArgv != null) {
+        cmdParts.add(buildArgv.map(escape).join(' '));
+      }
+      cmdParts.add(runArgv.map(escape).join(' '));
+
+      return TermuxRunner.runCommand(
+        command: '$termuxPrefix/bin/bash',
+        args: [
+          '-c',
+          cmdParts.join(' && '),
+          '--',
+          cleanMain,
+        ],
+        stdin: request.stdin.isNotEmpty ? request.stdin : null,
+        workDir: termuxHome,
+      );
+    }
+
+    if (buildArgv != null) {
+      final cmd =
+          '${buildArgv.map(escape).join(" ")} && ${runArgv.map(escape).join(" ")}';
+      return TermuxRunner.runCommand(
+        command: '$termuxPrefix/bin/bash',
+        args: ['-c', cmd],
+        stdin: request.stdin.isNotEmpty ? request.stdin : null,
+        workDir: workDir,
+      );
+    }
 
     return TermuxRunner.runCommand(
-      command: command,
-      args: args,
+      command: runArgv.first,
+      args: runArgv.length > 1 ? runArgv.sublist(1) : const [],
+      stdin: request.stdin.isNotEmpty ? request.stdin : null,
       workDir: workDir,
     );
   }
@@ -227,10 +378,18 @@ class RunnerService extends ChangeNotifier {
     String runtimeId,
     RunRequest request,
     String workDir, {
+    String? projectDir,
     String? runtimePrefix,
   }) {
-    final filePath = p.join(workDir, request.mainFile);
-    final fileName = request.mainFile.split('/').last;
+    final baseDir = projectDir ?? workDir;
+    final relPath = p.normalize(
+      p.isAbsolute(request.mainFile)
+          ? p.relative(request.mainFile, from: baseDir)
+          : request.mainFile,
+    ).replaceAll(r'\', '/');
+    final cleanRel = relPath.startsWith('/') ? relPath.substring(1) : relPath;
+    final filePath = p.join(workDir, cleanRel);
+    final fileName = p.basename(cleanRel);
     final dot = fileName.lastIndexOf('.');
     final baseName = dot > 0 ? fileName.substring(0, dot) : fileName;
 
@@ -238,17 +397,13 @@ class RunnerService extends ChangeNotifier {
     // prefix (e.g. /data/data/com.termux/files/usr/bin/python3).
     final runtimePath = runtimePrefix ?? '/opt/bcode-runtimes/$runtimeId';
 
-    // Every token is substituted into a single argv element. The old `{args}`
-    // token joined the user's arguments with spaces into one slot, so `"a b"`
-    // arrived as a single argument and any target template using it would be an
-    // injection point the moment the argv reached a shell. `request.args` is now
-    // appended as individual arguments by the caller, matching LocalRunner.
     return template.map((arg) {
       return arg
           .replaceAll('{runtimeDir}', runtimePath)
           .replaceAll('{runtimePath}', runtimePath)
+          .replaceAll('{outDir}', workDir)
           .replaceAll('{file}', filePath)
-          .replaceAll('{dir}', p.dirname(filePath))
+          .replaceAll('{dir}', workDir)
           .replaceAll('{name}', baseName);
     }).toList();
   }

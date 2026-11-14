@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 
 import '../core/constants.dart';
@@ -31,6 +33,14 @@ class TermuxRunner {
   static Future<bool> isInstalled() async {
     try {
       return await _channel.invokeMethod<bool>('isInstalled') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> openTermux() async {
+    try {
+      return await _channel.invokeMethod<bool>('openTermux') ?? false;
     } catch (_) {
       return false;
     }
@@ -71,6 +81,14 @@ class TermuxRunner {
         stderr: (result['stderr'] as String?) ?? '',
         exitCode: (result['exitCode'] as num?)?.toInt() ?? -1,
         durationMs: sw.elapsedMilliseconds,
+      );
+    } on TimeoutException {
+      return const TermuxResult(
+        success: false,
+        stdout: '',
+        stderr: 'Termux command timed out after 2 minutes.\n'
+            'Ensure Termux is running and "allow-external-apps = true" is set in ~/.termux/termux.properties.',
+        exitCode: -1,
       );
     } on MissingPluginException {
       return TermuxResult(

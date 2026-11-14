@@ -115,6 +115,16 @@ object TermuxPlugin {
                 "isInstalled" -> {
                     result.success(isTermuxInstalled())
                 }
+                "openTermux" -> {
+                    val launchIntent = appContext.packageManager.getLaunchIntentForPackage(TERMUX_PACKAGE)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        appContext.startActivity(launchIntent)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
                 "isAllowed" -> {
                     if (isTermuxAllowed()) {
                         result.success(true)
@@ -252,9 +262,20 @@ object TermuxPlugin {
             override fun onReceive(context: Context, intent: Intent) {
                 val requestId = intent.getIntExtra("request_id", -1)
                 val res = pendingResults.remove(requestId) ?: return
-                val exitCode = intent.getIntExtra("exit_code", -1)
-                val stdout = bounded(intent.getStringExtra("stdout"))
-                val stderr = bounded(intent.getStringExtra("stderr"))
+                val bundle = intent.getBundleExtra("result") ?: intent.extras
+                val exitCode = if (bundle?.containsKey("exitCode") == true) {
+                    bundle.getInt("exitCode", -1)
+                } else if (bundle?.containsKey("exit_code") == true) {
+                    bundle.getInt("exit_code", -1)
+                } else {
+                    intent.getIntExtra("exitCode", intent.getIntExtra("exit_code", -1))
+                }
+                val stdout = bounded(bundle?.getString("stdout") ?: intent.getStringExtra("stdout"))
+                val rawStderr = bundle?.getString("stderr")
+                    ?: bundle?.getString("errmsg")
+                    ?: intent.getStringExtra("stderr")
+                    ?: intent.getStringExtra("errmsg")
+                val stderr = bounded(rawStderr)
 
                 runOnMain {
                     res.success(mapOf(
