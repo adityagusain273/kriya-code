@@ -90,15 +90,27 @@ void main() {
     expect(calls, 0);
   });
 
-  testWidgets('tapping badge resets font size to default', (tester) async {
+  testWidgets('tapping the pinch badge restores the configured font size',
+      (tester) async {
     double? committed;
-    await tester.pumpWidget(host(28.0, (v) => committed = v));
-    expect(find.textContaining('200%'), findsOneWidget);
+    await tester.pumpWidget(host(14.0, (v) => committed = v));
 
-    await tester.tap(find.textContaining('200%'));
+    final touch1 = await tester.startGesture(const Offset(200, 100), pointer: 1);
+    final touch2 = await tester.startGesture(const Offset(200, 300), pointer: 2);
+    await tester.pump();
+    await touch1.moveTo(const Offset(200, 50));
+    await touch2.moveTo(const Offset(200, 450));
+    await tester.pump();
+
+    expect(find.textContaining('px'), findsOneWidget);
+
+    await tester.tap(find.textContaining('px'), pointer: 3);
     await tester.pump();
 
     expect(committed, 14.0);
+
+    await touch1.up();
+    await touch2.up();
   });
 
   testWidgets('two-finger pinch works on the editor itself', (tester) async {

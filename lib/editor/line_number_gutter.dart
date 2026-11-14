@@ -4,13 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// The line-number column, painted only for the lines that are on screen.
-///
-/// `flutter_code_editor` builds its gutter as a [Table] with one row per line in
-/// the file: 2001 rows, 8000 widgets, every one of them walked on each repaint
-/// while scrolling. Measured on a 2001-line file that column cost ~19 ms of the
-/// ~32 ms frame, which alone put the scroll budget out of reach. Drawing the
-/// ~50 visible numbers instead keeps the column visually identical.
 class LineNumberGutter extends StatelessWidget {
   const LineNumberGutter({
     super.key,
@@ -21,6 +14,9 @@ class LineNumberGutter extends StatelessWidget {
     required this.width,
     this.errorLines = const {},
     this.topPadding = 0,
+    this.lineTexts,
+    this.charWidth,
+    this.editorWidth,
   });
 
   final ValueListenable<double> scrollPixels;
@@ -28,12 +24,14 @@ class LineNumberGutter extends StatelessWidget {
   final double lineHeight;
   final TextStyle textStyle;
   final double width;
-
-  /// Zero-based lines with a diagnostic, painted as a marker beside the number.
   final Set<int> errorLines;
-
-  /// Space the field keeps above its first line (`InputDecoration.contentPadding`).
   final double topPadding;
+
+  /// When word wrap is on, pass the text of each logical line so the gutter
+  /// can compute how many visual rows each line occupies.
+  final List<String>? lineTexts;
+  final double? charWidth;
+  final double? editorWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +45,9 @@ class LineNumberGutter extends StatelessWidget {
           width: width,
           errorLines: errorLines,
           topPadding: topPadding,
+          lineTexts: lineTexts,
+          charWidth: charWidth,
+          editorWidth: editorWidth,
         ),
         child: const SizedBox.expand(),
       ),
@@ -63,6 +64,9 @@ class LineNumberPainter extends CustomPainter {
     required this.width,
     required this.errorLines,
     required this.topPadding,
+    this.lineTexts,
+    this.charWidth,
+    this.editorWidth,
   }) : super(repaint: scrollPixels);
 
   final ValueListenable<double> scrollPixels;
@@ -72,11 +76,49 @@ class LineNumberPainter extends CustomPainter {
   final double width;
   final Set<int> errorLines;
   final double topPadding;
+  final List<String>? lineTexts;
+  final double? charWidth;
+  final double? editorWidth;
+
   static const double _rightMargin = 8;
   static const double _markerSize = 7;
 
-  /// One laid-out paragraph per number, reused across frames.
   final LinkedHashMap<int, TextPainter> _numbers = LinkedHashMap<int, TextPainter>();
+
+  /// Offsets are recomputed only when the text or the width changes; scrolling
+  /// repaints keep hitting this cache instead of re-walking every line.
+  List<int>? _cachedOffsets;
+  List<String>? _cachedTexts;
+  double? _cachedEditorWidth;
+
+  /// Computes the visual row start (0-based) for each logical line,
+  /// accounting for word-wrapped lines that span multiple rows.
+  List<int> _computeVisualOffsets() {
+    final texts = lineTexts;
+    final cw = charWidth;
+    final ew = editorWidth;
+    if (_cachedOffsets != null &&
+        identical(texts, _cachedTexts) &&
+        ew == _cachedEditorWidth) {
+      return _cachedOffsets!;
+    }
+    final offsets = List<int>.filled(lineCount, 0);
+    if (texts == null || cw == null || ew == null || cw <= 0 || ew <= 0) {
+      for (var i = 0; i < lineCount; i++) { offsets[i] = i; }
+    } else {
+      final charsPerRow = math.max(1, (ew / cw).floor());
+      var row = 0;
+      for (var i = 0; i < lineCount; i++) {
+        offsets[i] = row;
+        final len = i < texts.length ? texts[i].length : 0;
+        row += math.max(1, (len / charsPerRow).ceil());
+      }
+    }
+    _cachedOffsets = offsets;
+    _cachedTexts = texts;
+    _cachedEditorWidth = ew;
+    return offsets;
+  }
 
   TextPainter _number(int value) {
     final cached = _numbers.remove(value);
@@ -95,13 +137,14 @@ class LineNumberPainter extends CustomPainter {
   }
 
   /// The zero-based line range that intersects a viewport of [height] at
-  /// [pixels], which is all this painter ever lays out.
+  /// [pixels] (no-wrap only: assumes one visual row per logical line).
   static (int, int) visibleRange({
     required double pixels,
     required double lineHeight,
     required double height,
     required int lineCount,
   }) {
+    if (lineCount == 0 || lineHeight <= 0) return (0, -1);
     final first = math.max(0, (pixels / lineHeight).floor());
     final last = math.min(lineCount - 1, ((pixels + height) / lineHeight).ceil());
     return (first, last);
@@ -111,17 +154,15 @@ class LineNumberPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (lineCount == 0 || lineHeight <= 0) return;
     final pixels = scrollPixels.value;
-    final (first, last) = visibleRange(
-      pixels: pixels,
-      lineHeight: lineHeight,
-      height: size.height,
-      lineCount: lineCount,
-    );
-    if (first >= lineCount) return;
-    final y = topPadding - pixels;
-    for (var i = first; i <= last; i++) {
+    final offsets = _computeVisualOffsets();
+
+    for (var i = 0; i < lineCount; i++) {
+      final y = topPadding - pixels + offsets[i] * lineHeight;
+      if (y + lineHeight < 0) continue;
+      if (y > size.height) break;
+
       if (errorLines.contains(i)) {
-        final top = y + i * lineHeight + (lineHeight - _markerSize) / 2;
+        final top = y + (lineHeight - _markerSize) / 2;
         canvas.drawCircle(
           Offset(_markerSize / 2 + 1, top + _markerSize / 2),
           _markerSize / 2,
@@ -129,11 +170,8 @@ class LineNumberPainter extends CustomPainter {
         );
       }
       final painter = _number(i + 1);
-      // A paragraph laid out at maxWidth keeps its own (shorter) width, so the
-      // column's right edge has to be applied here: textAlign alone is a no-op
-      // for a number that does not fill the column.
       final dx = width - _rightMargin - painter.width;
-      painter.paint(canvas, Offset(dx, y + i * lineHeight));
+      painter.paint(canvas, Offset(dx, y));
     }
   }
 
@@ -144,5 +182,8 @@ class LineNumberPainter extends CustomPainter {
       old.width != width ||
       old.errorLines != errorLines ||
       old.topPadding != topPadding ||
-      old.textStyle != textStyle;
+      old.textStyle != textStyle ||
+      old.charWidth != charWidth ||
+      old.editorWidth != editorWidth ||
+      !identical(old.lineTexts, lineTexts);
 }

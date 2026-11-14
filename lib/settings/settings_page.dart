@@ -20,7 +20,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  late double _fontSize = widget.store.fontSize.toDouble();
+  late double _fontSize = widget.store.fontSize.toDouble().clamp(8.0, 64.0);
   late int _tabSize = widget.store.tabSize;
   late ThemeMode _themeMode = widget.store.themeMode;
   late bool _autoSave = widget.store.autoSave;
@@ -111,9 +111,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Icon(Icons.text_fields, size: 14),
                 Expanded(
                   child: Slider(
-                    min: 10,
-                    max: 24,
-                    divisions: 14,
+                    min: 8,
+                    max: 64,
+                    divisions: 56,
                     label: _fontSize.round().toString(),
                     value: _fontSize,
                     onChanged: (v) {

@@ -116,9 +116,7 @@ class _BCodeZoomViewState extends State<BCodeZoomView> {
 
   @override
   Widget build(BuildContext context) {
-    final defaultSize = 14.0;
-    final ratio = _currentFontSize / defaultSize;
-    final showBadge = (ratio - 1.0).abs() > 0.08;
+    final showBadge = _pinching && _moved;
 
     return Listener(
       behavior: HitTestBehavior.translucent,
@@ -138,15 +136,14 @@ class _BCodeZoomViewState extends State<BCodeZoomView> {
                 borderRadius: BorderRadius.circular(20),
                 child: InkWell(
                   onTap: () {
-                    setState(() => _currentFontSize = defaultSize);
-                    widget.onFontSizePreview?.call(defaultSize);
-                    widget.onFontSizeCommit?.call(defaultSize);
+                    setState(() => _currentFontSize = widget.fontSize);
+                    widget.onFontSizeCommit?.call(widget.fontSize);
                   },
                   borderRadius: BorderRadius.circular(20),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     child: Text(
-                      '${(ratio * 100).round()}% (${_currentFontSize.round()}pt)',
+                      '${_currentFontSize.toStringAsFixed(1)}px',
                       style: Theme.of(context).textTheme.labelSmall,
                     ),
                   ),

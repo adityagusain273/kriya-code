@@ -98,7 +98,7 @@ class _EditorPageState extends State<EditorPage>
       color: title?.color,
       fontSize: title?.fontSize,
       height: title?.height,
-    ).merge(TextStyle(fontFamily: fontFamily, fontSize: fontSize));
+    ).merge(TextStyle(fontFamily: fontFamily, fontSize: fontSize, height: 1.2));
     final painter = TextPainter(
       text: TextSpan(text: '0', style: style),
       textDirection: TextDirection.ltr,
@@ -929,27 +929,31 @@ class _EditorPageState extends State<EditorPage>
           syntaxTheme[key] = style.copyWith(
             fontFamily: fontFamily,
             fontSize: fontSize,
+            height: 1.2,
           );
         });
 
+        final editorBackground =
+            syntaxTheme['root']?.backgroundColor ?? Colors.transparent;
         final errorLines = _diagnostics.map((d) => d.line).toSet();
-        final gutterWidth = showLineNumbers ? 48 + (fontSize * 2) : 0.0;
         final gutterTextStyle = TextStyle(
           fontFamily: fontFamily,
           fontSize: fontSize,
+          height: 1.2,
           color: Colors.white38,
         );
-        final gutter = gutterWidth == 0
-            ? null
-            : LineNumberGutter(
-                scrollPixels: _gutterScroll,
-                lineCount: tab.controller.code.lines.length,
-                lineHeight: _lineHeight(context, fontFamily, fontSize),
-                textStyle: gutterTextStyle,
-                width: gutterWidth,
-                errorLines: errorLines,
-                topPadding: 16,
-              );
+        // Digits are as wide as a monospace cell, so one measured glyph sizes the
+        // gutter for any line count without laying out a number per line.
+        final charPainter = TextPainter(
+          text: TextSpan(
+            text: '0',
+            style: TextStyle(fontFamily: fontFamily, fontSize: fontSize, height: 1.2),
+          ),
+          textDirection: TextDirection.ltr,
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        final measuredCharWidth = charPainter.width;
+        charPainter.dispose();
 
         final autocomplete = ListenableBuilder(
           listenable: tab.controller,
@@ -986,22 +990,66 @@ class _EditorPageState extends State<EditorPage>
               expands: true,
               background: syntaxTheme['root']?.backgroundColor ?? Colors.transparent,
               gutterStyle: GutterStyle.none,
+
               textStyle: TextStyle(
                 fontFamily: fontFamily,
                 fontSize: fontSize,
+                height: 1.2,
               ),
             ),
           ),
         );
 
-        final editorWithGutter = gutter == null
+        final editorWithGutter = !showLineNumbers
             ? editor
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(width: gutterWidth, child: gutter),
-                  Expanded(child: editor),
-                ],
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  return ListenableBuilder(
+                    listenable: tab.controller,
+                    child: editor,
+                    builder: (context, child) {
+                      final lines = tab.controller.code.lines.lines;
+                      final digits = lines.length.toString().length;
+                      // Acode-style gutter: as wide as the number plus a small
+                      // margin, not a fixed band that eats a quarter of the
+                      // editor. Two columns are reserved so the first edit past
+                      // line 9 does not shift the code.
+                      final gutterWidth =
+                          8 + (digits < 2 ? 2 : digits) * measuredCharWidth + 8;
+                      // CodeField insets its text by 8 px on the left.
+                      final textWidth =
+                          constraints.maxWidth - gutterWidth - 8;
+                      return ColoredBox(
+                        color: editorBackground,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: gutterWidth,
+                              child: LineNumberGutter(
+                                scrollPixels: _gutterScroll,
+                                lineCount: lines.length,
+                                lineHeight: _lineHeight(
+                                    context, fontFamily, fontSize),
+                                textStyle: gutterTextStyle,
+                                width: gutterWidth,
+                                errorLines: errorLines,
+                                topPadding: 16,
+                                lineTexts: wordWrap
+                                    ? [for (final l in lines) l.text]
+                                    : null,
+                                charWidth: wordWrap ? measuredCharWidth : null,
+                                editorWidth:
+                                    wordWrap && textWidth > 0 ? textWidth : null,
+                              ),
+                            ),
+                            Expanded(child: child!),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
               );
 
         final combined = Stack(
@@ -1262,7 +1310,15 @@ class _EditorPageState extends State<EditorPage>
           if (mounted && context.mounted) Navigator.pop(context);
         }
       },
-      child: Scaffold(
+      child: ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        // Side insets only: the app bar keeps drawing behind the status bar, and
+        // the shortcut bar already handles the bottom inset. This keeps code off
+        // a landscape display cutout instead of under the notch.
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: Scaffold(
         key: _scaffoldKey,
       appBar: AppBar(
         title: Text(
@@ -1571,6 +1627,8 @@ class _EditorPageState extends State<EditorPage>
         ],
       ),
 
+        ),
+      ),
     ),
     );
   }
