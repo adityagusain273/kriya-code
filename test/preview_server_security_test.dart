@@ -203,6 +203,33 @@ void main() {
       outside.deleteSync();
     });
 
+    test('dotfiles and dot-directories are never served', () async {
+      // A previewed page is same-origin with the server, so it can fetch its
+      // own workspace. Secret material must not be among what comes back.
+      File('${tempDir.path}/.env').writeAsStringSync('GITHUB_TOKEN=hunter2');
+      Directory('${tempDir.path}/.git').createSync();
+      File('${tempDir.path}/.git/config').writeAsStringSync('[remote "origin"]');
+      Directory('${tempDir.path}/.ssh').createSync();
+      File('${tempDir.path}/.ssh/id_ed25519').writeAsStringSync('PRIVATE KEY');
+
+      for (final path in [
+        '/.env',
+        '/.git/config',
+        '/.ssh/id_ed25519',
+        '/sub/../.env',
+        '/%2eenv',
+      ]) {
+        final res = await send(port, get(port, path, cookie: 'bct=$token'));
+        expect(res.status, 404, reason: 'path $path must not be served');
+        expect(res.body, isNot(contains('hunter2')));
+        expect(res.body, isNot(contains('PRIVATE KEY')));
+      }
+
+      // Ordinary files in the same folder still serve.
+      final ok = await send(port, get(port, '/sub/hello.js', cookie: 'bct=$token'));
+      expect(ok.status, 200);
+    });
+
     test('methods other than GET/HEAD are rejected', () async {
       final socket = await Socket.connect('127.0.0.1', port);
       socket.write(

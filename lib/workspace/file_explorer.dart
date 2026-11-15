@@ -551,7 +551,9 @@ class _EntryTileState extends State<_EntryTile> {
 
   void _reloadSubtree() {
     if (_expanded) {
-      setState(() => _childrenFuture = fs.list(_relativePath, refresh: true));
+      setState(() {
+        _childrenFuture = fs.list(_relativePath, refresh: true);
+      });
     }
     widget.onChanged();
   }
@@ -706,7 +708,9 @@ class _EntryTileState extends State<_EntryTile> {
           if (newName != null && newName.isNotEmpty && newName != entry.name) {
             await fs.rename(entry.path, newName);
             final newPath = p.join(p.dirname(entry.path), newName);
-            sl<TabManager>().handleFileRenamed(entry.path, newPath);
+            if (sl.isRegistered<TabManager>()) {
+              sl<TabManager>().handleFileRenamed(entry.path, newPath);
+            }
             _reloadSubtree();
           }
         case 'move':
@@ -717,7 +721,9 @@ class _EntryTileState extends State<_EntryTile> {
           if (target != null) {
             await fs.move(entry.path, target);
             final newPath = p.join(target, entry.name);
-            sl<TabManager>().handleFileRenamed(entry.path, newPath);
+            if (sl.isRegistered<TabManager>()) {
+              sl<TabManager>().handleFileRenamed(entry.path, newPath);
+            }
             _reloadSubtree();
           }
         case 'delete':
@@ -738,7 +744,9 @@ class _EntryTileState extends State<_EntryTile> {
           );
           if (confirmed == true) {
             await fs.delete(entry.path);
-            sl<TabManager>().handleFileDeleted(entry.path);
+            if (sl.isRegistered<TabManager>()) {
+              sl<TabManager>().handleFileDeleted(entry.path);
+            }
             _reloadSubtree();
           }
       }

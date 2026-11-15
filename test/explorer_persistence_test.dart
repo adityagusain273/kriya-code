@@ -121,5 +121,28 @@ void main() {
           reason: 'deleted folders should be pruned on mount');
       expect(find.text('main.py'), findsNothing);
     });
+
+    testWidgets('deleting an entry inside an expanded directory reloads cleanly',
+        (tester) async {
+      final prefs = ExplorerPrefs(await SharedPreferences.getInstance());
+
+      await tester.pumpWidget(buildExplorer(prefs));
+      await settleFrames(tester);
+      await tester.tap(find.text('src'));
+      await settleFrames(tester);
+      expect(find.text('main.py'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Options for main.py'));
+      await settleFrames(tester);
+
+      await tester.tap(find.text('Delete'));
+      await settleFrames(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await settleFrames(tester);
+
+      expect(find.text('main.py'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

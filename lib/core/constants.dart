@@ -47,6 +47,6 @@ class AppConstants {
 
   static const supportDevName = 'Aditya';
   static const proPriceInr = 49;
-  static const proUpiId = '8630024750@yapl';
-  static const proPayeeName = 'B Code Developer';
+  static const proUpiId = 'bakadev@upi';
+  static const proPayeeName = 'Aditya';
 }

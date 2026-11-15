@@ -323,6 +323,18 @@ class StaticFileHandler {
     final candidate = p.normalize(p.join(rootAbs, rel));
     if (candidate != rootAbs && !p.isWithin(rootAbs, candidate)) return null;
 
+    // The previewed page is same-origin with this server, so it can `fetch`
+    // anything the server will serve. Dotfiles are where a workspace keeps its
+    // secret material — `.env`, `.git/`, `.npmrc` — and no preview needs them.
+    // Without this, opening an HTML file from an untrusted clone let that page
+    // read every adjacent project's `.env` and send it out through a link the
+    // app hands to the system browser.
+    final within = p.relative(candidate, from: rootAbs);
+    if (within != '.' &&
+        within.split(p.separator).any((segment) => segment.startsWith('.'))) {
+      return null;
+    }
+
     final type = FileSystemEntity.typeSync(candidate, followLinks: false);
     if (type != FileSystemEntityType.file) return null;
 

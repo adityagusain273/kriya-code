@@ -48,7 +48,8 @@ object TermuxPlugin {
 
     private fun currentResultAction(): String {
         resultAction?.let { return it }
-        val token = ByteArray(16).joinToString("") { "%02x".format(it) }
+        val bytes = ByteArray(16).also { secureRandom.nextBytes(it) }
+        val token = bytes.joinToString("") { "%02x".format(it) }
         val action = "$RESULT_ACTION.$token"
         resultAction = action
         return action
