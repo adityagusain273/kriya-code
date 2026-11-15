@@ -107,3 +107,9 @@ graphify-out/
 
 # Android build outputs (leaked absolute paths when committed)
 android/build/
+
+# Telegram bot secrets and state
+tool/.env
+tool/bot_state.json
+tool/*.env
+
