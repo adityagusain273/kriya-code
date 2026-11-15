@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/di.dart';
+import '../../workspace/mdi.dart';
 import '../api_client.dart';
 import '../auth/device_flow_auth.dart';
 import '../auth/token_store.dart';
@@ -174,7 +175,7 @@ class _LoginPageState extends State<LoginPage> {
                         width: 1.5,
                       ),
                     ),
-                    child: Icon(Icons.code_rounded, size: 30, color: cs.primary),
+                    child: Icon(Mdi.github, size: 30, color: cs.primary),
                   ),
                 ),
                 const SizedBox(height: 16),

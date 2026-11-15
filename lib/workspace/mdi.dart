@@ -45,4 +45,5 @@ abstract class Mdi {
   static const flaskOutline = IconData(0xf0096, fontFamily: 'Material Design Icons');
   static const fileOutline = IconData(0xf0224, fontFamily: 'Material Design Icons');
   static const git = IconData(0xf02a2, fontFamily: 'Material Design Icons');
+  static const github = IconData(0xf02a4, fontFamily: 'Material Design Icons');
 }

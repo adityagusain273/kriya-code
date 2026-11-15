@@ -41,6 +41,7 @@ import 'tab_manager.dart';
 import '../workspace/import_actions.dart';
 import '../workspace/file_explorer.dart';
 import '../workspace/file_icons.dart';
+import '../workspace/mdi.dart';
 import '../workspace/fs_service.dart';
 import 'command_palette.dart';
 import 'diagnostics_bar.dart';
@@ -1506,7 +1507,7 @@ class _EditorPageState extends State<EditorPage>
               const PopupMenuItem(
                 height: 40,
                 value: 'github',
-                child: _MenuItem(icon: Icons.source, label: 'Git & GitHub'),
+                child: _MenuItem(icon: Mdi.github, label: 'Git & GitHub'),
               ),
               const PopupMenuItem(
                 height: 40,

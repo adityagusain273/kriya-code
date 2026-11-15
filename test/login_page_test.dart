@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:b_code/core/di.dart';
 import 'package:b_code/github/auth/device_flow_auth.dart';
 import 'package:b_code/github/ui/login_page.dart';
+import 'package:b_code/workspace/mdi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -28,6 +29,7 @@ void main() {
 
     expect(find.text('Sign in with GitHub'), findsOneWidget);
     expect(find.text('Connect GitHub'), findsOneWidget);
+    expect(find.byIcon(Mdi.github), findsOneWidget);
     expect(find.text('How it works'), findsOneWidget);
     expect(find.text('Request a one-time code'), findsOneWidget);
     expect(find.text('Authorize on github.com'), findsOneWidget);
