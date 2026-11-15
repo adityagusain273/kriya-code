@@ -1,6 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'device_id_provider.dart';
 import 'license_service.dart';
 
 class Entitlements {
@@ -24,7 +25,7 @@ abstract class EntitlementService {
   bool isExtensionUnlocked(String extensionId);
   Future<void> unlockExtension(String extensionId);
   Future<void> setProTier(bool isPro);
-  Future<bool> activateWithLicenseKey(String licenseKey);
+  Future<LicenseValidationResult> activateWithLicenseKey(String licenseKey);
 }
 
 class LocalEntitlementService implements EntitlementService {
@@ -98,9 +99,10 @@ class LocalEntitlementService implements EntitlementService {
   }
 
   @override
-  Future<bool> activateWithLicenseKey(String licenseKey) async {
-    final valid = _verifier.verify(licenseKey);
-    if (!valid) return false;
+  Future<LicenseValidationResult> activateWithLicenseKey(String licenseKey) async {
+    final currentDevice = await DeviceIdProvider.getDeviceId();
+    final result = _verifier.validate(licenseKey, currentDeviceId: currentDevice);
+    if (!result.isValid) return result;
 
     _isPro = true;
     await _prefs.setBool(_proTierKey, true);
@@ -108,6 +110,6 @@ class LocalEntitlementService implements EntitlementService {
     try {
       await _secureStorage.write(key: _licenseKeyPref, value: licenseKey.trim());
     } catch (_) {}
-    return true;
+    return result;
   }
 }

@@ -3,6 +3,24 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+class LicenseValidationResult {
+  final bool isValid;
+  final String? errorMessage;
+  final String? deviceId;
+
+  const LicenseValidationResult({
+    required this.isValid,
+    this.errorMessage,
+    this.deviceId,
+  });
+
+  static const valid = LicenseValidationResult(isValid: true);
+  static const invalid = LicenseValidationResult(
+    isValid: false,
+    errorMessage: 'Invalid or corrupted license key',
+  );
+}
+
 class LicenseVerifier {
   static final BigInt defaultModulus = BigInt.parse(
     'ec84d02c9e3d5c35fc2e10bbe5ab8f5003c2866d1b4038a28fc09b7db0cd2e14'
@@ -29,16 +47,16 @@ class LicenseVerifier {
     0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20,
   ];
 
-  bool verify(String keyString) {
+  LicenseValidationResult validate(String keyString, {String? currentDeviceId}) {
     try {
       final clean = keyString.trim();
       final parts = clean.split('.');
       if (parts.length != 3 || parts[0] != 'BCODE') {
-        return false;
+        return LicenseValidationResult.invalid;
       }
       final payloadBytes = base64Url.decode(base64.normalize(parts[1]));
       final sigBytes = base64Url.decode(base64.normalize(parts[2]));
-      if (sigBytes.length != 256) return false;
+      if (sigBytes.length != 256) return LicenseValidationResult.invalid;
 
       BigInt sigInt = BigInt.zero;
       for (final byte in sigBytes) {
@@ -54,31 +72,54 @@ class LicenseVerifier {
         temp = temp >> 8;
       }
 
-      if (emBytes[0] != 0x00 || emBytes[1] != 0x01) return false;
+      if (emBytes[0] != 0x00 || emBytes[1] != 0x01) return LicenseValidationResult.invalid;
 
       var i = 2;
       while (i < 256 && emBytes[i] == 0xff) {
         i++;
       }
-      if (i >= 256 || emBytes[i] != 0x00) return false;
+      if (i >= 256 || emBytes[i] != 0x00) return LicenseValidationResult.invalid;
       i++;
 
-      if (256 - i != _sha256Asn1Header.length + 32) return false;
+      if (256 - i != _sha256Asn1Header.length + 32) return LicenseValidationResult.invalid;
 
       for (var j = 0; j < _sha256Asn1Header.length; j++) {
-        if (emBytes[i + j] != _sha256Asn1Header[j]) return false;
+        if (emBytes[i + j] != _sha256Asn1Header[j]) return LicenseValidationResult.invalid;
       }
 
       final expectedHash = sha256.convert(payloadBytes).bytes;
       for (var j = 0; j < 32; j++) {
         if (emBytes[i + _sha256Asn1Header.length + j] != expectedHash[j]) {
-          return false;
+          return LicenseValidationResult.invalid;
         }
       }
 
-      return true;
+      final payload = utf8.decode(payloadBytes);
+      String? boundId;
+      if (payload.startsWith('pro:')) {
+        boundId = payload.substring(4);
+      }
+
+      if (boundId != null && boundId.startsWith('BCODE-')) {
+        if (currentDeviceId != null && currentDeviceId.isNotEmpty) {
+          if (boundId != currentDeviceId) {
+            return LicenseValidationResult(
+              isValid: false,
+              errorMessage:
+                  'This license key is locked to device $boundId and cannot be used on this phone.',
+              deviceId: boundId,
+            );
+          }
+        }
+      }
+
+      return LicenseValidationResult(isValid: true, deviceId: boundId);
     } catch (_) {
-      return false;
+      return LicenseValidationResult.invalid;
     }
+  }
+
+  bool verify(String keyString, {String? currentDeviceId}) {
+    return validate(keyString, currentDeviceId: currentDeviceId).isValid;
   }
 }

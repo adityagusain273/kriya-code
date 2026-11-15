@@ -114,6 +114,8 @@ void main() {
       expect(find.text('Scan QR Code & Pay ₹49'), findsOneWidget);
       expect(find.text('Enter License Key'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Enter License Key'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Enter License Key'));
       await tester.pumpAndSettle();
 

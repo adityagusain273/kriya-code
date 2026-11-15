@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.content.pm.Signature
 import android.os.Build
+import android.provider.Settings
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.security.MessageDigest
@@ -28,6 +29,18 @@ object IntegrityPlugin {
                         result.success(signingCertificates(appContext))
                     } catch (e: Exception) {
                         result.error("INTEGRITY_UNAVAILABLE", e.message, null)
+                    }
+                }
+                "deviceId" -> {
+                    try {
+                        val androidId = Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
+                        val brand = Build.BRAND ?: ""
+                        val model = Build.MODEL ?: ""
+                        val hash = sha256Hex("$androidId:$brand:$model".toByteArray())
+                        val shortId = "BCODE-" + hash.substring(0, 8).uppercase()
+                        result.success(shortId)
+                    } catch (e: Exception) {
+                        result.error("DEVICE_ID_UNAVAILABLE", e.message, null)
                     }
                 }
                 else -> result.notImplemented()

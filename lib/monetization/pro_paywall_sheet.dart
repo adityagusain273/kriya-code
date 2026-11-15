@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/constants.dart';
 import '../core/di.dart';
 import '../core/haptics.dart';
+import 'device_id_provider.dart';
 import 'entitlement_service.dart';
 
 /// Shows a Duolingo Super inspired contextual paywall for B Code Pro.
@@ -94,8 +96,8 @@ Future<bool?> showLicenseInputDialog(BuildContext context) async {
                   }
                   if (sl.isRegistered<EntitlementService>()) {
                     final entitlements = sl<EntitlementService>();
-                    final ok = await entitlements.activateWithLicenseKey(text);
-                    if (ok) {
+                    final result = await entitlements.activateWithLicenseKey(text);
+                    if (result.isValid) {
                       if (dialogCtx.mounted) Navigator.of(dialogCtx).pop(true);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -107,8 +109,10 @@ Future<bool?> showLicenseInputDialog(BuildContext context) async {
                       }
                       return;
                     }
+                    setState(() => errorText = result.errorMessage ?? 'Invalid or corrupted license key');
+                    return;
                   }
-                  setState(() => errorText = 'Invalid or corrupted license key');
+                  setState(() => errorText = 'Licensing service unavailable');
                 },
                 child: const Text('Activate', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
@@ -371,6 +375,69 @@ class ProPaywallSheet extends StatelessWidget {
                   },
                 ),
               ] else ...[
+                FutureBuilder<String>(
+                  future: DeviceIdProvider.getDeviceId(),
+                  builder: (context, snapshot) {
+                    final deviceId = snapshot.data ?? '...';
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF161B22),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF21262D)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.smartphone_rounded, size: 16, color: Color(0xFF00E676)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'YOUR DEVICE ID (KEYS ARE LOCKED TO THIS PHONE)',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                                Text(
+                                  deviceId,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () async {
+                              await Clipboard.setData(ClipboardData(text: deviceId));
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Device ID copied to clipboard!'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.copy_rounded, size: 14, color: Color(0xFF00E676)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
                 FilledButton.icon(
                   icon: const Icon(Icons.qr_code_2_rounded, size: 20),
                   label: const Text('Scan QR Code & Pay ₹49'),
@@ -438,6 +505,26 @@ class UpiScanPaySheet extends StatelessWidget {
         const SnackBar(
           content: Text('UPI ID copied! Open GPay, PhonePe, or Paytm and paste to pay ₹49.'),
           duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openTelegram(BuildContext context) async {
+    Haptics.light();
+    final deviceId = await DeviceIdProvider.getDeviceId();
+    final message = Uri.encodeComponent(
+      'Hi Aditya, I paid ₹49 for B Code Pro.\n'
+      '- UPI UTR: [paste your 12-digit UTR here]\n'
+      '- Device ID: $deviceId',
+    );
+    final uri = Uri.parse('https://t.me/${AppConstants.proTelegramUsername}?text=$message');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open Telegram. Message @bakadev directly.'),
         ),
       );
     }
@@ -537,14 +624,77 @@ class UpiScanPaySheet extends StatelessWidget {
                     ),
                     SizedBox(height: 6),
                     Text(
-                      '1. Tap "Copy UPI ID" below.\n'
-                      '2. Open Google Pay, PhonePe, or Paytm.\n'
-                      '3. Pay ₹49 with your email in note.\n'
-                      '4. Enter your received license key below to unlock.',
+                      '1. Pay ₹49 using QR or "Copy UPI ID" below.\n'
+                      '2. Tap "Send UTR & Device ID via Telegram".\n'
+                      '3. Aditya verifies and sends your key on Telegram.\n'
+                      '4. Tap "Enter License Key & Unlock Pro" to activate.',
                       style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 12),
+              FutureBuilder<String>(
+                future: DeviceIdProvider.getDeviceId(),
+                builder: (context, snapshot) {
+                  final deviceId = snapshot.data ?? '...';
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF161B22),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF21262D)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.smartphone_rounded, size: 16, color: Color(0xFF00E676)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'YOUR DEVICE ID (LOCKED TO THIS PHONE)',
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                              Text(
+                                deviceId,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () async {
+                            await Clipboard.setData(ClipboardData(text: deviceId));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Device ID copied to clipboard!'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(Icons.copy_rounded, size: 14, color: Color(0xFF00E676)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 14),
               // QR Card
@@ -668,6 +818,24 @@ class UpiScanPaySheet extends StatelessWidget {
                   ),
                 ),
                 onPressed: () => _copyUpiId(context),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                icon: const Icon(Icons.send_rounded, size: 18),
+                label: const Text('Send UTR & Device ID via Telegram'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF229ED9),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                onPressed: () => _openTelegram(context),
               ),
               const SizedBox(height: 10),
               FilledButton.icon(
