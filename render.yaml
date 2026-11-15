@@ -13,3 +13,5 @@ services:
         sync: false
       - key: LICENSE_PRIVATE_KEY_B64
         sync: false
+      - key: ADMIN_CHAT_ID
+        value: "8300325340"
