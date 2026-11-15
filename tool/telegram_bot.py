@@ -11,6 +11,8 @@ import re
 import json
 import time
 import argparse
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 from pathlib import Path
 
@@ -44,6 +46,24 @@ def load_state() -> dict:
 def save_state(state: dict):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
+
+def start_health_server(port: int = 8080):
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"B Code Pro Telegram Bot is online and healthy!\n")
+
+        def log_message(self, format, *args):
+            return
+
+    try:
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        print(f"🌐 Health server listening on 0.0.0.0:{port}")
+    except Exception as e:
+        print(f"⚠️ Could not bind health server on {port}: {e}")
 
 class TelegramBot:
     def __init__(self, token: str, admin_id: int | None = None):
@@ -307,12 +327,14 @@ def main():
     parser = argparse.ArgumentParser(description="B Code Pro Telegram Bot")
     parser.add_argument("--token", default=os.environ.get("TELEGRAM_BOT_TOKEN"), help="Bot API token")
     parser.add_argument("--admin", type=int, default=os.environ.get("ADMIN_CHAT_ID"), help="Admin chat ID")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="HTTP health port")
     args = parser.parse_args()
 
     if not args.token:
         print("Error: No bot token provided. Set TELEGRAM_BOT_TOKEN in tool/.env or pass --token", file=sys.stderr)
         sys.exit(1)
 
+    start_health_server(args.port)
     bot = TelegramBot(args.token, args.admin)
     bot.run()
 

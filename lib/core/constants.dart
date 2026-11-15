@@ -50,5 +50,5 @@ class AppConstants {
   static const proPriceInr = 49;
   static const proUpiId = 'bakadev@upi';
   static const proPayeeName = 'Aditya';
-  static const proTelegramUsername = 'bakadev';
+  static const proTelegramUsername = 'bcode_pro_bot';
 }

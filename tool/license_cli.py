@@ -12,6 +12,9 @@ from cryptography.hazmat.primitives import hashes, serialization
 KEY_PATH = Path(__file__).parent / "bcode_license_private.pem"
 
 def load_or_generate_key() -> rsa.RSAPrivateKey:
+    pem_env = os.environ.get("LICENSE_PRIVATE_KEY_PEM")
+    if pem_env:
+        return serialization.load_pem_private_key(pem_env.strip().encode("utf-8"), password=None)
     if KEY_PATH.exists():
         with open(KEY_PATH, "rb") as f:
             return serialization.load_pem_private_key(f.read(), password=None)
