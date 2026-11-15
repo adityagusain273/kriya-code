@@ -1,6 +1,7 @@
 package com.bcode.editor
 
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Environment
 import android.os.Handler
@@ -8,6 +9,7 @@ import android.os.Looper
 import android.os.StatFs
 import android.system.Os
 import android.system.OsConstants
+import androidx.core.content.FileProvider
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -144,6 +146,33 @@ object ExecPlugin {
         File(path).canonicalPath
     } catch (e: Exception) {
         null
+    }
+
+    /// Opens Android's package installer for an artifact APK in the app cache.
+    ///
+    /// The path is restricted to `cache/cloud_build`, the only place the artifact
+    /// unpacker writes, so this method cannot be used to expose other app files.
+    private fun installApk(path: String): Boolean {
+        return try {
+            val file = File(path).canonicalFile
+            val cacheRoot = File(appContext.cacheDir, "cloud_build").canonicalFile
+            if (!file.isFile) return false
+            if (!file.path.startsWith(cacheRoot.path + File.separator)) return false
+            if (!file.name.endsWith(".apk")) return false
+            val uri = FileProvider.getUriForFile(
+                appContext,
+                "${appContext.packageName}.fileprovider",
+                file,
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            appContext.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun isWithinSandbox(path: String): Boolean {
@@ -299,6 +328,10 @@ object ExecPlugin {
                     val process = runId?.let { activeProcesses.remove(it) }
                     process?.destroyForcibly()
                     result.success(process != null)
+                }
+                "installApk" -> {
+                    val path = call.argument<String>("path") ?: ""
+                    result.success(installApk(path))
                 }
                 "setSandboxPaths" -> {
                     // Replaces the dynamic root set rather than adding to it.

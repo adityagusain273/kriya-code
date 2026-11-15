@@ -13,6 +13,29 @@ import '../core/di.dart';
 import '../execution/local/local_runner.dart';
 import '../execution/termux_runner.dart';
 
+/// Resolves `cd` inside Termux's filesystem.
+///
+/// Termux's shell cannot confirm the path for us — a stat from this UID is
+/// denied — so the path is normalised and handed to the next command; bash
+/// reports the real error then.
+String resolveTermuxCwd(String cwd, String arg, {required String home}) {
+  var target = arg.trim();
+  if (target.isEmpty || target == '~') target = home;
+  if (target.startsWith('~/')) target = '$home/${target.substring(2)}';
+  if (!target.startsWith('/')) target = '$cwd/$target';
+
+  final parts = <String>[];
+  for (final segment in target.split('/')) {
+    if (segment.isEmpty || segment == '.') continue;
+    if (segment == '..') {
+      if (parts.isNotEmpty) parts.removeLast();
+      continue;
+    }
+    parts.add(segment);
+  }
+  return '/${parts.join('/')}';
+}
+
 class TerminalWidget extends StatefulWidget {
   final String? workDir;
   final bool showToolbar;
@@ -34,7 +57,16 @@ class _TerminalWidgetState extends State<TerminalWidget> {
   StreamSubscription<String>? _outputSub;
   bool _disposed = false;
 
-  static const _termuxBash = '/data/data/com.termux/files/usr/bin/bash';
+  static const termuxHome = '/data/data/com.termux/files/home';
+  static const _termuxPrefix = '/data/data/com.termux/files/usr';
+
+  /// Termux mode state. There is no PTY here: RUN_COMMAND is a one-shot
+  /// broadcast protocol, so the terminal echoes what is typed and sends complete
+  /// lines to Termux.
+  String _termuxCwd = termuxHome;
+  final StringBuffer _line = StringBuffer();
+  bool _termuxBusy = false;
+  bool _inEscape = false;
 
   @override
   void initState() {
@@ -42,31 +74,54 @@ class _TerminalWidgetState extends State<TerminalWidget> {
     terminal = Terminal(
       maxLines: 10000,
       onOutput: (data) {
+        if (_useTermux) {
+          _onTermuxInput(data);
+          return;
+        }
         pty?.write(Utf8Encoder().convert(data));
       },
     );
     _initShell();
   }
 
+  /// Picks how commands are executed.
+  ///
+  /// The old code checked `File('/data/data/com.termux/files/usr/bin/bash')
+  /// .existsSync()`. Android denies one app even stat-ing another app's private
+  /// directory, so `existsSync` was always false and Termux was never used. The
+  /// only reliable signal is the package manager, reached through
+  /// [TermuxRunner.isInstalled], plus the RUN_COMMAND grant.
   Future<void> _initShell() async {
     _termuxInstalled = await TermuxRunner.isInstalled();
-    if (_termuxInstalled && File(_termuxBash).existsSync()) {
+    if (_disposed) return;
+    if (_termuxInstalled) {
+      // The grant dialog can hold this await for up to a minute; say something
+      // instead of leaving a black screen behind the dialog.
+      terminal.write('Termux detected — checking RUN_COMMAND permission…\r\n');
+    }
+    if (_termuxInstalled && await TermuxRunner.checkAvailability()) {
+      if (_disposed) return;
       _useTermux = true;
-    } else {
-      try {
-        final runner = sl<LocalRunner>();
-        if (await runner.hasRuntime('bash')) {
-          final root = await runner.runtimeRoot();
-          if (root != null) {
-            final bashPrefix = '$root/bash';
-            if (File('$bashPrefix/bin/bash').existsSync()) {
-              _useStandalone = true;
-              _standalonePath = bashPrefix;
-            }
+      _startTermux();
+      return;
+    }
+    if (_disposed) return;
+
+    try {
+      final runner = sl<LocalRunner>();
+      if (await runner.hasRuntime('bash')) {
+        if (_disposed) return;
+        final root = await runner.runtimeRoot();
+        if (_disposed) return;
+        if (root != null) {
+          final bashPrefix = '$root/bash';
+          if (File('$bashPrefix/bin/bash').existsSync()) {
+            _useStandalone = true;
+            _standalonePath = bashPrefix;
           }
         }
-      } catch (_) {}
-    }
+      }
+    } catch (_) {}
     _startShell();
   }
 
@@ -90,12 +145,7 @@ class _TerminalWidgetState extends State<TerminalWidget> {
     env['TERM'] = 'xterm-256color';
     env['COLORTERM'] = 'truecolor';
 
-    if (_useTermux) {
-      env['HOME'] = '/data/data/com.termux/files/home';
-      env['PATH'] = '/data/data/com.termux/files/usr/bin:${env['PATH'] ?? ''}';
-      env['PREFIX'] = '/data/data/com.termux/files/usr';
-      env['TMPDIR'] = '/data/data/com.termux/files/usr/tmp';
-    } else if (_useStandalone && _standalonePath != null) {
+    if (_useStandalone && _standalonePath != null) {
       final home = await _terminalHome();
       if (_disposed) return;
       env['HOME'] = home;
@@ -111,11 +161,21 @@ class _TerminalWidgetState extends State<TerminalWidget> {
     final String cyan = '\x1B[1;36m';
     final String green = '\x1B[1;32m';
     final String reset = '\x1B[0m';
-    final String welcome = _useTermux 
-        ? '${cyan}Welcome to Termux in BCode!$reset\r\n\r\n${green}Working with packages:$reset\r\n  - Search:    pkg search <query>\r\n  - Install:   pkg install <package>\r\n  - Uninstall: pkg uninstall <package>\r\n  - Upgrade:   pkg upgrade\r\n\r\n'
-        : '${cyan}Welcome to BCode Terminal!$reset\r\n\r\n${green}Available tools:$reset\r\n  - Version Control: git\r\n  - Node.js:         node, npm, npx\r\n  - Network:         curl, wget\r\n  - Archives:        tar, unzip, zip\r\n\r\n';
-    
+    final String welcome = _useStandalone
+        ? '${cyan}Welcome to BCode Terminal!$reset\r\n\r\n${green}Available tools:$reset\r\n  - Version Control: git\r\n  - Node.js:         node, npm, npx\r\n  - Network:         curl, wget\r\n  - Archives:        tar, unzip, zip\r\n\r\n'
+        : '${cyan}Welcome to BCode Terminal!$reset\r\n\r\n'
+            '${green}Layer 1 — device shell:$reset app-private storage only.\r\n'
+            '${green}Layer 2 — Termux:$reset install Termux and grant RUN_COMMAND\r\n'
+            'to run npm, node, python and git against a full POSIX prefix.\r\n\r\n';
+
     terminal.write(welcome);
+    if (_termuxInstalled) {
+      terminal.write(
+        '${cyan}Termux is installed but RUN_COMMAND is not granted.$reset\r\n'
+        'Grant it in Settings → Termux Integration to switch this terminal to\r\n'
+        'a Termux shell.\r\n\r\n',
+      );
+    }
 
     pty = Pty.start(
       shellPath,
@@ -159,11 +219,147 @@ class _TerminalWidgetState extends State<TerminalWidget> {
     });
   }
 
+  void _startTermux() {
+    _termuxCwd = termuxHome;
+    _line.clear();
+    _termuxBusy = false;
+    terminal.write(
+      '\x1B[1;36mWelcome to Termux in BCode!\x1B[0m\r\n\r\n'
+      '\x1B[1;32mRunning commands in Termux\x1B[0m\r\n'
+      '  - npm / node / python / git all work here\r\n'
+      '  - cd, clear and exit are handled locally\r\n'
+      '  - type a command and press Enter; output returns when it finishes\r\n'
+      '  - full-screen apps (vim, htop) need the Termux app button above\r\n\r\n',
+    );
+    if (widget.workDir != null) {
+      terminal.write(
+        '\x1B[33mNote:\x1B[0m project files edited in B Code live in app storage,\r\n'
+        'which Termux cannot read. Use the Run button for those projects.\r\n\r\n',
+      );
+    }
+    setState(() => _isRunning = true);
+    _prompt();
+  }
+
+  void _prompt() {
+    final shown = _termuxCwd == termuxHome
+        ? '~'
+        : (_termuxCwd.startsWith('$termuxHome/')
+            ? '~${_termuxCwd.substring(termuxHome.length)}'
+            : _termuxCwd);
+    terminal.write('\x1B[1;32m$shown\x1B[0m \$ ');
+  }
+
+  void _onTermuxInput(String data) {
+    for (final rune in data.runes) {
+      // Arrow keys, Home/End and friends arrive as ESC sequences; inserting
+      // their payload would type `[A` into the command line.
+      if (_inEscape) {
+        if (rune >= 0x40 && rune <= 0x7e) _inEscape = false;
+        continue;
+      }
+      if (rune == 0x1b) {
+        _inEscape = true;
+        continue;
+      }
+      if (_termuxBusy) {
+        if (rune == 0x03) {
+          terminal.write(
+            '^C\r\n\x1B[2m[RUN_COMMAND cannot signal a running command; '
+            'it finishes in the background]\x1B[0m\r\n',
+          );
+        }
+        continue;
+      }
+
+      final ch = String.fromCharCode(rune);
+      if (ch == '\r' || ch == '\n') {
+        terminal.write('\r\n');
+        _runTermuxLine();
+        continue;
+      }
+      if (ch == '\x7f' || ch == '\b') {
+        final current = _line.toString();
+        if (current.isEmpty) continue;
+        _line
+          ..clear()
+          ..write(current.substring(0, current.length - 1));
+        terminal.write('\b \b');
+        continue;
+      }
+      if (ch == '\x03') {
+        _line.clear();
+        terminal.write('^C\r\n');
+        _prompt();
+        continue;
+      }
+      if (rune < 0x20) continue;
+
+      _line.write(ch);
+      terminal.write(ch);
+    }
+  }
+
+  Future<void> _runTermuxLine() async {
+    final raw = _line.toString().trim();
+    _line.clear();
+
+    if (raw.isEmpty) {
+      _prompt();
+      return;
+    }
+
+    if (raw == 'clear') {
+      terminal.buffer.clear();
+      terminal.notifyListeners();
+      _prompt();
+      return;
+    }
+
+    if (raw == 'exit') {
+      terminal.write('[Termux mode has no session to exit; press Restart to reset]\r\n');
+      _prompt();
+      return;
+    }
+
+    if (raw == 'cd' || raw.startsWith('cd ')) {
+      _termuxCwd = resolveTermuxCwd(_termuxCwd, raw.substring(2), home: termuxHome);
+      _prompt();
+      return;
+    }
+
+    _termuxBusy = true;
+    final result = await TermuxRunner.runCommand(
+      command: '$_termuxPrefix/bin/bash',
+      args: ['-lc', raw],
+      workDir: _termuxCwd,
+    );
+    if (_disposed) return;
+    _termuxBusy = false;
+
+    _writeTermuxOutput(result.stdout);
+    _writeTermuxOutput(result.stderr, color: '\x1B[31m');
+    if (result.exitCode != 0 && result.exitCode != -1) {
+      terminal.write('\x1B[2m[exit ${result.exitCode}]\x1B[0m\r\n');
+    }
+    _prompt();
+  }
+
+  /// Writes command output line by line, keeping blank lines.
+  ///
+  /// xterm needs CRLF, and skipping empty entries (the obvious loop) collapsed
+  /// every blank line in a build log.
+  void _writeTermuxOutput(String text, {String? color}) {
+    if (text.isEmpty) return;
+    final lines = text.replaceAll('\r\n', '\n').split('\n').toList();
+    if (lines.isNotEmpty && lines.last.isEmpty) lines.removeLast();
+    for (final line in lines) {
+      terminal.write(color == null ? '$line\r\n' : '$color$line\x1B[0m\r\n');
+    }
+  }
+
   String _findShell() {
     if (Platform.isAndroid) {
-      if (_useTermux && File(_termuxBash).existsSync()) {
-        return _termuxBash;
-      }
       if (_useStandalone && _standalonePath != null) {
         final bash = '$_standalonePath/bin/bash';
         if (File(bash).existsSync()) return bash;
@@ -174,6 +370,18 @@ class _TerminalWidgetState extends State<TerminalWidget> {
       return AppConstants.androidShPath;
     }
     return AppConstants.posixBashPath;
+  }
+
+  void _restart() {
+    pty?.kill();
+    pty = null;
+    terminal.buffer.clear();
+    terminal.notifyListeners();
+    if (_useTermux) {
+      _startTermux();
+    } else {
+      _startShell();
+    }
   }
 
   @override
@@ -288,10 +496,7 @@ class _TerminalWidgetState extends State<TerminalWidget> {
           IconButton(
             icon: const Icon(Icons.refresh, size: 16),
             color: Colors.white54,
-            onPressed: () {
-              pty?.kill();
-              _startShell();
-            },
+            onPressed: _restart,
             tooltip: 'Restart shell',
           ),
         ],

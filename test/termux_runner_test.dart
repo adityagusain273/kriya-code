@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:b_code/core/constants.dart';
 import 'package:b_code/execution/local/local_runner.dart';
 import 'package:b_code/execution/models.dart';
@@ -92,10 +94,10 @@ void main() {
 
     final cmdArgs = (args['args'] as List).cast<String>();
     expect(cmdArgs[0], '-c');
-    expect(cmdArgs[1], contains('mkdir -p /data/data/com.termux/files/home/.bcode/cache'));
+    expect(cmdArgs[1], contains(RegExp(r'mkdir -p /data/data/com\.termux/files/home/\.bcode/cache/[A-Za-z0-9._-]+')));
     expect(cmdArgs[1], contains('base64 -d'));
-    expect(cmdArgs[1], contains('cd /data/data/com.termux/files/home/.bcode/cache'));
-    expect(cmdArgs[1], contains('"/data/data/com.termux/files/usr/bin/python3" "/data/data/com.termux/files/home/.bcode/cache/hello.py"'));
+    expect(cmdArgs[1], contains('cd /data/data/com.termux/files/home/.bcode/cache/'));
+    expect(cmdArgs[1], contains(RegExp(r'"/data/data/com\.termux/files/usr/bin/python3" "/data/data/com\.termux/files/home/\.bcode/cache/demo-[0-9a-f-]+/hello\.py"')));
     expect(cmdArgs[2], '--');
     expect(cmdArgs[3], 'hello.py');
   });
@@ -131,10 +133,10 @@ void main() {
 
     final cmdArgs = (args['args'] as List).cast<String>();
     expect(cmdArgs[0], '-c');
-    expect(cmdArgs[1], contains('mkdir -p /data/data/com.termux/files/home/.bcode/cache'));
+    expect(cmdArgs[1], contains(RegExp(r'mkdir -p /data/data/com\.termux/files/home/\.bcode/cache/[A-Za-z0-9._-]+')));
     expect(cmdArgs[1], contains('base64 -d'));
     expect(cmdArgs[1], contains('"/data/data/com.termux/files/usr/bin/clang"'));
-    expect(cmdArgs[1], contains('"/data/data/com.termux/files/home/.bcode/cache/main.out"'));
+    expect(cmdArgs[1], contains(RegExp(r'"/data/data/com\.termux/files/home/\.bcode/cache/c_demo-[0-9a-f-]+/main\.out"')));
     expect(cmdArgs[1], contains('"--verbose" "arg with spaces"'));
     expect(cmdArgs[2], '--');
     expect(cmdArgs[3], 'main.c');
@@ -214,9 +216,52 @@ void main() {
       final args = runCall.arguments as Map<dynamic, dynamic>;
       final cmdArgs = (args['args'] as List).cast<String>();
 
-      expect(cmdArgs[1], contains('"/data/data/com.termux/files/home/.bcode/cache/src/entry.c"'));
-      expect(cmdArgs[1], contains('"/data/data/com.termux/files/home/.bcode/cache/entry.out"'));
+      expect(cmdArgs[1], contains(RegExp(r'"/data/data/com\.termux/files/home/\.bcode/cache/[A-Za-z0-9._-]+/src/entry\.c"')));
+      expect(cmdArgs[1], contains(RegExp(r'"/data/data/com\.termux/files/home/\.bcode/cache/[A-Za-z0-9._-]+/entry\.out"')));
       expect(cmdArgs[3], 'src/entry.c');
+    } finally {
+      await tempDir.delete(recursive: true);
+    }
+  });
+
+  test('web project staging prunes node_modules and keeps package.json', () async {
+    final tempDir = await Directory.systemTemp.createTemp('bcode_web_proj_');
+    try {
+      File(p.join(tempDir.path, 'package.json'))
+          .writeAsStringSync('{"name":"demo","scripts":{"dev":"vite"}}');
+      File(p.join(tempDir.path, 'index.js')).writeAsStringSync('console.log("hi")');
+      final dependency = File(p.join(tempDir.path, 'node_modules/left-pad/index.js'));
+      dependency.createSync(recursive: true);
+      dependency.writeAsStringSync(List.filled(4096, 'x').join());
+      Directory(p.join(tempDir.path, 'dist')).createSync(recursive: true);
+      File(p.join(tempDir.path, 'dist/bundle.js')).writeAsStringSync('built');
+
+      final runner = RunnerService(local: LocalRunner());
+      const request = RunRequest(mainFile: 'index.js', source: 'console.log("hi")');
+      const config = RunConfig(
+        local: LocalTarget(
+          runtimeId: 'nodejs',
+          runArgv: ['{runtimePath}/bin/node', '{file}'],
+        ),
+      );
+
+      await runner.run(request: request, config: config, workDir: tempDir.path);
+
+      final runCall = log.firstWhere((call) => call.method == 'runCommand');
+      final cmdArgs = ((runCall.arguments as Map<dynamic, dynamic>)['args'] as List).cast<String>();
+      final match = RegExp(r"echo '([A-Za-z0-9+/=]+)' \| base64 -d").firstMatch(cmdArgs[1]);
+      expect(match, isNotNull, reason: 'the project should be staged as a tarball');
+
+      final tarBytes = gzip.decode(base64Decode(match!.group(1)!));
+      final names = TarDecoder()
+          .decodeBytes(tarBytes)
+          .files
+          .map((f) => f.name.replaceFirst('./', ''))
+          .toList();
+
+      expect(names, contains('package.json'));
+      expect(names, contains('index.js'));
+      expect(names.where((n) => n.contains('node_modules')), isEmpty);
     } finally {
       await tempDir.delete(recursive: true);
     }

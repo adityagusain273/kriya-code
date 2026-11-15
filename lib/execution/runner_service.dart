@@ -209,10 +209,16 @@ class RunnerService extends ChangeNotifier {
       final dir = Directory(workDir);
       if (!dir.existsSync()) return null;
 
+      // A web project is mostly source and a lockfile; node_modules is pruned
+      // rather than copied, and keeping it out of the walk is what makes the
+      // sync take seconds instead of minutes.
+      final hasPackageJson = File(p.join(workDir, 'package.json')).existsSync();
+      final maxIndividualFileBytes = hasPackageJson ? 8 * 1024 * 1024 : 2 * 1024 * 1024;
+      final maxArchiveBytes = hasPackageJson ? 8 * 1024 * 1024 : 1024 * 1024;
+      final maxRawBytes = hasPackageJson ? 32 * 1024 * 1024 : maxArchiveBytes * 4;
+
       final archive = Archive();
       int totalBytes = 0;
-      const maxIndividualFileBytes = 2 * 1024 * 1024; // 2MB
-      const maxArchiveBytes = 1024 * 1024; // 1MB compressed cap
 
       final relMain = p
           .normalize(p.isAbsolute(request.mainFile)
@@ -225,24 +231,13 @@ class RunnerService extends ChangeNotifier {
       archive.addFile(ArchiveFile(cleanMain, mainBytes.length, mainBytes));
       totalBytes += mainBytes.length;
 
-      final entities = dir.listSync(recursive: true, followLinks: false);
-      for (final entity in entities) {
-        if (entity is! File) continue;
+      for (final entity in _sourceFiles(dir)) {
         final rel = p
             .normalize(p.relative(entity.path, from: workDir))
             .replaceAll('\\', '/');
         final cleanRel = rel.startsWith('/') ? rel.substring(1) : rel;
 
         if (cleanRel == cleanMain || cleanRel == p.basename(cleanMain)) {
-          continue;
-        }
-
-        final parts = cleanRel.split('/');
-        if (parts.any((part) =>
-            part.startsWith('.') ||
-            part == 'node_modules' ||
-            part == 'build' ||
-            part == '.dart_tool')) {
           continue;
         }
 
@@ -253,7 +248,7 @@ class RunnerService extends ChangeNotifier {
         archive.addFile(ArchiveFile(cleanRel, fileBytes.length, fileBytes));
         totalBytes += fileBytes.length;
 
-        if (totalBytes > maxArchiveBytes * 4) return null;
+        if (totalBytes > maxRawBytes) return null;
       }
 
       final tarBytes = TarEncoder().encode(archive);
@@ -265,6 +260,38 @@ class RunnerService extends ChangeNotifier {
     }
   }
 
+  /// Filesystem-safe, stable per-project staging folder name.
+  ///
+  /// Only cache reuse depends on the hash staying the same; a change just
+  /// re-syncs the sources.
+  static String _stagingSlug(String workDir) {
+    final base = p.basename(workDir).replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final clean = base.isEmpty ? 'project' : base;
+    return '$clean-${workDir.hashCode.toRadixString(16)}';
+  }
+
+  /// Source files under [dir], pruning whole dependency and build trees.
+  static const _prunedDirs = {'node_modules', 'build', 'out', '.dart_tool'};
+
+  static List<File> _sourceFiles(Directory dir) {
+    final files = <File>[];
+    final queue = <Directory>[dir];
+    while (queue.isNotEmpty) {
+      final current = queue.removeLast();
+      for (final entity in current.listSync(followLinks: false)) {
+        final name = p.basename(entity.path);
+        if (name.startsWith('.')) continue;
+        if (entity is Directory) {
+          if (_prunedDirs.contains(name)) continue;
+          queue.add(entity);
+        } else if (entity is File) {
+          files.add(entity);
+        }
+      }
+    }
+    return files;
+  }
+
   Future<TermuxResult> _runViaTermux(
     RunRequest request,
     dynamic target,
@@ -273,8 +300,12 @@ class RunnerService extends ChangeNotifier {
     final runtimeId = target.runtimeId as String;
     const termuxHome = '/data/data/com.termux/files/home';
     const termuxPrefix = '/data/data/com.termux/files/usr';
-    const termuxStagingDir = '$termuxHome/.bcode/cache';
+    // One cache dir per project. Sharing a single staging dir meant the
+    // node_modules left behind by project A was picked up by project B, whose
+    // package.json describes different dependencies.
+    final termuxStagingDir = '$termuxHome/.bcode/cache/${_stagingSlug(workDir)}';
     final needsStaging = !workDir.startsWith(termuxHome);
+    final hasPackageJson = File(p.join(workDir, 'package.json')).existsSync();
 
     final targetWorkDir = needsStaging ? termuxStagingDir : workDir;
 
@@ -327,6 +358,19 @@ class RunnerService extends ChangeNotifier {
       if (tarB64 != null) {
         cmdParts.add(
           'echo \'$tarB64\' | base64 -d | tar -xz -C $termuxStagingDir',
+        );
+      } else if (hasPackageJson) {
+        // Falling back to "write the entry file only" produced a directory with
+        // no package.json, so npm failed with a misleading ENOENT. Say what is
+        // actually wrong instead.
+        return const TermuxResult(
+          success: false,
+          stdout: '',
+          stderr: 'Cannot sync this web project to Termux: the source is larger '
+              'than the transfer limit (8 MB compressed / 32 MB raw).\n'
+              'node_modules is not copied — it stays in Termux between runs.\n'
+              'Move large assets out of the project, or run it from Termux itself.',
+          exitCode: -1,
         );
       } else {
         final encodedSource = base64Encode(utf8.encode(request.source));

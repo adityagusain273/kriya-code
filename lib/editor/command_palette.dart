@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../core/di.dart';
 import '../execution/console_panel.dart';
 import '../execution/ui/downloads_page.dart';
+import '../github/auth/token_store.dart';
+import '../github/ui/cloud_build_sheet.dart';
 import '../github/ui/github_page.dart';
 import '../plugins/ui/extensions_page.dart';
 import '../settings/settings_page.dart';
@@ -45,6 +47,27 @@ void setEditCallback(Key key, VoidCallback callback) => _editCallbacks[key] = ca
 /// never registered produces an action that silently does nothing when chosen. That
 /// is exactly the failure this exists to make visible to a test.
 bool hasEditCallback(Key key) => _editCallbacks.containsKey(key);
+
+/// Opens the cloud build sheet for a repository the user picks.
+///
+/// The palette dismisses itself before running an action, so the sheet cannot be
+/// shown from the palette's own context — it is unmounted by then. The root
+/// navigator outlives it.
+Future<void> _openCloudBuild(BuildContext context) async {
+  final navigator = Navigator.of(context, rootNavigator: true);
+  String? token;
+  try {
+    token = await sl<TokenStore>().read();
+  } catch (_) {
+    token = null;
+  }
+  if (!navigator.mounted) return;
+  if (token == null || token.isEmpty) {
+    navigator.push(MaterialPageRoute(builder: (_) => const GitHubPage()));
+    return;
+  }
+  await CloudBuildSheet.pickRepo(navigator.context, token: token);
+}
 
 class CommandPaletteAction {
   final String label;
@@ -243,6 +266,12 @@ class _CommandPaletteState extends State<CommandPalette> {
         onExecute: () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadsPage()));
         },
+      ),
+      CommandPaletteAction(
+        label: 'Cloud Build (CI)',
+        category: 'Tools',
+        icon: Icons.cloud_upload_outlined,
+        onExecute: () => _openCloudBuild(context),
       ),
       CommandPaletteAction(
         label: 'GitHub',

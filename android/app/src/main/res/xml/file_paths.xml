@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the cloud-build artifact output is shareable. Widening this would let
+     any Dart-side caller expose app-private files through the provider. -->
+<paths>
+    <cache-path
+        name="cloud_build"
+        path="cloud_build/" />
+</paths>

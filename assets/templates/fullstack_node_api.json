@@ -1,0 +1,40 @@
+{
+  "id": "fullstack_node_api",
+  "name": "Node API (Express + Postgres)",
+  "description": "Express API with a pg pool, CORS for the local preview and a notes schema",
+  "languageId": "javascript",
+  "extension": "js",
+  "variables": {
+    "projectName": "my-api"
+  },
+  "files": [
+    {
+      "relativePath": "package.json",
+      "content": "{\n  \"name\": \"{{projectName}}\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"main\": \"src/index.js\",\n  \"scripts\": {\n    \"dev\": \"node --watch src/index.js\",\n    \"start\": \"node src/index.js\"\n  },\n  \"dependencies\": {\n    \"cors\": \"^2.8.5\",\n    \"dotenv\": \"^16.4.5\",\n    \"express\": \"^4.21.0\",\n    \"pg\": \"^8.12.0\"\n  }\n}"
+    },
+    {
+      "relativePath": "src/index.js",
+      "content": "import 'dotenv/config'\nimport express from 'express'\nimport cors from 'cors'\nimport { pool } from './db.js'\n\nconst app = express()\nconst port = Number(process.env.PORT ?? 3000)\n\n// The preview origin is http://127.0.0.1:<port>; allow a list when one is set.\nconst allowedOrigins = process.env.CORS_ORIGIN\n  ?.split(',')\n  .map((origin) => origin.trim())\n  .filter(Boolean)\n\napp.use(cors({ origin: allowedOrigins && allowedOrigins.length > 0 ? allowedOrigins : true }))\napp.use(express.json())\n\napp.get('/api/health', async (_req, res) => {\n  try {\n    await pool.query('select 1')\n    res.json({ ok: true })\n  } catch (error) {\n    res.status(500).json({ ok: false, error: error.message })\n  }\n})\n\napp.get('/api/notes', async (_req, res, next) => {\n  try {\n    const { rows } = await pool.query(\n      'select id, title, body, created_at from notes order by created_at desc limit 100',\n    )\n    res.json(rows)\n  } catch (error) {\n    next(error)\n  }\n})\n\napp.post('/api/notes', async (req, res, next) => {\n  const { title, body } = req.body ?? {}\n  if (typeof title !== 'string' || title.trim() === '') {\n    res.status(400).json({ error: 'title is required' })\n    return\n  }\n  try {\n    const { rows } = await pool.query(\n      'insert into notes (title, body) values ($1, $2) returning id, title, body, created_at',\n      [title.trim(), typeof body === 'string' ? body : ''],\n    )\n    res.status(201).json(rows[0])\n  } catch (error) {\n    next(error)\n  }\n})\n\napp.use((error, _req, res, _next) => {\n  console.error(error)\n  res.status(500).json({ error: 'internal error' })\n})\n\napp.listen(port, '0.0.0.0', () => {\n  console.log(`API listening on http://127.0.0.1:${port}`)\n})\n"
+    },
+    {
+      "relativePath": "src/db.js",
+      "content": "import pg from 'pg'\n\nconst { Pool } = pg\nconst connectionString = process.env.DATABASE_URL\n\n// Hosted providers (Supabase, Neon) present their own certificate chain.\n// rejectUnauthorized: false keeps a pooled endpoint working; pin a CA instead\n// once you run your own Postgres.\nconst remote = Boolean(connectionString) && !/localhost|127\\.0\\.0\\.1/.test(connectionString ?? '')\n\nexport const pool = new Pool({\n  connectionString,\n  ssl: remote ? { rejectUnauthorized: false } : undefined,\n})\n"
+    },
+    {
+      "relativePath": "sql/schema.sql",
+      "content": "create table if not exists notes (\n  id bigserial primary key,\n  title text not null,\n  body text not null default '',\n  created_at timestamptz not null default now()\n);\n"
+    },
+    {
+      "relativePath": ".env.example",
+      "content": "DATABASE_URL=postgresql://user:password@host:5432/dbname\nPORT=3000\nCORS_ORIGIN=http://127.0.0.1:5173\n"
+    },
+    {
+      "relativePath": ".gitignore",
+      "content": "node_modules\n.env\n.env.local\n.DS_Store\n"
+    },
+    {
+      "relativePath": "README.md",
+      "content": "# {{projectName}}\n\nExpress API on a hosted Postgres (Supabase or Neon).\n\n## 1. Environment\n\n```bash\ncp .env.example .env\n```\n\n- `DATABASE_URL` — Supabase: Project Settings -> Database -> Connection string\n  (use the pooled port 6543 for serverless, 5432 for a long-lived process).\n  Neon: the connection string on the project dashboard.\n- `PORT` — defaults to 3000.\n- `CORS_ORIGIN` — comma-separated origins the browser preview may call from.\n\n## 2. Schema\n\nRun `sql/schema.sql` against the database (Supabase SQL editor, or\n`psql \"$DATABASE_URL\" -f sql/schema.sql`).\n\n## 3. Run\n\n```bash\nnpm install\nnpm run dev\n```\n\n`GET /api/health` answers `{ \"ok\": true }` once the pool connects.\n`GET /api/notes` and `POST /api/notes` are the sample endpoints.\n\nThe server binds `0.0.0.0`, so the preview can reach it at\n`http://127.0.0.1:3000` from the same device.\n"
+    }
+  ]
+}

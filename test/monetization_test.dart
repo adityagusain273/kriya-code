@@ -108,13 +108,46 @@ void main() {
       expect(find.text('B CODE PRO'), findsOneWidget);
       expect(find.text('No ads'), findsOneWidget);
       expect(find.text('All compilers unlocked'), findsOneWidget);
-      expect(find.textContaining('8630024750@yapl'), findsOneWidget);
-      expect(find.text('Pay ₹49 via UPI App'), findsOneWidget);
+      expect(find.text('Scan QR Code & Pay ₹49'), findsOneWidget);
+      expect(find.textContaining('I Have Already Paid'), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.textContaining('₹49 Lifetime'), 100);
-      expect(find.textContaining('₹49 Lifetime'), findsOneWidget);
+      await tester.tap(find.textContaining('I Have Already Paid'));
+      await tester.pumpAndSettle();
 
-      await tester.tap(find.textContaining('₹49 Lifetime'));
+      expect(entitlements.isRuntimeUnlocked('cpython'), isTrue);
+    });
+
+    testWidgets('tapping Scan QR Code opens payment sheet with single-device instructions',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final entitlements = LocalEntitlementService(prefs);
+      sl.registerSingleton<EntitlementService>(entitlements);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ProPaywallSheet(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Scan QR Code & Pay ₹49'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Scan & Pay ₹49'), findsOneWidget);
+      expect(find.textContaining('Paying on this phone?'), findsOneWidget);
+      expect(find.text('Copy UPI ID'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Confirm Payment & Unlock Pro'),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Confirm Payment & Unlock Pro'), findsOneWidget);
+
+      await tester.tap(find.text('Confirm Payment & Unlock Pro'));
       await tester.pumpAndSettle();
 
       expect(entitlements.isRuntimeUnlocked('cpython'), isTrue);

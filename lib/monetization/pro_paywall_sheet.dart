@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../core/constants.dart';
 import '../core/di.dart';
 import '../core/haptics.dart';
 import 'entitlement_service.dart';
@@ -18,45 +18,27 @@ Future<bool> showProPaywallSheet(BuildContext context) async {
 }
 
 class ProPaywallSheet extends StatelessWidget {
-  static const _upiId = '8630024750@yapl';
-  static const _payeeName = 'Aditya';
-  static const _upiUri =
-      'upi://pay?pa=$_upiId&pn=$_payeeName&am=49&cu=INR&tn=BCode%20Pro%20Lifetime';
-
   const ProPaywallSheet({super.key});
 
-  Future<void> _payViaUpi(BuildContext context) async {
+  Future<void> _openPaymentModal(BuildContext context) async {
     Haptics.light();
-    final uri = Uri.parse(_upiUri);
-    try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched && context.mounted) {
-        await _copyUpiId(context);
-      }
-    } catch (_) {
-      if (context.mounted) {
-        await _copyUpiId(context);
-      }
-    }
-  }
-
-  Future<void> _copyUpiId(BuildContext context) async {
-    Haptics.light();
-    await Clipboard.setData(const ClipboardData(text: _upiId));
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('UPI ID copied: $_upiId (Pay ₹49 in any UPI app)'),
-          duration: Duration(seconds: 3),
-        ),
-      );
+    final unlocked = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const UpiScanPaySheet(),
+    );
+    if (unlocked == true && context.mounted) {
+      Navigator.of(context).pop(true);
     }
   }
 
   Future<void> _activatePro(BuildContext context) async {
     Haptics.medium();
-    final entitlements = sl<EntitlementService>();
-    await entitlements.setProTier(true);
+    if (sl.isRegistered<EntitlementService>()) {
+      final entitlements = sl<EntitlementService>();
+      await entitlements.setProTier(true);
+    }
     if (context.mounted) {
       Navigator.of(context).pop(true);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -77,7 +59,7 @@ class ProPaywallSheet extends StatelessWidget {
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.92,
+        maxHeight: MediaQuery.of(context).size.height * 0.90,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFF141923),
@@ -191,110 +173,54 @@ class ProPaywallSheet extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF161B22),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: const Color(0xFF00E676).withValues(alpha: 0.35),
-                    width: 1.2,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00E676).withValues(alpha: 0.1),
-                      blurRadius: 16,
-                      spreadRadius: 1,
-                    ),
-                  ],
                 ),
-                child: Column(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.qr_code_2_rounded, color: Color(0xFF00E676), size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'SCAN TO PAY ₹49 (LIFETIME)',
+                        const Text(
+                          '₹49 LIFETIME',
                           style: TextStyle(
                             color: Color(0xFF00E676),
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.8,
-                            fontSize: 12,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        Text(
+                          'One-time payment · No subscription',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 11,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 10,
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
+                        color: const Color(0xFF00E676).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          'assets/images/support_qr.png',
-                          width: 170,
-                          height: 170,
-                          fit: BoxFit.contain,
+                      ),
+                      child: const Text(
+                        '100% OFFLINE',
+                        style: TextStyle(
+                          color: Color(0xFF00E676),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    InkWell(
-                      onTap: () => _copyUpiId(context),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF21262D),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF30363D)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'UPI: $_upiId',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontFamily: 'monospace',
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            SizedBox(width: 6),
-                            Icon(Icons.copy_rounded, size: 14, color: Color(0xFF00E676)),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Scan with any UPI app to pay ₹49',
-                      style: TextStyle(color: Colors.white60, fontSize: 11),
-                    ),
-                    const SizedBox(height: 10),
-                    const Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [
-                        _UpiBadge('Google Pay'),
-                        _UpiBadge('PhonePe'),
-                        _UpiBadge('Paytm'),
-                        _UpiBadge('BHIM'),
-                      ],
                     ),
                   ],
                 ),
@@ -352,26 +278,8 @@ class ProPaywallSheet extends StatelessWidget {
                 ),
               ] else ...[
                 FilledButton.icon(
-                  icon: const Icon(Icons.payment_rounded, size: 18),
-                  label: const Text('Pay ₹49 via UPI App'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF4FC3F7),
-                    foregroundColor: Colors.black,
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                  onPressed: () => _payViaUpi(context),
-                ),
-                const SizedBox(height: 10),
-                FilledButton.icon(
-                  icon: const Icon(Icons.verified_rounded, size: 18),
-                  label: const Text('I Have Paid — Unlock B Code Pro ₹49 Lifetime'),
+                  icon: const Icon(Icons.qr_code_2_rounded, size: 20),
+                  label: const Text('Scan QR Code & Pay ₹49'),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF00E676),
                     foregroundColor: Colors.black,
@@ -382,6 +290,24 @@ class ProPaywallSheet extends StatelessWidget {
                     textStyle: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
+                    ),
+                  ),
+                  onPressed: () => _openPaymentModal(context),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.verified_rounded, size: 18),
+                  label: const Text('I Have Already Paid — Unlock Pro'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Colors.white24),
+                    minimumSize: const Size.fromHeight(46),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
                     ),
                   ),
                   onPressed: () => _activatePro(context),
@@ -397,6 +323,284 @@ class ProPaywallSheet extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dedicated Scan & Pay modal designed specifically for single-phone and two-phone payments.
+class UpiScanPaySheet extends StatelessWidget {
+  const UpiScanPaySheet({super.key});
+
+  Future<void> _copyUpiId(BuildContext context) async {
+    Haptics.light();
+    await Clipboard.setData(const ClipboardData(text: AppConstants.proUpiId));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('UPI ID copied! Open GPay, PhonePe, or Paytm and paste to pay ₹49.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<void> _activatePro(BuildContext context) async {
+    Haptics.medium();
+    if (sl.isRegistered<EntitlementService>()) {
+      final entitlements = sl<EntitlementService>();
+      await entitlements.setProTier(true);
+    }
+    if (context.mounted) {
+      Navigator.of(context).pop(true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🎉 B Code Pro activated! All compilers unlocked with zero ads.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.94,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141923),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(
+          color: const Color(0xFF2A364F),
+          width: 1,
+        ),
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF00E676), size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Scan & Pay ₹49',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                    onPressed: () => Navigator.of(context).pop(false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Single-Device Instruction Box
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F293D),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFF4FC3F7).withValues(alpha: 0.3),
+                  ),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.smartphone_rounded, color: Color(0xFF4FC3F7), size: 16),
+                        SizedBox(width: 6),
+                        Text(
+                          'Paying on this phone? (No 2nd phone needed)',
+                          style: TextStyle(
+                            color: Color(0xFF4FC3F7),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      '1. Tap "Copy UPI ID" below.\n'
+                      '2. Open Google Pay, PhonePe, or Paytm.\n'
+                      '3. Select "Pay UPI ID", paste, and pay ₹49.\n'
+                      '4. Return here and tap "Confirm Payment & Unlock".',
+                      style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              // QR Card
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF161B22),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF00E676).withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.asset(
+                          'assets/images/support_qr.png',
+                          width: 160,
+                          height: 160,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    InkWell(
+                      onTap: () => _copyUpiId(context),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF21262D),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF30363D)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'UPI: ${AppConstants.proUpiId}',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(width: 6),
+                            Icon(Icons.copy_rounded, size: 14, color: Color(0xFF00E676)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Or scan using another device camera',
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                    const SizedBox(height: 8),
+                    const Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _UpiBadge('Google Pay'),
+                        _UpiBadge('PhonePe'),
+                        _UpiBadge('Paytm'),
+                        _UpiBadge('BHIM'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Reassurance note
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.shield_outlined, color: Colors.white54, size: 16),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Safe to switch apps. You can reopen this screen anytime to unlock.',
+                        style: TextStyle(color: Colors.white60, fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                icon: const Icon(Icons.copy_rounded, size: 18),
+                label: const Text('Copy UPI ID'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF4FC3F7),
+                  foregroundColor: Colors.black,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                onPressed: () => _copyUpiId(context),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                icon: const Icon(Icons.verified_rounded, size: 18),
+                label: const Text('Confirm Payment & Unlock Pro'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF00E676),
+                  foregroundColor: Colors.black,
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                onPressed: () => _activatePro(context),
               ),
             ],
           ),
@@ -452,12 +656,12 @@ class _FeatureRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
+            color: iconColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: iconColor, size: 20),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,8 +677,8 @@ class _FeatureRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: Colors.white60,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.65),
                   fontSize: 12,
                   height: 1.3,
                 ),
