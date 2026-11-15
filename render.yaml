@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: bcode-pro-telegram-bot
+    runtime: python
+    region: singapore
+    plan: free
+    branch: main
+    buildCommand: pip install -r tool/requirements.txt
+    startCommand: python3 tool/telegram_bot.py
+    healthCheckPath: /
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: LICENSE_PRIVATE_KEY_B64
+        sync: false
