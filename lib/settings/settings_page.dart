@@ -5,9 +5,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/constants.dart';
 import '../core/crash_reporter.dart';
+import '../core/di.dart';
 import '../editor/highlighting/syntax_themes.dart';
 import '../editor/keyboard_help_page.dart';
 import '../execution/termux_runner.dart';
+import '../monetization/entitlement_service.dart';
+import '../monetization/pro_paywall_sheet.dart';
 import 'settings_store.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -401,6 +404,45 @@ class _SettingsPageState extends State<SettingsPage> {
             title: const Text('Report a Bug'),
             subtitle: const Text('Send crash logs and device info'),
             onTap: () => _showBugReportDialog(context),
+          ),
+          Builder(
+            builder: (ctx) {
+              final isPro = sl.isRegistered<EntitlementService>() &&
+                  sl<EntitlementService>().isRuntimeUnlocked('');
+              return ListTile(
+                leading: const Icon(Icons.bolt_rounded, color: Color(0xFF00E676)),
+                title: const Text('B Code Pro'),
+                subtitle: Text(
+                  isPro
+                      ? 'Lifetime Pass Active ⚡'
+                      : '₹49 Lifetime — Ad-free & all runtimes unlocked',
+                ),
+                trailing: isPro
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFF00E676).withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: const Text(
+                          'ACTIVE',
+                          style: TextStyle(
+                            color: Color(0xFF00E676),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      )
+                    : null,
+                onTap: () async {
+                  await showProPaywallSheet(ctx);
+                  if (mounted) setState(() {});
+                },
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.favorite_rounded, color: Color(0xFFEF5350)),

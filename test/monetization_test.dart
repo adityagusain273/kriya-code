@@ -108,12 +108,42 @@ void main() {
       expect(find.text('B CODE PRO'), findsOneWidget);
       expect(find.text('No ads'), findsOneWidget);
       expect(find.text('All compilers unlocked'), findsOneWidget);
+      expect(find.textContaining('8630024750@yapl'), findsOneWidget);
+      expect(find.text('Pay ₹49 via UPI App'), findsOneWidget);
+
+      await tester.scrollUntilVisible(find.textContaining('₹49 Lifetime'), 100);
       expect(find.textContaining('₹49 Lifetime'), findsOneWidget);
 
       await tester.tap(find.textContaining('₹49 Lifetime'));
       await tester.pumpAndSettle();
 
       expect(entitlements.isRuntimeUnlocked('cpython'), isTrue);
+    });
+
+    testWidgets('ProPaywallSheet shows active state and allows resetting to free tier',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({'bcode_pro_tier': true});
+      final prefs = await SharedPreferences.getInstance();
+      final entitlements = LocalEntitlementService(prefs);
+      sl.registerSingleton<EntitlementService>(entitlements);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ProPaywallSheet(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('B Code Pro Active (Lifetime Pass)'), 100);
+      expect(find.text('B Code Pro Active (Lifetime Pass)'), findsOneWidget);
+      expect(find.text('Reset to Free Tier (For Testing)'), findsOneWidget);
+
+      await tester.tap(find.text('Reset to Free Tier (For Testing)'));
+      await tester.pumpAndSettle();
+
+      expect(entitlements.isRuntimeUnlocked(''), isFalse);
     });
   });
 
