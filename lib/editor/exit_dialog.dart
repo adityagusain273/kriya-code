@@ -31,42 +31,50 @@ class _ExitDialog extends StatelessWidget {
     final listed = dirtyFiles.take(3).toList();
 
     return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       backgroundColor: cs.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(28)),
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(24)),
+        side: BorderSide(
+          color: cs.outlineVariant.withValues(alpha: 0.35),
+          width: 1,
+        ),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
+        constraints: const BoxConstraints(maxWidth: 360),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: dirty ? cs.errorContainer : cs.primaryContainer,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    dirty
-                        ? Icons.warning_amber_rounded
-                        : Icons.power_settings_new_rounded,
-                    size: 26,
-                    color: dirty ? cs.onErrorContainer : cs.onPrimaryContainer,
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: (dirty ? cs.error : cs.primary).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: (dirty ? cs.error : cs.primary).withValues(alpha: 0.25),
+                    width: 1.5,
                   ),
                 ),
+                child: Icon(
+                  dirty
+                      ? Icons.warning_amber_rounded
+                      : Icons.power_settings_new_rounded,
+                  size: 28,
+                  color: dirty ? cs.error : cs.primary,
+                ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
               Text(
                 dirty ? 'Save before you leave?' : 'Leave B Code?',
-                style: text.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+                style: text.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.3,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -75,56 +83,127 @@ class _ExitDialog extends StatelessWidget {
                         ? 'One file has unsaved changes.'
                         : '${dirtyFiles.length} files have unsaved changes.'
                     : 'Your tabs will be waiting.',
-                style: text.bodyMedium
-                    ?.copyWith(color: cs.onSurfaceVariant, height: 1.4),
+                textAlign: TextAlign.center,
+                style: text.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  height: 1.4,
+                ),
               ),
               if (dirty) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 _DirtyFileList(
                   files: listed,
                   hidden: dirtyFiles.length - listed.length,
                 ),
               ],
               const SizedBox(height: 24),
-              SizedBox(
-                height: 48,
-                child: FilledButton(
-                  onPressed: () {
-                    if (dirty) {
+              if (!dirty)
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 46,
+                        child: FilledButton.tonal(
+                          onPressed: () =>
+                              Navigator.pop(context, ExitChoice.cancel),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: cs.surfaceContainerHighest,
+                            foregroundColor: cs.onSurface,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(
+                                color: cs.outlineVariant.withValues(alpha: 0.3),
+                              ),
+                            ),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 46,
+                        child: FilledButton(
+                          onPressed: () {
+                            Haptics.light();
+                            Navigator.pop(context, ExitChoice.exit);
+                          },
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'Exit',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else ...[
+                SizedBox(
+                  height: 46,
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () {
                       Haptics.onSave();
-                    } else {
-                      Haptics.light();
-                    }
-                    Navigator.pop(
-                      context,
-                      dirty ? ExitChoice.save : ExitChoice.exit,
-                    );
-                  },
-                  child: Text(dirty ? 'Save and exit' : 'Exit'),
+                      Navigator.pop(context, ExitChoice.save);
+                    },
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Save and exit',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ),
-              ),
-              if (dirty) ...[
                 const SizedBox(height: 8),
                 SizedBox(
-                  height: 48,
+                  height: 44,
+                  width: double.infinity,
                   child: TextButton(
                     onPressed: () {
                       Haptics.medium();
                       Navigator.pop(context, ExitChoice.discard);
                     },
-                    style: TextButton.styleFrom(foregroundColor: cs.error),
-                    child: const Text('Discard changes and exit'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: cs.error,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Discard changes and exit',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  height: 44,
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () =>
+                        Navigator.pop(context, ExitChoice.cancel),
+                    style: TextButton.styleFrom(
+                      foregroundColor: cs.onSurfaceVariant,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text('Cancel'),
                   ),
                 ),
               ],
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 48,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context, ExitChoice.cancel),
-                  child: const Text('Cancel'),
-                ),
-              ),
             ],
           ),
         ),
@@ -145,24 +224,33 @@ class _DirtyFileList extends StatelessWidget {
     final label = Theme.of(context).textTheme.bodySmall;
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.3),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final path in files)
+          for (int i = 0; i < files.length; i++) ...[
+            if (i > 0)
+              Divider(
+                height: 1,
+                thickness: 0.5,
+                color: cs.outlineVariant.withValues(alpha: 0.25),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
-                  FileTypeIcon(spec: fileSpec(path), size: 15),
+                  FileTypeIcon(spec: fileSpec(files[i]), size: 15),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      path.split('/').last,
+                      files[i].split('/').last,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: label?.copyWith(
@@ -171,17 +259,35 @@ class _DirtyFileList extends StatelessWidget {
                       ),
                     ),
                   ),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: cs.error,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                 ],
               ),
             ),
-          if (hidden > 0)
+          ],
+          if (hidden > 0) ...[
+            Divider(
+              height: 1,
+              thickness: 0.5,
+              color: cs.outlineVariant.withValues(alpha: 0.25),
+            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
               child: Text(
                 'and $hidden more',
-                style: label?.copyWith(color: cs.onSurfaceVariant),
+                style: label?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontSize: 12,
+                ),
               ),
             ),
+          ],
         ],
       ),
     );
