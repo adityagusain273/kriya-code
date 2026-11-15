@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
 B Code Pro Activation Telegram Bot
-Handles buyer payment submissions (UTR + Device ID) and allows the admin
-to approve with a single tap, automatically delivering an offline RSA-2048 key.
+Handles buyer payment submissions in a simple, foolproof 2-step conversational flow:
+  Step 1: Ask for UPI UTR / Reference number (or payment screenshot)
+  Step 2: Ask for B Code Device ID
+Once submitted, it sends a high-priority approval notification to the admin with
+[✅ Approve & Send Key] and [❌ Reject] buttons.
 """
 
 import os
@@ -24,6 +27,7 @@ STATE_FILE = Path(__file__).parent / "bot_state.json"
 ENV_FILE = Path(__file__).parent / ".env"
 
 DEVICE_REGEX = re.compile(r"BCODE-[A-Z0-9]{8}", re.IGNORECASE)
+UTR_REGEX = re.compile(r"\b\d{8,18}\b")
 
 def load_env():
     if ENV_FILE.exists():
@@ -38,10 +42,15 @@ def load_state() -> dict:
     if STATE_FILE.exists():
         try:
             with open(STATE_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                data.setdefault("offset", 0)
+                data.setdefault("admin_id", None)
+                data.setdefault("pending", {})
+                data.setdefault("sessions", {})
+                return data
         except Exception:
             pass
-    return {"offset": 0, "admin_id": None, "pending": {}}
+    return {"offset": 0, "admin_id": None, "pending": {}, "sessions": {}}
 
 def save_state(state: dict):
     with open(STATE_FILE, "w") as f:
@@ -87,11 +96,12 @@ class TelegramBot:
             print(f"[API ERROR] {method}: {e}", file=sys.stderr)
             return {"ok": False, "error": str(e)}
 
-    def send_message(self, chat_id: int, text: str, reply_markup: dict = None):
+    def send_message(self, chat_id: int, text: str, reply_markup: dict = None, disable_notification: bool = False):
         payload = {
             "chat_id": chat_id,
             "text": text,
             "parse_mode": "Markdown",
+            "disable_notification": disable_notification,
         }
         if reply_markup:
             payload["reply_markup"] = reply_markup
@@ -113,6 +123,66 @@ class TelegramBot:
         if text:
             payload["text"] = text
         return self.call("answerCallbackQuery", payload)
+
+    def submit_request(self, chat_id: int, username: str, device_id: str, utr: str, photo_id: str | None = None):
+        req_id = f"{chat_id}_{int(time.time())}"
+        self.state["pending"][req_id] = {
+            "chat_id": chat_id,
+            "username": username,
+            "device_id": device_id,
+            "utr": utr,
+            "photo_id": photo_id,
+        }
+        save_state(self.state)
+
+        # 1. Confirm to Buyer
+        self.send_message(
+            chat_id,
+            f"⏳ *Payment Request Submitted!*\n\n"
+            f"📱 *Device ID:* `{device_id}`\n"
+            f"🧾 *UTR / Ref:* `{utr}`\n\n"
+            "Aditya has been notified to verify the transaction. Your Pro license key will be delivered "
+            "directly in this chat as soon as approved (typically within 2-5 minutes).\n\n"
+            "Thank you for supporting B Code! 🚀",
+        )
+
+        # 2. Alert Admin with High Priority (disable_notification=False ensures sound/vibration alert)
+        admin_id = self.state.get("admin_id")
+        if not admin_id:
+            print(f"[ALERT] New purchase for {device_id} from @{username}, but no admin_id configured!")
+            return
+
+        admin_text = (
+            "🚨 *NEW PRO PURCHASE PENDING APPROVAL!*\n\n"
+            f"👤 *Buyer:* @{username} (ID: `{chat_id}`)\n"
+            f"📱 *Device ID:* `{device_id}`\n"
+            f"🧾 *UTR / Ref:* `{utr}`\n\n"
+            "Check your bank/UPI app for ₹49. Tap below to issue license:"
+        )
+
+        buttons = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Approve & Send Key", "callback_data": f"app_{req_id}"},
+                    {"text": "❌ Reject", "callback_data": f"rej_{req_id}"},
+                ]
+            ]
+        }
+
+        if photo_id:
+            self.call(
+                "sendPhoto",
+                {
+                    "chat_id": admin_id,
+                    "photo": photo_id,
+                    "caption": admin_text,
+                    "parse_mode": "Markdown",
+                    "reply_markup": buttons,
+                    "disable_notification": False,
+                },
+            )
+        else:
+            self.send_message(admin_id, admin_text, reply_markup=buttons, disable_notification=False)
 
     def run(self):
         print("🤖 B Code Pro Bot started. Polling Telegram...")
@@ -152,108 +222,176 @@ class TelegramBot:
         chat_id = message["chat"]["id"]
         sender = message.get("from", {})
         username = sender.get("username", sender.get("first_name", "User"))
-        text = message.get("text", "") or message.get("caption", "")
+        text = (message.get("text", "") or message.get("caption", "")).strip()
+        photo = message.get("photo")
 
-        # Command: /setadmin
+        # 1. Admin setup command: /setadmin
         if text.startswith("/setadmin"):
             self.state["admin_id"] = chat_id
             save_state(self.state)
             self.send_message(
                 chat_id,
                 f"✅ *You are now registered as Admin!* (ID: `{chat_id}`)\n"
-                "All buyer approval requests will be sent to this chat with Approve/Reject buttons.",
+                "All buyer approval requests will be sent to this chat with notification alerts.",
             )
             return
 
-        # Command: /start
-        if text.startswith("/start"):
-            device_match = DEVICE_REGEX.search(text)
-            dev_str = device_match.group(0).upper() if device_match else ""
-
-            welcome = (
-                "👋 *Welcome to B Code Pro Activation!*\n\n"
-                "Get your lifetime offline Pro key in 2 simple steps:\n\n"
-                "1️⃣ Pay *₹49* via any UPI app to: `bakadev@upi` (Aditya)\n"
-                "2️⃣ Reply here with your *Device ID* and *12-digit UPI UTR / Reference number* (or screenshot).\n\n"
+        # 2. Reset session command: /reset or /cancel
+        if text in ("/reset", "/cancel"):
+            if str(chat_id) in self.state.get("sessions", {}):
+                del self.state["sessions"][str(chat_id)]
+                save_state(self.state)
+            self.send_message(
+                chat_id,
+                "🔄 *Session reset.*\n\n"
+                "Type /start to begin a fresh Pro activation.",
             )
-            if dev_str:
-                welcome += f"Detected Device ID from app: `{dev_str}`\nJust send your UPI UTR or payment screenshot now!"
+            return
+
+        # 3. Start command: /start (fresh start or deep link)
+        if text.startswith("/start"):
+            # Check for deep-linked device ID (e.g. /start BCODE-C1707253 or /start BCODE_C1707253)
+            deep_dev = DEVICE_REGEX.search(text.replace("_", "-"))
+            session = {"step": "AWAITING_UTR"}
+            if deep_dev:
+                dev_id = deep_dev.group(0).upper()
+                session["device_id"] = dev_id
+                self.state.setdefault("sessions", {})[str(chat_id)] = session
+                save_state(self.state)
+
+                welcome = (
+                    "👋 *Welcome to B Code Pro Activation!*\n\n"
+                    f"📱 *Device ID Detected:* `{dev_id}`\n\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "📌 *STEP 1: Pay ₹49*\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "Pay *₹49* via any UPI app (GPay, PhonePe, Paytm, BHIM) to:\n"
+                    "👉 `bakadev@upi` (Aditya)\n\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "📌 *STEP 2: Send UTR Number*\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "Once paid, reply below with your **12-digit UPI UTR / Reference number** "
+                    "(or upload a payment screenshot):"
+                )
             else:
-                welcome += "You can find your Device ID inside *B Code → Upgrade to Pro*."
+                self.state.setdefault("sessions", {})[str(chat_id)] = session
+                save_state(self.state)
+
+                welcome = (
+                    "👋 *Welcome to B Code Pro Activation!*\n\n"
+                    "Get lifetime offline access to all compilers & remove ads for just *₹49*.\n\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "📌 *STEP 1: Pay ₹49*\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "Pay *₹49* via any UPI app (GPay, PhonePe, Paytm, etc.) to:\n"
+                    "👉 `bakadev@upi` (Aditya)\n\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "📌 *STEP 2: Send UTR Number*\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "Once paid, reply below with your **12-digit UPI UTR / Reference number** "
+                    "(or upload a payment screenshot):"
+                )
 
             self.send_message(chat_id, welcome)
             return
 
-        # Check if buyer is submitting Device ID & UTR or screenshot
+        # 4. Message / Photo handling with 2-step conversational state
+        sessions = self.state.setdefault("sessions", {})
+        session = sessions.setdefault(str(chat_id), {"step": "AWAITING_UTR"})
+
         device_match = DEVICE_REGEX.search(text)
-        if not device_match:
+        utr_match = UTR_REGEX.search(text)
+        photo_id = photo[-1]["file_id"] if photo else None
+
+        # FAST PATH: If message contains BOTH a valid Device ID and a UTR/Screenshot
+        if device_match and (utr_match or photo_id or session.get("utr")):
+            device_id = device_match.group(0).upper()
+            utr = utr_match.group(0) if utr_match else (session.get("utr") or ("Screenshot attached" if photo_id else text.strip()))
+            p_id = photo_id or session.get("photo_id")
+            self.submit_request(chat_id, username, device_id, utr, p_id)
+            if str(chat_id) in sessions:
+                del sessions[str(chat_id)]
+                save_state(self.state)
+            return
+
+        current_step = session.get("step", "AWAITING_UTR")
+
+        # STEP 1: Awaiting UTR / Payment confirmation
+        if current_step == "AWAITING_UTR":
+            # If user sent Device ID first instead of UTR
+            if device_match and not utr_match and not photo_id:
+                dev_id = device_match.group(0).upper()
+                session["device_id"] = dev_id
+                save_state(self.state)
+                self.send_message(
+                    chat_id,
+                    f"📱 *Device ID saved:* `{dev_id}`\n\n"
+                    "Now please send your **12-digit UPI UTR / Reference number** "
+                    "(or payment screenshot) to complete your submission:",
+                )
+                return
+
+            # Extract UTR value
+            if utr_match:
+                utr_val = utr_match.group(0)
+            elif photo_id:
+                utr_val = text.strip() if text.strip() else "Screenshot attached"
+            elif text.strip():
+                utr_val = text.strip()
+            else:
+                utr_val = "Payment submitted"
+
+            session["utr"] = utr_val
+            if photo_id:
+                session["photo_id"] = photo_id
+
+            # If Device ID was already saved earlier (e.g. via deep-link /start)
+            if session.get("device_id"):
+                self.submit_request(chat_id, username, session["device_id"], utr_val, session.get("photo_id"))
+                if str(chat_id) in sessions:
+                    del sessions[str(chat_id)]
+                    save_state(self.state)
+                return
+
+            # Advance to Step 2: Ask for Device ID
+            session["step"] = "AWAITING_DEVICE_ID"
+            save_state(self.state)
+
             self.send_message(
                 chat_id,
-                "⚠️ *Device ID not found in your message.*\n\n"
-                "Please make sure your message includes your Device ID (format: `BCODE-XXXXXXXX`), "
-                "which is displayed in B Code's Upgrade screen.",
+                f"✅ *Payment details received!*\n"
+                f"🧾 *UTR / Ref:* `{utr_val}`\n\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "📌 *STEP 2: Send Your Device ID*\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                "Now please send your **Device ID** so your license key can be locked to your phone:\n\n"
+                "1️⃣ Open **B Code** on your phone\n"
+                "2️⃣ Go to **Settings → Upgrade to Pro**\n"
+                "3️⃣ Tap the 📋 copy button next to **YOUR DEVICE ID** (format: `BCODE-XXXXXXXX`)\n"
+                "4️⃣ Paste it here below:",
             )
             return
 
-        device_id = device_match.group(0).upper()
-        req_id = f"{chat_id}_{int(time.time())}"
-
-        # Save pending request
-        self.state["pending"][req_id] = {
-            "chat_id": chat_id,
-            "username": username,
-            "device_id": device_id,
-            "text": text,
-        }
-        save_state(self.state)
-
-        # Confirm to buyer
-        self.send_message(
-            chat_id,
-            f"⏳ *Payment submitted for Device `{device_id}`!*\n\n"
-            "Aditya is verifying the transaction. Your Pro license key will be delivered "
-            "directly in this chat as soon as approved (typically within minutes).\n"
-            "Thank you for supporting B Code! 🚀",
-        )
-
-        # Notify Admin
-        admin_id = self.state.get("admin_id")
-        if not admin_id:
-            print(f"[ALERT] New purchase for {device_id} from @{username}, but no admin_id configured!")
-            return
-
-        admin_text = (
-            "🔔 *New B Code Pro Purchase Request!*\n\n"
-            f"👤 *Buyer:* @{username} (ID: `{chat_id}`)\n"
-            f"📱 *Device ID:* `{device_id}`\n"
-            f"📝 *Note/Text:* {text}\n\n"
-            "Check your bank/UPI app for ₹49. Tap below to issue license:"
-        )
-
-        buttons = {
-            "inline_keyboard": [
-                [
-                    {"text": "✅ Approve & Send Key", "callback_data": f"app_{req_id}"},
-                    {"text": "❌ Reject", "callback_data": f"rej_{req_id}"},
-                ]
-            ]
-        }
-
-        # If user attached a photo, forward the photo to admin
-        if "photo" in message:
-            photo_id = message["photo"][-1]["file_id"]
-            self.call(
-                "sendPhoto",
-                {
-                    "chat_id": admin_id,
-                    "photo": photo_id,
-                    "caption": admin_text,
-                    "parse_mode": "Markdown",
-                    "reply_markup": buttons,
-                },
-            )
-        else:
-            self.send_message(admin_id, admin_text, reply_markup=buttons)
+        # STEP 2: Awaiting Device ID
+        elif current_step == "AWAITING_DEVICE_ID":
+            if device_match:
+                device_id = device_match.group(0).upper()
+                utr = session.get("utr", "Payment verified")
+                p_id = photo_id or session.get("photo_id")
+                self.submit_request(chat_id, username, device_id, utr, p_id)
+                if str(chat_id) in sessions:
+                    del sessions[str(chat_id)]
+                    save_state(self.state)
+                return
+            else:
+                self.send_message(
+                    chat_id,
+                    "⚠️ *Device ID not recognized.*\n\n"
+                    "Please paste the exact Device ID displayed in B Code (format: `BCODE-XXXXXXXX`).\n\n"
+                    "👉 Find it inside **B Code → Settings → Upgrade to Pro**.\n"
+                    "_(Send /reset if you want to start over)_",
+                )
+                return
 
     def handle_callback(self, query: dict):
         callback_id = query["id"]
