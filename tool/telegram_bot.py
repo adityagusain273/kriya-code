@@ -136,15 +136,16 @@ class TelegramBot:
         save_state(self.state)
 
         # 1. Confirm to Buyer
-        self.send_message(
-            chat_id,
-            f"⏳ *Payment Request Submitted!*\n\n"
-            f"📱 *Device ID:* `{device_id}`\n"
-            f"🧾 *UTR / Ref:* `{utr}`\n\n"
-            "Aditya has been notified to verify the transaction. Your Pro license key will be delivered "
-            "directly in this chat as soon as approved (typically within 2-5 minutes).\n\n"
-            "Thank you for supporting B Code! 🚀",
+        buyer_confirmation = (
+            f"Payment details received for device `{device_id}`.\n"
+            f"UTR / Ref: `{utr}`\n\n"
+            "I have forwarded your request to Aditya for manual verification. "
+            "Because B Code is built and maintained by an individual developer, please allow up to 6 hours for approval. "
+            "The developer is human too and might be in class, working, or asleep.\n\n"
+            "As soon as the transaction is confirmed, your offline Pro key will arrive right here in this chat.\n\n"
+            "Thank you for your patience and for supporting B Code."
         )
+        self.send_message(chat_id, buyer_confirmation)
 
         # 2. Alert Admin with High Priority (disable_notification=False ensures sound/vibration alert)
         admin_id = self.state.get("admin_id")
