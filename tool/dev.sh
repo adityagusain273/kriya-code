@@ -15,7 +15,8 @@ APP_ID=com.bcode.editor
 APK=build/app/outputs/flutter-apk/app-debug.apk
 
 defines=()
-[ -n "${GITHUB_CLIENT_ID:-}" ] && defines+=("--dart-define=GITHUB_CLIENT_ID=$GITHUB_CLIENT_ID")
+GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID:-Ov23liaEegjiRmWl0PUU}"
+defines+=("--dart-define=GITHUB_CLIENT_ID=$GITHUB_CLIENT_ID")
 
 device() {
   adb devices | awk 'NR>1 && $2=="device" {print $1; exit}'

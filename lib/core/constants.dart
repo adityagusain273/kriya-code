@@ -9,11 +9,11 @@ class AppConstants {
 
   /// GitHub OAuth App client ID. This is a public identifier by design — the
   /// device flow needs no client secret, and a secret compiled into a Flutter
-  /// binary would be extractable regardless. Inject with
-  /// `--dart-define=GITHUB_CLIENT_ID=...`; there is deliberately no default so
-  /// a misconfigured CI build fails loudly instead of authenticating against an
-  /// unknown app.
-  static const githubClientId = String.fromEnvironment('GITHUB_CLIENT_ID');
+  /// binary would be extractable regardless.
+  static const githubClientId = String.fromEnvironment(
+    'GITHUB_CLIENT_ID',
+    defaultValue: 'Ov23liaEegjiRmWl0PUU',
+  );
 
   /// Stand-in used when no real client id was injected, so a debug build still
   /// starts.
@@ -46,4 +46,7 @@ class AppConstants {
   static const posixBashPath = '/bin/bash';
 
   static const supportDevName = 'Aditya';
+  static const proPriceInr = 49;
+  static const proUpiId = '8630024750@yapl';
+  static const proPayeeName = 'B Code Developer';
 }
