@@ -17,6 +17,109 @@ Future<bool> showProPaywallSheet(BuildContext context) async {
   return result ?? false;
 }
 
+Future<bool?> showLicenseInputDialog(BuildContext context) async {
+  final controller = TextEditingController();
+  return showDialog<bool>(
+    context: context,
+    builder: (dialogCtx) {
+      String? errorText;
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF161B22),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: const BorderSide(color: Color(0xFF30363D)),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.key_rounded, color: Color(0xFF00E676), size: 22),
+                SizedBox(width: 8),
+                Text(
+                  'Enter License Key',
+                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Paste your Pro license key (starts with BCODE.) to activate offline:',
+                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: controller,
+                  maxLines: 3,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
+                  decoration: InputDecoration(
+                    hintText: 'BCODE.payload.signature',
+                    hintStyle: const TextStyle(color: Colors.white30, fontSize: 11),
+                    filled: true,
+                    fillColor: const Color(0xFF0D1117),
+                    errorText: errorText,
+                    errorMaxLines: 2,
+                    contentPadding: const EdgeInsets.all(12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFF30363D)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFF00E676)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(false),
+                child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF00E676),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  final text = controller.text.trim();
+                  if (text.isEmpty) {
+                    setState(() => errorText = 'Please paste your license key');
+                    return;
+                  }
+                  if (sl.isRegistered<EntitlementService>()) {
+                    final entitlements = sl<EntitlementService>();
+                    final ok = await entitlements.activateWithLicenseKey(text);
+                    if (ok) {
+                      if (dialogCtx.mounted) Navigator.of(dialogCtx).pop(true);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('🎉 B Code Pro activated! All features unlocked.'),
+                            duration: Duration(seconds: 4),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                  }
+                  setState(() => errorText = 'Invalid or corrupted license key');
+                },
+                child: const Text('Activate', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
 class ProPaywallSheet extends StatelessWidget {
   const ProPaywallSheet({super.key});
 
@@ -33,20 +136,11 @@ class ProPaywallSheet extends StatelessWidget {
     }
   }
 
-  Future<void> _activatePro(BuildContext context) async {
-    Haptics.medium();
-    if (sl.isRegistered<EntitlementService>()) {
-      final entitlements = sl<EntitlementService>();
-      await entitlements.setProTier(true);
-    }
-    if (context.mounted) {
+  Future<void> _enterLicenseKey(BuildContext context) async {
+    Haptics.light();
+    final unlocked = await showLicenseInputDialog(context);
+    if (unlocked == true && context.mounted) {
       Navigator.of(context).pop(true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🎉 B Code Pro activated! All compilers unlocked with zero ads.'),
-          duration: Duration(seconds: 3),
-        ),
-      );
     }
   }
 
@@ -296,8 +390,8 @@ class ProPaywallSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.verified_rounded, size: 18),
-                  label: const Text('I Have Already Paid — Unlock Pro'),
+                  icon: const Icon(Icons.key_rounded, size: 18),
+                  label: const Text('Enter License Key'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white70,
                     side: const BorderSide(color: Colors.white24),
@@ -310,7 +404,7 @@ class ProPaywallSheet extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
-                  onPressed: () => _activatePro(context),
+                  onPressed: () => _enterLicenseKey(context),
                 ),
               ],
               const SizedBox(height: 8),
@@ -349,20 +443,11 @@ class UpiScanPaySheet extends StatelessWidget {
     }
   }
 
-  Future<void> _activatePro(BuildContext context) async {
-    Haptics.medium();
-    if (sl.isRegistered<EntitlementService>()) {
-      final entitlements = sl<EntitlementService>();
-      await entitlements.setProTier(true);
-    }
-    if (context.mounted) {
+  Future<void> _enterLicenseKey(BuildContext context) async {
+    Haptics.light();
+    final unlocked = await showLicenseInputDialog(context);
+    if (unlocked == true && context.mounted) {
       Navigator.of(context).pop(true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🎉 B Code Pro activated! All compilers unlocked with zero ads.'),
-          duration: Duration(seconds: 3),
-        ),
-      );
     }
   }
 
@@ -454,8 +539,8 @@ class UpiScanPaySheet extends StatelessWidget {
                     Text(
                       '1. Tap "Copy UPI ID" below.\n'
                       '2. Open Google Pay, PhonePe, or Paytm.\n'
-                      '3. Select "Pay UPI ID", paste, and pay ₹49.\n'
-                      '4. Return here and tap "Confirm Payment & Unlock".',
+                      '3. Pay ₹49 with your email in note.\n'
+                      '4. Enter your received license key below to unlock.',
                       style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
                     ),
                   ],
@@ -586,8 +671,8 @@ class UpiScanPaySheet extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               FilledButton.icon(
-                icon: const Icon(Icons.verified_rounded, size: 18),
-                label: const Text('Confirm Payment & Unlock Pro'),
+                icon: const Icon(Icons.key_rounded, size: 18),
+                label: const Text('Enter License Key & Unlock Pro'),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF00E676),
                   foregroundColor: Colors.black,
@@ -600,7 +685,7 @@ class UpiScanPaySheet extends StatelessWidget {
                     fontSize: 15,
                   ),
                 ),
-                onPressed: () => _activatePro(context),
+                onPressed: () => _enterLicenseKey(context),
               ),
             ],
           ),

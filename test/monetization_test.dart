@@ -90,7 +90,10 @@ void main() {
   });
 
   group('ProPaywallSheet', () {
-    testWidgets('displays features and unlocks Pro on tap', (tester) async {
+    const validTestLicense =
+        'BCODE.cHJvOnRlc3RAYmNvZGUuZGV2.nDrKf-Gmzu0BvXSHzMlS4PGd_ARgXRAMjn8OXiFO-P99-PIJDN0xtz794tmVtg22w-BnVofpwjA7r1J15Onx9BuquoHtGxoU-yjAZOY7vz7pyXj-KrSG6Y8PQ6sA7tBs5j_PRQNdbJyuxX--WXpZfsiUGnZUP5aMYyInx4IiCwqHwRgNuAhzUD8hOSUITI21EIdOwVGknGKFzErzYtPLoWjHVTU8SooALET62mKK8C0jbIzl_EscGSaQdi5SMw8FT0PUGRcSAniYfibDJz8rKZFstxfoAyX34kztL_hKif9ZeA9cMnlPL9iOFwj9tWIY0oME4v3sGezu64Z1UkYouQ';
+
+    testWidgets('displays features and unlocks Pro with valid license key', (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final entitlements = LocalEntitlementService(prefs);
@@ -109,15 +112,30 @@ void main() {
       expect(find.text('No ads'), findsOneWidget);
       expect(find.text('All compilers unlocked'), findsOneWidget);
       expect(find.text('Scan QR Code & Pay ₹49'), findsOneWidget);
-      expect(find.textContaining('I Have Already Paid'), findsOneWidget);
+      expect(find.text('Enter License Key'), findsOneWidget);
 
-      await tester.tap(find.textContaining('I Have Already Paid'));
+      await tester.tap(find.text('Enter License Key'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Paste your Pro license key (starts with BCODE.) to activate offline:'), findsOneWidget);
+
+      // Enter invalid key
+      await tester.enterText(find.byType(TextField), 'BCODE.fake.invalid');
+      await tester.tap(find.text('Activate'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Invalid or corrupted license key'), findsOneWidget);
+      expect(entitlements.isRuntimeUnlocked('cpython'), isFalse);
+
+      // Enter valid key
+      await tester.enterText(find.byType(TextField), validTestLicense);
+      await tester.tap(find.text('Activate'));
       await tester.pumpAndSettle();
 
       expect(entitlements.isRuntimeUnlocked('cpython'), isTrue);
     });
 
-    testWidgets('tapping Scan QR Code opens payment sheet with single-device instructions',
+    testWidgets('tapping Scan QR Code opens payment sheet and allows entering license',
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
@@ -141,16 +159,16 @@ void main() {
       expect(find.text('Copy UPI ID'), findsOneWidget);
 
       await tester.scrollUntilVisible(
-        find.text('Confirm Payment & Unlock Pro'),
+        find.text('Enter License Key & Unlock Pro'),
         100,
         scrollable: find.byType(Scrollable).last,
       );
-      expect(find.text('Confirm Payment & Unlock Pro'), findsOneWidget);
+      expect(find.text('Enter License Key & Unlock Pro'), findsOneWidget);
 
-      await tester.tap(find.text('Confirm Payment & Unlock Pro'));
+      await tester.tap(find.text('Enter License Key & Unlock Pro'));
       await tester.pumpAndSettle();
 
-      expect(entitlements.isRuntimeUnlocked('cpython'), isTrue);
+      expect(find.text('Paste your Pro license key (starts with BCODE.) to activate offline:'), findsOneWidget);
     });
 
     testWidgets('ProPaywallSheet shows active state and allows resetting to free tier',
