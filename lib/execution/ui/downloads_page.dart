@@ -188,10 +188,26 @@ class _DownloadCard extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                   )
                 else if (downloading)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      if (phase != RuntimeDownloadPhase.installing) ...[
+                        const SizedBox(width: 4),
+                        TextButton(
+                          onPressed: onCancel,
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            foregroundColor: Colors.red.shade300,
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      ],
+                    ],
                   )
                 else ...[
                   if (phase == RuntimeDownloadPhase.failed)
@@ -200,36 +216,27 @@ class _DownloadCard extends StatelessWidget {
                       tooltip: 'Retry',
                       onPressed: onDownload,
                     ),
-                  if (!downloading)
-                    FilledButton.icon(
-                      icon: Icon(
-                        unlocked
-                            ? Icons.download_rounded
-                            : Icons.lock_open_rounded,
-                        size: 16,
-                      ),
-                      onPressed: onDownload,
-                      style: FilledButton.styleFrom(
-                          visualDensity: VisualDensity.compact),
-                      label: Text(phase == RuntimeDownloadPhase.failed
-                          ? 'Retry'
-                          : (unlocked ? 'Download' : 'Unlock')),
+                  FilledButton.icon(
+                    icon: Icon(
+                      unlocked
+                          ? Icons.download_rounded
+                          : Icons.lock_open_rounded,
+                      size: 16,
                     ),
-                  if (downloading)
-                    TextButton(
-                      onPressed: onCancel,
-                      style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          foregroundColor: Colors.red.shade300),
-                      child: const Text('Cancel'),
-                    ),
+                    onPressed: onDownload,
+                    style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact),
+                    label: Text(phase == RuntimeDownloadPhase.failed
+                        ? 'Retry'
+                        : (unlocked ? 'Download' : 'Unlock')),
+                  ),
                 ],
               ],
             ),
             if (downloading) ...[
               const SizedBox(height: 12),
               LinearProgressIndicator(
-                value: state.progress,
+                value: phase == RuntimeDownloadPhase.installing ? null : state.progress,
                 minHeight: 6,
                 borderRadius: BorderRadius.circular(3),
               ),
@@ -238,13 +245,15 @@ class _DownloadCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      state.totalBytes > 0
-                          ? '${state.currentPackage} — '
-                              '${sizeLabel(state.receivedBytes)} of ${sizeLabel(state.totalBytes)}'
-                              ' (${(state.progress! * 100).toStringAsFixed(0)}%)'
-                          : phase == RuntimeDownloadPhase.resolving
-                              ? 'Resolving packages…'
-                              : 'Starting download…',
+                      phase == RuntimeDownloadPhase.installing
+                          ? 'Extracting and verifying packages…'
+                          : state.totalBytes > 0
+                              ? '${state.currentPackage} — '
+                                  '${sizeLabel(state.receivedBytes)} of ${sizeLabel(state.totalBytes)}'
+                                  ' (${(state.progress! * 100).toStringAsFixed(0)}%)'
+                              : phase == RuntimeDownloadPhase.resolving
+                                  ? 'Resolving packages…'
+                                  : 'Starting download…',
                       style: const TextStyle(fontSize: 11.5, color: Colors.white70),
                     ),
                   ),

@@ -20,6 +20,10 @@ abstract class AdService {
     required BuildContext context,
     required String runtimeTitle,
   });
+  BannerAd? createMediumRectangleAd({
+    required void Function() onAdLoaded,
+    required void Function(LoadAdError error) onAdFailedToLoad,
+  });
 }
 
 class AdMobAdService implements AdService {
@@ -31,17 +35,57 @@ class AdMobAdService implements AdService {
   static const String prodRewardedAdUnitId =
       'ca-app-pub-1244539971368385/2472379302';
 
+  // Google's official sample banner / MREC ad unit ID for Android (safe for debug)
+  static const String testBannerAdUnitId =
+      'ca-app-pub-3940256099942544/6300978111';
+
+  // Production AdMob Banner Ad Unit ID for B Code
+  static const String prodBannerAdUnitId =
+      'ca-app-pub-1244539971368385/3664227388';
+
   final String rewardedAdUnitId;
+  final String bannerAdUnitId;
   RewardedAd? _preloadedAd;
   bool _isLoading = false;
 
   AdMobAdService({
-    String? adUnitId,
-  }) : rewardedAdUnitId = adUnitId ??
+    String? rewardedAdUnitId,
+    String? bannerAdUnitId,
+  })  : rewardedAdUnitId = rewardedAdUnitId ??
             const String.fromEnvironment(
               'ADMOB_REWARDED_AD_UNIT_ID',
-              defaultValue: kReleaseMode ? prodRewardedAdUnitId : testRewardedAdUnitId,
+              defaultValue:
+                  kReleaseMode ? prodRewardedAdUnitId : testRewardedAdUnitId,
+            ),
+        bannerAdUnitId = bannerAdUnitId ??
+            const String.fromEnvironment(
+              'ADMOB_BANNER_AD_UNIT_ID',
+              defaultValue:
+                  kReleaseMode ? prodBannerAdUnitId : testBannerAdUnitId,
             );
+
+  @override
+  BannerAd? createMediumRectangleAd({
+    required void Function() onAdLoaded,
+    required void Function(LoadAdError error) onAdFailedToLoad,
+  }) {
+    if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) {
+      return null;
+    }
+    return BannerAd(
+      adUnitId: bannerAdUnitId,
+      size: AdSize.mediumRectangle,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) => onAdLoaded(),
+        onAdFailedToLoad: (ad, error) {
+          debugPrint('AdMob MREC banner load failed: ${error.message} (code ${error.code})');
+          ad.dispose();
+          onAdFailedToLoad(error);
+        },
+      ),
+    );
+  }
 
   @override
   bool get isAdReady => _preloadedAd != null;

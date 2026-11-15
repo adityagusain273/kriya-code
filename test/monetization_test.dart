@@ -4,6 +4,7 @@ import 'package:b_code/core/di.dart';
 import 'package:b_code/monetization/entitlement_service.dart';
 import 'package:b_code/monetization/ad_service.dart';
 import 'package:b_code/monetization/pro_paywall_sheet.dart';
+import 'package:b_code/monetization/runtime_unlock_flow.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -57,11 +58,16 @@ void main() {
     test('uses default sample test ad unit ID when no env override', () {
       final adService = AdMobAdService();
       expect(adService.rewardedAdUnitId, AdMobAdService.testRewardedAdUnitId);
+      expect(adService.bannerAdUnitId, AdMobAdService.testBannerAdUnitId);
     });
 
     test('accepts custom ad unit ID via constructor', () {
-      final adService = AdMobAdService(adUnitId: 'ca-app-pub-custom/123456');
+      final adService = AdMobAdService(
+        rewardedAdUnitId: 'ca-app-pub-custom/123456',
+        bannerAdUnitId: 'ca-app-pub-custom/789012',
+      );
       expect(adService.rewardedAdUnitId, 'ca-app-pub-custom/123456');
+      expect(adService.bannerAdUnitId, 'ca-app-pub-custom/789012');
     });
   });
 
@@ -90,6 +96,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(entitlements.isRuntimeUnlocked('cpython'), isTrue);
+    });
+  });
+
+  group('DuolingoAdUnlockSheet', () {
+    testWidgets('shows mission title with watery eyes emoji and counts down', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final entitlements = LocalEntitlementService(prefs);
+      sl.registerSingleton<EntitlementService>(entitlements);
+      sl.registerSingleton<AdService>(AdMobAdService());
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DuolingoAdUnlockSheet(
+              runtimeId: 'clang',
+              runtimeTitle: 'C / C++',
+              initialCountdownSeconds: 2,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Advertising helps keep B Code free 🥺'), findsOneWidget);
+      expect(find.text('GO AD FREE'), findsOneWidget);
+
+      // Fast forward countdown
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(entitlements.isRuntimeUnlocked('clang'), isTrue);
+      expect(find.text('Unlocked'), findsOneWidget);
+      expect(find.textContaining('Continue & Download C / C++'), findsOneWidget);
     });
   });
 }

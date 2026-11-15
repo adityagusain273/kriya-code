@@ -1,12 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../core/di.dart';
 import 'ad_service.dart';
 import 'entitlement_service.dart';
 import 'pro_paywall_sheet.dart';
 
-/// Checks if [runtimeId] is unlocked. If not, prompts the user with a Duolingo-style
-/// sponsor sheet to watch a rewarded video or go ad-free. Returns true if unlocked.
+/// Checks if [runtimeId] is unlocked. If not, presents the Duolingo-style in-app
+/// ad break banner with countdown timer, watery-eyes emoji, and Go Ad Free paywall link.
+/// Returns true once unlocked.
 Future<bool> ensureRuntimeUnlocked(
   BuildContext context, {
   required String runtimeId,
@@ -17,103 +20,181 @@ Future<bool> ensureRuntimeUnlocked(
     return true;
   }
 
-  final choice = await showModalBottomSheet<String>(
+  final unlocked = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
+    isDismissible: false,
+    enableDrag: false,
     backgroundColor: Colors.transparent,
-    builder: (ctx) => _UnlockPromptSheet(
+    builder: (ctx) => DuolingoAdUnlockSheet(
+      runtimeId: runtimeId,
       runtimeTitle: runtimeTitle,
     ),
   );
 
-  if (!context.mounted) return false;
+  return unlocked ?? false;
+}
 
-  if (choice == 'pro') {
-    final boughtPro = await showProPaywallSheet(context);
-    if (boughtPro) return true;
-    if (!context.mounted) return false;
-  } else if (choice == 'watch') {
-    final adService = sl<AdService>();
-    final outcome = await adService.showRewardedAd(
-      context: context,
-      runtimeTitle: runtimeTitle,
-    );
+class DuolingoAdUnlockSheet extends StatefulWidget {
+  final String runtimeId;
+  final String runtimeTitle;
+  final int initialCountdownSeconds;
 
-    if (!context.mounted) return false;
+  const DuolingoAdUnlockSheet({
+    super.key,
+    required this.runtimeId,
+    required this.runtimeTitle,
+    this.initialCountdownSeconds = 6,
+  });
 
-    switch (outcome) {
-      case AdOutcome.earnedReward:
-        await entitlements.unlockRuntime(runtimeId);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$runtimeTitle unlocked forever!'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-        return true;
+  @override
+  State<DuolingoAdUnlockSheet> createState() => _DuolingoAdUnlockSheetState();
+}
 
-      case AdOutcome.failedGracefully:
-        await entitlements.unlockRuntime(runtimeId);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Sponsored ad unavailable — $runtimeTitle unlocked for free!'),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-        return true;
+class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
+  BannerAd? _bannerAd;
+  bool _isAdLoaded = false;
+  bool _adFailed = false;
 
-      case AdOutcome.adBlocked:
-        if (context.mounted) {
-          showDialog<void>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              icon: const Icon(Icons.shield_outlined, color: Colors.amber, size: 36),
-              title: const Text('Ad Blocker Detected'),
-              content: const Text(
-                'B Code is completely free for students and devs, supported by short sponsored ads.\n\n'
-                'Please temporarily turn off your ad blocker or private DNS '
-                '(such as AdGuard or NextDNS) in device settings to unlock this compiler runtime.',
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Got It'),
-                ),
-              ],
-            ),
-          );
-        }
-        return false;
+  late int _remainingSeconds;
+  bool _isUnlocked = false;
+  Timer? _countdownTimer;
 
-      case AdOutcome.cancelled:
-        return false;
+  @override
+  void initState() {
+    super.initState();
+    _remainingSeconds = widget.initialCountdownSeconds;
+    _startCountdown();
+    _loadBannerAd();
+  }
+
+  void _startCountdown() {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_remainingSeconds > 1) {
+        setState(() {
+          _remainingSeconds--;
+        });
+      } else {
+        timer.cancel();
+        _onRewardEarned();
+      }
+    });
+  }
+
+  Future<void> _onRewardEarned() async {
+    final entitlements = sl<EntitlementService>();
+    await entitlements.unlockRuntime(widget.runtimeId);
+    if (!mounted) return;
+    setState(() {
+      _remainingSeconds = 0;
+      _isUnlocked = true;
+    });
+  }
+
+  void _loadBannerAd() {
+    try {
+      final adService = sl<AdService>();
+      final banner = adService.createMediumRectangleAd(
+        onAdLoaded: () {
+          if (mounted) {
+            setState(() {
+              _isAdLoaded = true;
+              _adFailed = false;
+            });
+          }
+        },
+        onAdFailedToLoad: (error) {
+          if (mounted) {
+            setState(() {
+              _isAdLoaded = false;
+              _adFailed = true;
+            });
+            // Fail open: grant unlock if ad cannot load offline
+            _onRewardEarned();
+          }
+        },
+      );
+
+      if (banner != null) {
+        _bannerAd = banner;
+        banner.load();
+      } else {
+        // Non-mobile or test environment
+        setState(() {
+          _adFailed = true;
+        });
+        _onRewardEarned();
+      }
+    } catch (e) {
+      debugPrint('Ad load exception: $e');
+      setState(() {
+        _adFailed = true;
+      });
+      _onRewardEarned();
     }
   }
 
-  return false;
-}
+  Future<void> _handleCloseTap() async {
+    if (_isUnlocked) {
+      Navigator.of(context).pop(true);
+      return;
+    }
 
-class _UnlockPromptSheet extends StatelessWidget {
-  final String runtimeTitle;
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Leave without unlocking?'),
+        content: Text(
+          'Wait $_remainingSeconds more seconds to unlock ${widget.runtimeTitle} offline permanently 🥺',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Leave'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep Watching'),
+          ),
+        ],
+      ),
+    );
 
-  const _UnlockPromptSheet({required this.runtimeTitle});
+    if (leave == true && mounted) {
+      Navigator.of(context).pop(false);
+    }
+  }
+
+  Future<void> _handleGoAdFree() async {
+    final boughtPro = await showProPaywallSheet(context);
+    if (boughtPro && mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    _bannerAd?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF141923),
+        color: const Color(0xFF10141D),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         border: Border.all(
-          color: const Color(0xFF2A364F),
+          color: const Color(0xFF263342),
           width: 1,
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -121,7 +202,7 @@ class _UnlockPromptSheet extends StatelessWidget {
           children: [
             Center(
               child: Container(
-                width: 40,
+                width: 38,
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
@@ -133,94 +214,111 @@ class _UnlockPromptSheet extends StatelessWidget {
             Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white70),
-                  onPressed: () => Navigator.of(context).pop(null),
+                  icon: Icon(
+                    _isUnlocked ? Icons.close_rounded : Icons.close_rounded,
+                    color: _isUnlocked ? Colors.white : Colors.white60,
+                  ),
+                  tooltip: _isUnlocked ? 'Close and proceed' : 'Cancel ad',
+                  onPressed: _handleCloseTap,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
+                const SizedBox(width: 4),
                 const Expanded(
                   child: Text(
-                    'Advertising helps keep B Code free',
+                    'Advertising helps keep B Code free 🥺',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 15,
+                      fontSize: 13,
                     ),
                   ),
                 ),
-                const SizedBox(width: 24), // Balance the close button
-              ],
-            ),
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1B2232),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF2A364F)),
-              ),
-              child: Column(
-                children: [
+                const SizedBox(width: 4),
+                if (!_isUnlocked)
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A2330),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF2D3C4F)),
+                    ),
+                    child: Text(
+                      '${_remainingSeconds}s',
+                      style: const TextStyle(
+                        color: Color(0xFF4FC3F7),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFF00E676).withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(
-                      Icons.ondemand_video_rounded,
-                      color: Color(0xFF00E676),
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Unlock $runtimeTitle Offline',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Watch one short 15–30s sponsor video to unlock this compiler on your phone forever. Zero banner ads inside your editor.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 13,
-                      height: 1.4,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_rounded,
+                            color: Color(0xFF00E676), size: 14),
+                        SizedBox(width: 4),
+                        Text(
+                          'Unlocked',
+                          style: TextStyle(
+                            color: Color(0xFF00E676),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: Container(
+                width: 300,
+                height: 250,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF18202A),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF263342)),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _buildAdContent(),
               ),
             ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              icon: const Icon(Icons.play_circle_filled_rounded),
-              label: const Text('Watch Sponsor Ad & Unlock'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-                backgroundColor: const Color(0xFF4FC3F7),
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+            const SizedBox(height: 16),
+            if (_isUnlocked)
+              FilledButton.icon(
+                icon: const Icon(Icons.download_rounded),
+                label: Text('Continue & Download ${widget.runtimeTitle}'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  backgroundColor: const Color(0xFF4FC3F7),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
+                onPressed: () => Navigator.of(context).pop(true),
               ),
-              onPressed: () => Navigator.of(context).pop('watch'),
-            ),
-            const SizedBox(height: 10),
+            if (_isUnlocked) const SizedBox(height: 8),
             TextButton(
               style: TextButton.styleFrom(
                 minimumSize: const Size.fromHeight(40),
                 foregroundColor: const Color(0xFF00E676),
               ),
-              onPressed: () => Navigator.of(context).pop('pro'),
+              onPressed: _handleGoAdFree,
               child: const Text(
                 'GO AD FREE',
                 style: TextStyle(
@@ -232,6 +330,82 @@ class _UnlockPromptSheet extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAdContent() {
+    if (_isAdLoaded && _bannerAd != null) {
+      return SizedBox(
+        width: 300,
+        height: 250,
+        child: AdWidget(ad: _bannerAd!),
+      );
+    }
+
+    if (_adFailed) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.volunteer_activism_rounded,
+                color: Color(0xFF00E676),
+                size: 32,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Supporting student coders',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Sponsored ads offline. ${widget.runtimeTitle} unlocked for free so you keep building!',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: Color(0xFF4FC3F7),
+            ),
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Loading sponsor ad…',
+            style: TextStyle(
+              color: Colors.white60,
+              fontSize: 13,
+            ),
+          ),
+        ],
       ),
     );
   }
