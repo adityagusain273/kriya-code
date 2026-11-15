@@ -89,7 +89,7 @@ Future<bool?> showLicenseInputDialog(BuildContext context) async {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 onPressed: () async {
-                  final text = controller.text.trim();
+                  final text = controller.text.replaceAll(RegExp(r'\s+'), '');
                   if (text.isEmpty) {
                     setState(() => errorText = 'Please paste your license key');
                     return;

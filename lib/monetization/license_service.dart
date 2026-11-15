@@ -49,7 +49,7 @@ class LicenseVerifier {
 
   LicenseValidationResult validate(String keyString, {String? currentDeviceId}) {
     try {
-      final clean = keyString.trim();
+      final clean = keyString.replaceAll(RegExp(r'\s+'), '');
       final parts = clean.split('.');
       if (parts.length != 3 || parts[0] != 'BCODE') {
         return LicenseValidationResult.invalid;
