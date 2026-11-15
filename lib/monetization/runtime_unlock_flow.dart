@@ -7,6 +7,8 @@ import 'ad_service.dart';
 import 'entitlement_service.dart';
 import 'pro_paywall_sheet.dart';
 
+export 'mission_banner.dart';
+
 /// Checks if [runtimeId] is unlocked. If not, presents the Duolingo-style in-app
 /// ad break banner with countdown timer, watery-eyes emoji, and Go Ad Free paywall link.
 /// Returns true once unlocked.
@@ -28,7 +30,39 @@ Future<bool> ensureRuntimeUnlocked(
     backgroundColor: Colors.transparent,
     builder: (ctx) => DuolingoAdUnlockSheet(
       runtimeId: runtimeId,
-      runtimeTitle: runtimeTitle,
+      title: runtimeTitle,
+      actionLabel: 'Continue & Download $runtimeTitle',
+    ),
+  );
+
+  return unlocked ?? false;
+}
+
+/// Checks if [extensionId] is unlocked. If not, presents the Duolingo-style in-app
+/// ad break banner. If [runtimeId] is provided, unlocks both the extension and runtime.
+/// Returns true once unlocked.
+Future<bool> ensureExtensionUnlocked(
+  BuildContext context, {
+  required String extensionId,
+  required String extensionTitle,
+  String? runtimeId,
+}) async {
+  final entitlements = sl<EntitlementService>();
+  if (entitlements.isExtensionUnlocked(extensionId)) {
+    return true;
+  }
+
+  final unlocked = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    isDismissible: false,
+    enableDrag: false,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => DuolingoAdUnlockSheet(
+      extensionId: extensionId,
+      runtimeId: runtimeId,
+      title: extensionTitle,
+      actionLabel: 'Continue & Install $extensionTitle',
     ),
   );
 
@@ -36,16 +70,23 @@ Future<bool> ensureRuntimeUnlocked(
 }
 
 class DuolingoAdUnlockSheet extends StatefulWidget {
-  final String runtimeId;
-  final String runtimeTitle;
+  final String? runtimeId;
+  final String? extensionId;
+  final String title;
+  final String? actionLabel;
   final int initialCountdownSeconds;
 
   const DuolingoAdUnlockSheet({
     super.key,
-    required this.runtimeId,
-    required this.runtimeTitle,
+    this.runtimeId,
+    this.extensionId,
+    String? runtimeTitle,
+    String? title,
+    this.actionLabel,
     this.initialCountdownSeconds = 6,
-  });
+  }) : title = title ?? runtimeTitle ?? '';
+
+  String get runtimeTitle => title;
 
   @override
   State<DuolingoAdUnlockSheet> createState() => _DuolingoAdUnlockSheetState();
@@ -87,7 +128,12 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
 
   Future<void> _onRewardEarned() async {
     final entitlements = sl<EntitlementService>();
-    await entitlements.unlockRuntime(widget.runtimeId);
+    if (widget.runtimeId != null) {
+      await entitlements.unlockRuntime(widget.runtimeId!);
+    }
+    if (widget.extensionId != null) {
+      await entitlements.unlockExtension(widget.extensionId!);
+    }
     if (!mounted) return;
     setState(() {
       _remainingSeconds = 0;
@@ -297,7 +343,7 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
             if (_isUnlocked)
               FilledButton.icon(
                 icon: const Icon(Icons.download_rounded),
-                label: Text('Continue & Download ${widget.runtimeTitle}'),
+                label: Text(widget.actionLabel ?? 'Continue & Download ${widget.title}'),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                   backgroundColor: const Color(0xFF4FC3F7),
@@ -372,7 +418,7 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Sponsored ads offline. ${widget.runtimeTitle} unlocked for free so you keep building!',
+              'Sponsored ads offline. ${widget.title} unlocked for free so you keep building!',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white70,

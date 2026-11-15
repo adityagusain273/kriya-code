@@ -8,6 +8,9 @@ import '../../editor/highlighting/highlight_engine.dart';
 import '../../editor/tab_manager.dart';
 import '../../execution/runtime_download_service.dart';
 import '../../execution/ui/downloads_page.dart';
+import '../../monetization/entitlement_service.dart';
+import '../../monetization/pro_paywall_sheet.dart';
+import '../../monetization/runtime_unlock_flow.dart';
 import '../../workspace/device_import_service.dart';
 import '../../workspace/fs_service.dart';
 import '../../workspace/import_actions.dart';
@@ -169,6 +172,46 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
       sl.isRegistered<ExtensionSourceService>()
           ? sl<ExtensionSourceService>()
           : null;
+
+  EntitlementService? get _entitlements =>
+      sl.isRegistered<EntitlementService>() ? sl<EntitlementService>() : null;
+
+  bool _isUnlocked(String id, [String? runtimeId]) {
+    final entitlements = _entitlements;
+    if (entitlements == null) return true;
+    if (entitlements.isExtensionUnlocked(id)) return true;
+    if (runtimeId != null && entitlements.isRuntimeUnlocked(runtimeId)) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _onExploreBundledTap(_ExtUi ext) async {
+    if (!_isUnlocked(ext.id, ext.runtimeId)) {
+      final unlocked = await ensureExtensionUnlocked(
+        context,
+        extensionId: ext.id,
+        extensionTitle: ext.title,
+        runtimeId: ext.runtimeId,
+      );
+      if (!unlocked || !mounted) return;
+      setState(() {});
+    }
+    await _onInstallTap(ext);
+  }
+
+  Future<void> _onCatalogTap(ExtensionCatalogEntry entry) async {
+    if (!_isUnlocked(entry.id)) {
+      final unlocked = await ensureExtensionUnlocked(
+        context,
+        extensionId: entry.id,
+        extensionTitle: entry.name,
+      );
+      if (!unlocked || !mounted) return;
+      setState(() {});
+    }
+    await _installFromUrl(entry.download);
+  }
 
   final TextEditingController _searchController = TextEditingController();
   bool _exploreOpen = true;
@@ -709,6 +752,8 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     final showExplore = !searching || exploreCount > 0;
     final showInstalled = !searching || installedCount > 0;
 
+    final isPro = _entitlements?.isRuntimeUnlocked('') ?? false;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Extensions'),
@@ -796,6 +841,16 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
             child: ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [
+                if (!isPro && !searching)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                    child: MissionBanner(
+                      onGoAdFree: () async {
+                        final activated = await showProPaywallSheet(context);
+                        if (activated && mounted) setState(() {});
+                      },
+                    ),
+                  ),
                 if (showExplore) ...[
                   _SectionHeader(
                     title: 'Explore',
@@ -939,11 +994,25 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
             ],
           );
         } else {
-          trailing = IconButton(
-            tooltip: 'Install',
-            onPressed: () => _onInstallTap(ext),
-            icon: const Icon(Icons.download_rounded, size: 22),
-          );
+          final unlocked = _isUnlocked(ext.id, ext.runtimeId);
+          if (!unlocked) {
+            trailing = FilledButton.tonalIcon(
+              icon: const Icon(Icons.lock_open_rounded, size: 14),
+              label: const Text('Unlock', style: TextStyle(fontSize: 12)),
+              style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () => _onExploreBundledTap(ext),
+            );
+          } else {
+            trailing = IconButton(
+              tooltip: 'Install',
+              onPressed: () => _onExploreBundledTap(ext),
+              icon: const Icon(Icons.download_rounded, size: 22),
+            );
+          }
         }
 
         return _ExtensionTile(
@@ -952,7 +1021,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
           title: ext.title,
           meta: 'v${ext.version} · ${installed ? 'Installed' : 'Bundled'}',
           trailing: trailing,
-          onTap: installed ? null : () => _onInstallTap(ext),
+          onTap: installed ? null : () => _onExploreBundledTap(ext),
         );
       },
     );
@@ -961,17 +1030,34 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
   Widget _catalogTile(ExtensionCatalogEntry entry) {
     final updating = _installed.any((ext) => ext.manifest.id == entry.id);
     final author = entry.author.isEmpty ? '' : ' · by ${entry.author}';
+    final unlocked = _isUnlocked(entry.id);
+
+    Widget trailing;
+    if (!unlocked && !updating) {
+      trailing = FilledButton.tonalIcon(
+        icon: const Icon(Icons.lock_open_rounded, size: 14),
+        label: const Text('Unlock', style: TextStyle(fontSize: 12)),
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          visualDensity: VisualDensity.compact,
+        ),
+        onPressed: () => _onCatalogTap(entry),
+      );
+    } else {
+      trailing = IconButton(
+        tooltip: updating ? 'Update' : 'Install',
+        onPressed: () => _onCatalogTap(entry),
+        icon: const Icon(Icons.download_rounded, size: 22),
+      );
+    }
+
     return _ExtensionTile(
       letter: _initial(entry.name),
       color: _catalogColor(entry.id),
       title: entry.name,
       meta: 'v${entry.version}$author',
-      trailing: IconButton(
-        tooltip: updating ? 'Update' : 'Install',
-        onPressed: () => _installFromUrl(entry.download),
-        icon: const Icon(Icons.download_rounded, size: 22),
-      ),
-      onTap: () => _installFromUrl(entry.download),
+      trailing: trailing,
+      onTap: () => _onCatalogTap(entry),
     );
   }
 

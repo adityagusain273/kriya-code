@@ -7,6 +7,8 @@ import 'package:b_code/plugins/packages/extension_manifest.dart';
 import 'package:b_code/plugins/packages/extension_source.dart';
 import 'package:b_code/plugins/ui/extensions_page.dart';
 import 'package:b_code/execution/runtime_download_service.dart';
+import 'package:b_code/monetization/ad_service.dart';
+import 'package:b_code/monetization/entitlement_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -158,6 +160,57 @@ void main() {
         of: installedRow, matching: find.byTooltip('Extension actions')));
     await tester.pumpAndSettle();
     expect(find.text('Remove'), findsOneWidget);
+  });
+
+  testWidgets('free user sees mission banner and unlock button on explore extensions', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    sl.registerSingleton<ExtensionInstallStore>(ExtensionInstallStore(prefs));
+    sl.registerSingleton<RuntimeDownloadService>(RuntimeDownloadService(
+      client: _ThrowingClient(),
+      prefs: prefs,
+      runtimesRootResolver: _StubResolver.root,
+      extractor: (_) async => true,
+    ));
+    sl.registerSingleton<EntitlementService>(LocalEntitlementService(prefs));
+    sl.registerSingleton<AdService>(AdMobAdService());
+
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ExtensionsPage())));
+    await tester.pump();
+
+    // Mission banner is visible for free users
+    expect(find.text('Advertising helps keep B Code free 🥺'), findsOneWidget);
+    expect(find.text('GO AD FREE'), findsOneWidget);
+
+    // Locked extensions in Explore show Unlock button
+    expect(find.text('Unlock'), findsWidgets);
+    expect(find.byIcon(Icons.lock_open_rounded), findsWidgets);
+  });
+
+  testWidgets('pro user does not see mission banner and explore extensions show install', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    sl.registerSingleton<ExtensionInstallStore>(ExtensionInstallStore(prefs));
+    sl.registerSingleton<RuntimeDownloadService>(RuntimeDownloadService(
+      client: _ThrowingClient(),
+      prefs: prefs,
+      runtimesRootResolver: _StubResolver.root,
+      extractor: (_) async => true,
+    ));
+    final entitlements = LocalEntitlementService(prefs);
+    await entitlements.setProTier(true);
+    sl.registerSingleton<EntitlementService>(entitlements);
+    sl.registerSingleton<AdService>(AdMobAdService());
+
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ExtensionsPage())));
+    await tester.pump();
+
+    // Mission banner is hidden for Pro users
+    expect(find.text('Advertising helps keep B Code free 🥺'), findsNothing);
+
+    // Pro users have all extensions unlocked, so no 'Unlock' buttons
+    expect(find.text('Unlock'), findsNothing);
+    expect(find.byTooltip('Install'), findsWidgets);
   });
 }
 

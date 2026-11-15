@@ -84,11 +84,14 @@ class _DownloadsPageState extends State<DownloadsPage> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           if (!isPro)
-            _MissionBanner(
-              onGoAdFree: () async {
-                final activated = await showProPaywallSheet(context);
-                if (activated && mounted) setState(() {});
-              },
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: MissionBanner(
+                onGoAdFree: () async {
+                  final activated = await showProPaywallSheet(context);
+                  if (activated && mounted) setState(() {});
+                },
+              ),
             ),
           for (final spec in specs)
             _DownloadCard(
@@ -288,67 +291,5 @@ class _DownloadCard extends StatelessWidget {
   }
 }
 
-class _MissionBanner extends StatelessWidget {
-  final VoidCallback onGoAdFree;
 
-  const _MissionBanner({required this.onGoAdFree});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B2232),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF2A364F)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.favorite_rounded, color: Color(0xFFFF5252), size: 18),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Advertising helps keep B Code free for students',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              InkWell(
-                onTap: onGoAdFree,
-                borderRadius: BorderRadius.circular(6),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  child: Text(
-                    'GO AD FREE',
-                    style: TextStyle(
-                      color: Color(0xFF00E676),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            '1 short video unlocks a compiler permanently. Zero banner ads inside your editor.',
-            style: TextStyle(
-              color: Colors.white60,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 

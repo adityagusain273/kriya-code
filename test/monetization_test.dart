@@ -39,18 +39,36 @@ void main() {
       expect(service2.isRuntimeUnlocked('clang'), isFalse);
     });
 
-    test('pro tier unlocks all runtimes automatically', () async {
+    test('pro tier unlocks all runtimes and extensions automatically', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final service = LocalEntitlementService(prefs);
 
       expect(service.isRuntimeUnlocked('clang'), isFalse);
+      expect(service.isExtensionUnlocked('bcode.lang.rust'), isFalse);
       await service.setProTier(true);
       expect(service.isRuntimeUnlocked('clang'), isTrue);
       expect(service.isRuntimeUnlocked('anything'), isTrue);
+      expect(service.isExtensionUnlocked('bcode.lang.rust'), isTrue);
+      expect(service.isExtensionUnlocked('any_extension'), isTrue);
 
       final entitlements = await service.current();
       expect(entitlements.proTier, isTrue);
+    });
+
+    test('unlocking an extension persists across instances', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final service1 = LocalEntitlementService(prefs);
+
+      expect(service1.isExtensionUnlocked('bcode.lang.kotlin'), isFalse);
+      await service1.unlockExtension('bcode.lang.kotlin');
+      expect(service1.isExtensionUnlocked('bcode.lang.kotlin'), isTrue);
+      expect(service1.isExtensionUnlocked('bcode.lang.rust'), isFalse);
+
+      final service2 = LocalEntitlementService(prefs);
+      expect(service2.isExtensionUnlocked('bcode.lang.kotlin'), isTrue);
+      expect(service2.isExtensionUnlocked('bcode.lang.rust'), isFalse);
     });
   });
 
@@ -130,6 +148,35 @@ void main() {
       expect(entitlements.isRuntimeUnlocked('clang'), isTrue);
       expect(find.text('Unlocked'), findsOneWidget);
       expect(find.textContaining('Continue & Download C / C++'), findsOneWidget);
+    });
+
+    testWidgets('unlocks extension and shows install action label', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final entitlements = LocalEntitlementService(prefs);
+      sl.registerSingleton<EntitlementService>(entitlements);
+      sl.registerSingleton<AdService>(AdMobAdService());
+
+      expect(entitlements.isExtensionUnlocked('bcode.lang.rust'), isFalse);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DuolingoAdUnlockSheet(
+              extensionId: 'bcode.lang.rust',
+              title: 'Rust',
+              actionLabel: 'Continue & Install Rust',
+              initialCountdownSeconds: 1,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+
+      expect(entitlements.isExtensionUnlocked('bcode.lang.rust'), isTrue);
+      expect(find.textContaining('Continue & Install Rust'), findsOneWidget);
     });
   });
 }
