@@ -489,7 +489,7 @@ class UpiScanPaySheet extends StatelessWidget {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(6),
                         child: Image.asset(
-                          'assets/images/support_qr.png',
+                          'assets/images/pro_qr.png',
                           width: 160,
                           height: 160,
                           fit: BoxFit.contain,

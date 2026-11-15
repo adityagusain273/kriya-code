@@ -46,6 +46,7 @@ class AppConstants {
   static const posixBashPath = '/bin/bash';
 
   static const supportDevName = 'Aditya';
+  static const supportUpiId = 'bakadev@upi';
   static const proPriceInr = 49;
   static const proUpiId = 'bakadev@upi';
   static const proPayeeName = 'Aditya';

@@ -8,8 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('AppConstants has developer name for support', () {
+  test('AppConstants has developer name and upi for support', () {
     expect(AppConstants.supportDevName, 'Aditya');
+    expect(AppConstants.supportUpiId, 'bakadev@upi');
   });
 
   testWidgets('SettingsPage shows Support Developer tile and opens modal with clean QR only',
@@ -48,6 +49,7 @@ void main() {
 
     expect(find.text('Buy Aditya a Chai ☕'), findsOneWidget);
     expect(find.byType(Image), findsOneWidget);
+    expect(find.text('UPI: bakadev@upi'), findsOneWidget);
     expect(find.text('Scan with any UPI app to pay'), findsOneWidget);
     expect(find.text('Google Pay'), findsOneWidget);
     expect(find.text('PhonePe'), findsOneWidget);

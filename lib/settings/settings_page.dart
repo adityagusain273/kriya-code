@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -6,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../core/constants.dart';
 import '../core/crash_reporter.dart';
 import '../core/di.dart';
+import '../core/haptics.dart';
 import '../editor/highlighting/syntax_themes.dart';
 import '../editor/keyboard_help_page.dart';
 import '../execution/termux_runner.dart';
@@ -738,6 +740,48 @@ class _SettingsPageState extends State<SettingsPage> {
                         width: 200,
                         height: 200,
                         fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () async {
+                      Haptics.light();
+                      await Clipboard.setData(
+                        const ClipboardData(text: AppConstants.supportUpiId),
+                      );
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(
+                            content: Text('UPI ID copied: ${AppConstants.supportUpiId}'),
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF21262D),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'UPI: ${AppConstants.supportUpiId}',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          SizedBox(width: 6),
+                          Icon(Icons.copy_rounded, size: 14, color: Colors.white54),
+                        ],
                       ),
                     ),
                   ),
