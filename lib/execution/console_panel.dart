@@ -8,16 +8,19 @@ import '../workspace/fs_service.dart';
 import 'runner_service.dart';
 
 class ConsolePanel extends StatelessWidget {
+  static const int tabOutput = 0;
+  static const int tabTerminal = 1;
+
   final VoidCallback? onClose;
 
   const ConsolePanel({super.key, this.onClose});
 
-  static void show(BuildContext context) {
+  static void show(BuildContext context, {int initialIndex = tabOutput}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _ConsoleSheet(),
+      builder: (_) => _ConsoleSheet(initialIndex: initialIndex),
     );
   }
 
@@ -92,7 +95,9 @@ class ConsolePanel extends StatelessWidget {
 }
 
 class _ConsoleSheet extends StatefulWidget {
-  const _ConsoleSheet();
+  final int initialIndex;
+
+  const _ConsoleSheet({this.initialIndex = ConsolePanel.tabOutput});
 
   @override
   State<_ConsoleSheet> createState() => _ConsoleSheetState();
@@ -105,7 +110,11 @@ class _ConsoleSheetState extends State<_ConsoleSheet>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialIndex.clamp(0, 1),
+    );
   }
 
   @override

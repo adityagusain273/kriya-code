@@ -486,7 +486,7 @@ class _EditorPageState extends State<EditorPage>
       Haptics.selection();
       return KeyEventResult.handled;
     } else if (key == LogicalKeyboardKey.backquote) {
-      ConsolePanel.show(context);
+      ConsolePanel.show(context, initialIndex: ConsolePanel.tabTerminal);
       Haptics.selection();
       return KeyEventResult.handled;
     } else if (key == LogicalKeyboardKey.home) {
@@ -1463,7 +1463,7 @@ class _EditorPageState extends State<EditorPage>
                   _exportProject();
                   break;
                 case 'terminal':
-                  ConsolePanel.show(context);
+                  ConsolePanel.show(context, initialIndex: ConsolePanel.tabTerminal);
                   break;
                 case 'live_server':
                   _toggleLiveServer();

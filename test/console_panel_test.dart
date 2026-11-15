@@ -58,4 +58,33 @@ void main() {
     final updatedBottom = tester.getBottomLeft(sheetFinder).dy;
     expect(initialBottom - updatedBottom, 300.0);
   });
+
+  testWidgets('console sheet opens with specified initialIndex', (tester) async {
+    final runnerService = RunnerService(local: LocalRunner());
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<RunnerService>.value(
+        value: runnerService,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => ConsolePanel.show(
+                  context,
+                  initialIndex: ConsolePanel.tabTerminal,
+                ),
+                child: const Text('Open Terminal'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open Terminal'));
+    await tester.pump();
+
+    final tabController = tester.widget<TabBarView>(find.byType(TabBarView)).controller;
+    expect(tabController?.index, ConsolePanel.tabTerminal);
+  });
 }
