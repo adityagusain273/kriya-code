@@ -52,7 +52,7 @@ jobs:
         run: dart run tool/check_cert_pins.dart
 
       - name: Work around google_mobile_ads on Gradle 9
-        run: tool/fix-gradle-plugins.sh
+        run: bash tool/fix-gradle-plugins.sh
 
       - name: Debug build (compile gate)
         run: flutter build apk --debug -Pbcode.sideload=true
@@ -133,7 +133,7 @@ jobs:
       # --split-per-abi: one thin APK per architecture (~20 MB) instead of a
       # universal one carrying every ABI's native libraries (~41 MB).
       - name: Work around google_mobile_ads on Gradle 9
-        run: tool/fix-gradle-plugins.sh
+        run: bash tool/fix-gradle-plugins.sh
 
       - name: Build per-ABI APKs (direct distribution)
         if: ${{ env.HAS_SECRETS == 'true' }}
