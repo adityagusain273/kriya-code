@@ -47,17 +47,20 @@ case "${1:-dev}" in
       ls build/symbols/app.android-*.symbols >/dev/null 2>&1
     }
     symbols_ok || rm -rf .dart_tool/flutter_build
-    flutter build apk --release --obfuscate --split-debug-info=build/symbols "${defines[@]}"
+    flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols "${defines[@]}"
     if ! symbols_ok; then
       echo "release build left no Dart symbol files; clearing the flutter build cache and rebuilding" >&2
       rm -rf .dart_tool/flutter_build
-      flutter build apk --release --obfuscate --split-debug-info=build/symbols "${defines[@]}"
+      flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols "${defines[@]}"
       symbols_ok || {
         echo "release produced no build/symbols/*.symbols; crash reports would be unsymbolicable" >&2
         exit 1
       }
     fi
     echo "==> Dart symbols: $(ls build/symbols/app.android-*.symbols | tr '\n' ' ')"
+    # --split-per-abi ships one thin APK per architecture instead of a single
+    # universal one carrying all three sets of native libraries.
+    ls -lh build/app/outputs/flutter-apk/*-release.apk
     ;;
 
   dev|*)

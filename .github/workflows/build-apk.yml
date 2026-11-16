@@ -127,10 +127,13 @@ jobs:
 
       # APK first: it is the sideload/test artifact. The bundle's post-build
       # strip check is stricter, and its failure must not hide the APK.
-      - name: Build APK (direct distribution)
+      # --split-per-abi: one thin APK per architecture (~20 MB) instead of a
+      # universal one carrying every ABI's native libraries (~41 MB).
+      - name: Build per-ABI APKs (direct distribution)
         if: ${{ env.HAS_SECRETS == 'true' }}
         run: |
           flutter build apk --release \
+            --split-per-abi \
             --obfuscate \
             --split-debug-info=build/symbols \
             --dart-define=GITHUB_CLIENT_ID=${{ secrets.BCODE_CLIENT_ID }} \
@@ -168,18 +171,26 @@ jobs:
         if: ${{ env.HAS_SECRETS != 'true' }}
         run: flutter build apk --debug -Pbcode.sideload=true
 
-      - name: Verify the release APK is signed with the release key
+      - name: Verify each per-ABI APK is signed with the release key
         if: ${{ always() && env.HAS_SECRETS == 'true' }}
         run: |
           set -euo pipefail
-          apk=build/app/outputs/flutter-apk/app-release.apk
           apksigner="$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)"
           echo "apksigner=$apksigner"
-          # The build script refuses a release without the restored keystore, so
-          # a valid signature here is the release key. Parsing the digest proved
-          # brittle on runners; verifying the signature is the actual gate.
-          "$apksigner" verify "$apk"
-          echo "release APK signature verifies"
+          shopt -s nullglob
+          apks=(build/app/outputs/flutter-apk/*-release.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::no release APKs were produced"
+            exit 1
+          fi
+          ls -lh "${apks[@]}"
+          for apk in "${apks[@]}"; do
+            # The build script refuses a release without the restored keystore, so
+            # a valid signature here is the release key. Parsing the digest proved
+            # brittle on runners; verifying the signature is the actual gate.
+            "$apksigner" verify "$apk"
+            echo "signature verifies: ${apk##*/}"
+          done
 
       - name: Report 16 KB page-size alignment
         if: ${{ always() && env.HAS_SECRETS == 'true' }}
@@ -217,12 +228,12 @@ jobs:
           path: build/symbols/
           retention-days: 90
 
-      - name: Upload APK
+      - name: Upload per-ABI APKs
         if: ${{ always() && env.HAS_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: b-code-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/*-release.apk
           retention-days: 14
 
       - name: Upload unsigned debug APK

@@ -4,7 +4,8 @@ Every release build goes through this list before it is uploaded. Each item
 names the screen and what "pass" means, so any tester can run it without
 knowing the codebase.
 
-**Setup:** fresh install (`adb install -r app-release.apk` or Play
+**Setup:** fresh install (`adb install -r app-arm64-v8a-release.apk` — pick the
+APK matching the device's ABI from the per-ABI release artifacts — or the Play
 internal-testing track). Do not restore app data from another device.
 
 ## 1. First launch
