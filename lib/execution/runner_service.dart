@@ -12,6 +12,7 @@ import 'exec_events.dart';
 import 'local/local_runner.dart';
 import 'models.dart';
 import 'termux_runner.dart';
+import 'workload_preflight.dart';
 
 class ConsoleLine {
   final String text;
@@ -128,6 +129,18 @@ class RunnerService extends ChangeNotifier {
     _ensureStream();
     await clear();
     notifyListeners();
+
+    // Advisory, not a gate: a framework project or an install step runs, but
+    // the user is told it is competing with the editor for memory before it
+    // does. Single-file scripts never reach this branch.
+    final workload = WorkloadPreflight.fromDirectory(
+      Directory(workDir),
+      command: [
+        ...(config.local?.buildArgv ?? const <String>[]),
+        ...(config.local?.runArgv ?? const <String>[]),
+      ].join(' '),
+    );
+    if (workload.prefersCloud) _append(workload.notice);
 
     try {
       if (config.hasLocal) {
