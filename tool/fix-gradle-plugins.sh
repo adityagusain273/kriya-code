@@ -26,7 +26,7 @@ fi
 
 patched=0
 while IFS= read -r build_gradle; do
-    grep -q 'for (def configuration : configurations)' "$build_gradle" || continue
+    grep -q 'configurations\.all' "$build_gradle" || continue
 
     python3 - "$build_gradle" <<'PY'
 import sys
