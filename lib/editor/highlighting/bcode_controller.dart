@@ -23,6 +23,7 @@ class BCodeController extends CodeController {
   })  : _request = highlightRequest ?? AsyncHighlighter.instance.highlight,
         super(text: text, language: null, params: params) {
     _seenText = this.text;
+    _large = isLargeBuffer(this.text);
     addListener(_onChanged);
     this.language = language;
   }
@@ -31,6 +32,33 @@ class BCodeController extends CodeController {
   /// keystrokes costs one pass, short enough that colours catch up before the
   /// next thought.
   static const highlightDebounce = Duration(milliseconds: 180);
+
+  /// Above this size a buffer renders as plain text.
+  ///
+  /// A 5,000-line file tokenises to ~45,000 runs, and rebuilding that TextSpan
+  /// on every keystroke costs ~20 s on a laptop-class CPU; a phone is slower.
+  /// Line count is a cheap predictor measured on the same shape of file.
+  static const largeFileLineThreshold = 2000;
+  static const largeFileCharThreshold = 60 * 1024;
+
+  /// Whether [text] is too large to colour. Kept as a pure function so the
+  /// threshold can be tested without a widget.
+  static bool isLargeBuffer(String text) =>
+      text.length > largeFileCharThreshold ||
+      _countLines(text) > largeFileLineThreshold;
+
+  static int _countLines(String text) {
+    var lines = 1;
+    for (var i = 0; i < text.length; i++) {
+      if (text.codeUnitAt(i) == 10) lines++;
+    }
+    return lines;
+  }
+
+  /// True when this buffer is too large to colour, so it renders plain.
+  bool get plainTextFallback => _large;
+
+  bool _large = false;
 
   final HighlightRequest _request;
 
@@ -189,7 +217,16 @@ class BCodeController extends CodeController {
     _textVersion++;
 
     final runs = _runs;
-    if (runs != null && _runsVersion == _textVersion - 1) {
+    _large = isLargeBuffer(current);
+    if (_large) {
+      // Drop the runs: rebuilding a 45,000-span TextSpan is what freezes the
+      // UI, so a buffer that crosses the threshold stops being coloured.
+      if (runs != null) {
+        _runs = null;
+        _renderVersion++;
+      }
+      _runsVersion = _textVersion;
+    } else if (runs != null && _runsVersion == _textVersion - 1) {
       _runs = spliceHighlightRuns(runs, _runsText, current);
       _runsText = current;
       _runsVersion = _textVersion;
@@ -201,7 +238,7 @@ class BCodeController extends CodeController {
   void _scheduleHighlight({bool immediate = false}) {
     _debounce?.cancel();
     final mode = _mode;
-    if (mode == null) return;
+    if (mode == null || plainTextFallback) return;
 
     final snapshot = text;
     _debounce = Timer(
@@ -211,6 +248,7 @@ class BCodeController extends CodeController {
   }
 
   Future<void> _runHighlight(String snapshot, Mode mode) async {
+    if (plainTextFallback) return;
     List<HighlightRun>? runs;
     try {
       runs = await _request(snapshot, mode);

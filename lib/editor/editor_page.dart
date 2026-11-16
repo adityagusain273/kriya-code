@@ -1932,6 +1932,7 @@ class _StatusBarState extends State<_StatusBar> {
 
     final stats = _stats ?? _DocumentStats.of(text);
     final langName = widget.langName;
+    final plainText = tab.controller.plainTextFallback;
     final cs = Theme.of(context).colorScheme;
 
     return Container(
@@ -1947,6 +1948,21 @@ class _StatusBarState extends State<_StatusBar> {
             Text('Ln $line, Col $col'),
             const SizedBox(width: 8),
             Text('${stats.lineCount} lines'),
+            if (plainText) ...[
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Large file: syntax colouring is off so typing stays '
+                    'responsive.',
+                child: Row(
+                  children: [
+                    Icon(Icons.low_priority_rounded,
+                        size: 13, color: cs.onSurface.withValues(alpha: 0.7)),
+                    const SizedBox(width: 3),
+                    const Text('Plain text'),
+                  ],
+                ),
+              ),
+            ],
             const Spacer(),
             Text(langName),
             const SizedBox(width: 8),
