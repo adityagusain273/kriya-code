@@ -889,20 +889,27 @@ class _EditorPageState extends State<EditorPage>
       tab.controller.diagnostics = combined;
     }
     if (mounted && runner.lastError != null) {
+      final isConfigError = runner.lastError!.contains('Settings');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(runner.lastError!, maxLines: 2, overflow: TextOverflow.ellipsis),
           backgroundColor: Theme.of(context).colorScheme.error,
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
-            label: 'Settings',
+            label: isConfigError ? 'Settings' : 'Output',
             textColor: Colors.white,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SettingsPage(store: sl<SettingsStore>()),
-              ),
-            ),
+            onPressed: () {
+              if (isConfigError) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SettingsPage(store: sl<SettingsStore>()),
+                  ),
+                );
+              } else {
+                ConsolePanel.show(context, initialIndex: ConsolePanel.tabOutput);
+              }
+            },
           ),
         ),
       );
