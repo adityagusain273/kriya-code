@@ -22,15 +22,15 @@ class _DefaultContext implements ExtensionContext {
 
 class ExtensionRegistry {
   final _extensions = <BCodeExtension>[];
-  late LanguageRegistry languageRegistry;
-  late CommandRegistry commandRegistry;
-  late BCodeEventBus eventBus;
+
+  // Created eagerly rather than by loadAll: HighlightService is built before
+  // the deferred load finishes and must hold the instance loadAll fills.
+  LanguageRegistry languageRegistry = LanguageRegistry();
+  CommandRegistry commandRegistry = CommandRegistry();
+  BCodeEventBus eventBus = BCodeEventBus();
   late FsService fsService;
 
   Future<void> loadAll(List<BCodeExtension> extensions) async {
-    languageRegistry = LanguageRegistry();
-    commandRegistry = CommandRegistry();
-    eventBus = BCodeEventBus();
     fsService = sl.get<FsService>();
     for (final ext in extensions) {
       try {

@@ -80,6 +80,13 @@ Future<void> main() async {
       return;
     }
     runApp(const RootWidget());
+    // Cold start: the first frame draws the shell, then the native git library
+    // and the installed-extension scan run. Both were on the critical path.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_finishBootstrap().catchError((Object error) {
+        CrashReporter.recordZoneError(error, StackTrace.current);
+      }));
+    });
   }, (error, stack) {
     CrashReporter.recordZoneError(error, stack);
   });
@@ -391,10 +398,6 @@ Future<void> _bootstrap() async {
   );
   sl.registerSingleton<GitHubApiClient>(GitHubApiClient(client: githubHttp));
 
-  try {
-    await git.PlatformSpecific.initialize();
-  } catch (_) {}
-
   sl.registerSingleton<GitService>(GitService());
   sl.registerSingleton<GitIdentityProvider>(GitIdentityProvider());
   sl.registerSingleton<RunnerService>(
@@ -402,7 +405,6 @@ Future<void> _bootstrap() async {
   );
 
   final registry = ExtensionRegistry();
-  await registry.loadAll(builtinExtensions);
   sl.registerSingleton<ExtensionRegistry>(registry);
   sl.registerSingleton<LanguageRegistry>(registry.languageRegistry);
 
@@ -418,11 +420,6 @@ Future<void> _bootstrap() async {
     ..register(JsonPack())
     ..register(MarkdownPack());
   final extensionLoader = ExtensionLoader(engine: engine);
-  try {
-    extensionLoader.activate(await extensionInstaller.installed());
-  } catch (e) {
-    debugPrint('Extension loading failed: $e');
-  }
   sl.registerSingleton<ExtensionLoader>(extensionLoader);
   sl.registerSingleton<HighlightEngine>(engine);
 
@@ -446,6 +443,36 @@ Future<void> _bootstrap() async {
   unawaited(adService.initialize());
   sl.registerSingleton<ServerMonitor>(ServerMonitor(prefs));
 }
+
+/// Startup work the first frame does not need.
+///
+/// `git.PlatformSpecific.initialize()` dlopens the bundled libgit2, and the
+/// installed-extension scan walks the extensions directory and parses every
+/// manifest. Neither is on the path to drawing the editor, so they run after
+/// it instead of before `runApp`.
+///
+/// The language registry is deliberately not rebuilt here: consumers captured
+/// it at construction, so `loadAll` fills the instance they already hold.
+Future<void> _finishBootstrap() async {
+  try {
+    await git.PlatformSpecific.initialize();
+  } catch (error) {
+    if (kDebugMode) debugPrint('git2dart init failed: $error');
+  }
+
+  try {
+    await sl<ExtensionRegistry>().loadAll(builtinExtensions);
+  } catch (error, stack) {
+    CrashReporter.recordZoneError(error, stack);
+  }
+
+  try {
+    sl<ExtensionLoader>().activate(await sl<ExtensionInstaller>().installed());
+  } catch (e) {
+    debugPrint('Extension loading failed: $e');
+  }
+}
+
 Future<void> _execSelfTest(String workspaceRoot) async {
   const marker = 'BCODE_EXEC_SELFTEST';
 

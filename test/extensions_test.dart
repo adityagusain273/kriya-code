@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:b_code/core/di.dart';
 import 'package:b_code/core/result.dart';
 import 'package:b_code/plugins/builtin/builtin_extensions.dart';
 import 'package:b_code/plugins/host/extension_registry.dart';
@@ -41,6 +42,25 @@ void main() {
       }
       final ids = registry.languageRegistry.all.map((c) => c.id).toSet();
       expect(ids, containsAll(['python', 'c', 'cpp', 'java']));
+    });
+
+    test('loadAll fills the registry consumers already hold', () async {
+      final temp = Directory.systemTemp.createTempSync('bcode_registry');
+      addTearDown(() => temp.deleteSync(recursive: true));
+      sl.reset();
+      sl.registerSingleton<FsService>(FsService(temp.path));
+      addTearDown(sl.reset);
+
+      final registry = ExtensionRegistry();
+      // HighlightService is built before the deferred load runs, so it holds
+      // this instance and loadAll must fill it rather than swap it out.
+      final held = registry.languageRegistry;
+      expect(held.all, isEmpty);
+
+      await registry.loadAll(builtinExtensions);
+
+      expect(registry.languageRegistry, same(held));
+      expect(held.byFileName('main.py')?.id, 'python');
     });
 
     test('language resolution by filename', () {
