@@ -1146,6 +1146,7 @@ class _EditorPageState extends State<EditorPage>
 
   LiveServer? _liveServer;
   bool _showSplitPreview = false;
+  bool _showLandscapeShortcuts = false;
   double _splitRatio = 0.55;
   final GlobalKey<SplitPreviewPaneState> _previewPaneKey = GlobalKey<SplitPreviewPaneState>();
 
@@ -1564,6 +1565,7 @@ class _EditorPageState extends State<EditorPage>
     final tabs = context.watch<TabManager>();
     final tab = tabs.active;
     _syncTabController(tabs.tabs.length);
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return PopScope(
       canPop: false,
@@ -1874,16 +1876,21 @@ class _EditorPageState extends State<EditorPage>
             _StatusBar(
               tab: tab,
               langName: _langName(tab.languageId, tab.name.contains('.') ? tab.name.split('.').last.toLowerCase() : ''),
-              showShortcuts: sl<SettingsStore>().showShortcutBar,
-              onToggleShortcuts: () =>
-                  sl<SettingsStore>().showShortcutBar = !sl<SettingsStore>().showShortcutBar,
+              showShortcuts: isLandscape ? _showLandscapeShortcuts : sl<SettingsStore>().showShortcutBar,
+              onToggleShortcuts: () {
+                if (isLandscape) {
+                  setState(() => _showLandscapeShortcuts = !_showLandscapeShortcuts);
+                } else {
+                  sl<SettingsStore>().showShortcutBar = !sl<SettingsStore>().showShortcutBar;
+                }
+              },
             ),
           if (tab != null)
             AutocompleteBar(
               engine: _autocomplete,
               controller: tab.controller,
             ),
-          if (tab != null && sl<SettingsStore>().showShortcutBar)
+          if (tab != null && (isLandscape ? _showLandscapeShortcuts : sl<SettingsStore>().showShortcutBar))
             FutureBuilder<int>(
               future: _indentFutureFor(tab.languageId),
               builder: (context, snapshot) => EditorShortcutBar(
@@ -1891,7 +1898,13 @@ class _EditorPageState extends State<EditorPage>
                 indentWidth: snapshot.data ?? 2,
                 onFind: () => setState(() => _showFind = true),
                 onSave: tabs.save,
-                onToggle: () => sl<SettingsStore>().showShortcutBar = false,
+                onToggle: () {
+                  if (isLandscape) {
+                    setState(() => _showLandscapeShortcuts = false);
+                  } else {
+                    sl<SettingsStore>().showShortcutBar = false;
+                  }
+                },
                 languageId: tab.languageId,
               ),
             ),
