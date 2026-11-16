@@ -37,7 +37,6 @@ import 'find_replace.dart';
 import 'preview/preview_page.dart';
 import 'preview/preview_server.dart';
 import 'preview/live_server.dart';
-import 'preview/split_preview_pane.dart';
 import 'recent_files_service.dart';
 import 'tab_manager.dart';
 import '../workspace/import_actions.dart';
@@ -1145,10 +1144,6 @@ class _EditorPageState extends State<EditorPage>
       PreviewServer(sl<FsService>().rootPath);
 
   LiveServer? _liveServer;
-  bool _showSplitPreview = false;
-  bool _showLandscapeShortcuts = false;
-  double _splitRatio = 0.55;
-  final GlobalKey<SplitPreviewPaneState> _previewPaneKey = GlobalKey<SplitPreviewPaneState>();
 
   bool _isPreviewable(String? path) {
     if (path == null) return false;
@@ -1166,20 +1161,6 @@ class _EditorPageState extends State<EditorPage>
       return 'index.html';
     }
     return '';
-  }
-
-  Future<void> _toggleSplitPreview() async {
-    if (_showSplitPreview) {
-      setState(() => _showSplitPreview = false);
-      return;
-    }
-    if (_liveServer?.isRunning != true) {
-      _liveServer = LiveServer(sl<FsService>().rootPath);
-      await _liveServer!.start();
-    }
-    if (mounted) {
-      setState(() => _showSplitPreview = true);
-    }
   }
 
   Future<void> _openPreview() async {
@@ -1206,31 +1187,31 @@ class _EditorPageState extends State<EditorPage>
     if (_liveServer?.isRunning == true) {
       await _liveServer!.stop();
       if (mounted) {
-        setState(() => _showSplitPreview = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Live Server stopped.'),
             duration: Duration(seconds: 2),
           ),
         );
+        setState(() {});
       }
       return;
     }
     _liveServer = LiveServer(sl<FsService>().rootPath);
     final url = await _liveServer!.start();
     if (mounted) {
-      setState(() => _showSplitPreview = true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Live Server running at $url'),
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
-            label: 'Full screen',
+            label: 'Open',
             textColor: Colors.white,
             onPressed: () => _openLivePreview(),
           ),
         ),
       );
+      setState(() {});
     }
   }
 
@@ -1245,155 +1226,6 @@ class _EditorPageState extends State<EditorPage>
           baseUrl: url,
           relativePath: '',
           title: rel.isEmpty ? 'Live Server' : rel,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSplitEditorView(EditorTab tab) {
-    final previewRel = _currentPreviewRelPath();
-    final url = _liveServer?.urlFor(previewRel);
-    if (url == null) {
-      return Focus(
-        onKeyEvent: _onKeyEvent,
-        child: _buildCodeView(tab),
-      );
-    }
-
-    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 100;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final codeWidget = Focus(
-          onKeyEvent: _onKeyEvent,
-          child: _buildCodeView(tab),
-        );
-
-        final previewWidget = SplitPreviewPane(
-          key: _previewPaneKey,
-          baseUrl: url,
-          relativePath: previewRel,
-          title: previewRel.isNotEmpty ? previewRel : tab.name,
-          onClose: () => setState(() => _showSplitPreview = false),
-          onExpand: _openLivePreview,
-        );
-
-        if (isLandscape) {
-          return Row(
-            children: [
-              Expanded(
-                flex: (_splitRatio * 1000).toInt(),
-                child: codeWidget,
-              ),
-              _buildSplitDivider(isVertical: false, totalSize: constraints.maxWidth),
-              Expanded(
-                flex: ((1 - _splitRatio) * 1000).toInt(),
-                child: previewWidget,
-              ),
-            ],
-          );
-        }
-
-        if (isKeyboardOpen) {
-          return Column(
-            children: [
-              Expanded(child: codeWidget),
-              _buildDockedPreviewBar(previewRel.isNotEmpty ? previewRel : tab.name),
-            ],
-          );
-        }
-
-        return Column(
-          children: [
-            Expanded(
-              flex: (_splitRatio * 1000).toInt(),
-              child: codeWidget,
-            ),
-            _buildSplitDivider(isVertical: true, totalSize: constraints.maxHeight),
-            Expanded(
-              flex: ((1 - _splitRatio) * 1000).toInt(),
-              child: previewWidget,
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildDockedPreviewBar(String fileName) {
-    return Container(
-      height: 32,
-      color: const Color(0xFF1E1E1E),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: const BoxDecoration(
-              color: Color(0xFF4CAF50),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Live Preview ($fileName)',
-            style: const TextStyle(fontSize: 11, color: Colors.white70),
-          ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.refresh, size: 14),
-            tooltip: 'Reload',
-            padding: const EdgeInsets.all(4),
-            constraints: const BoxConstraints(),
-            onPressed: () => _previewPaneKey.currentState?.reload(),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.close, size: 14),
-            tooltip: 'Close preview',
-            padding: const EdgeInsets.all(4),
-            constraints: const BoxConstraints(),
-            onPressed: () => setState(() => _showSplitPreview = false),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSplitDivider({required bool isVertical, required double totalSize}) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onVerticalDragUpdate: isVertical
-          ? (details) {
-              if (totalSize <= 0) return;
-              setState(() {
-                _splitRatio = (_splitRatio + details.delta.dy / totalSize).clamp(0.20, 0.80);
-              });
-            }
-          : null,
-      onHorizontalDragUpdate: !isVertical
-          ? (details) {
-              if (totalSize <= 0) return;
-              setState(() {
-                _splitRatio = (_splitRatio + details.delta.dx / totalSize).clamp(0.20, 0.80);
-              });
-            }
-          : null,
-      child: Container(
-        width: isVertical ? double.infinity : 12,
-        height: isVertical ? 12 : double.infinity,
-        color: const Color(0xFF161616),
-        child: Center(
-          child: Container(
-            width: isVertical ? 38 : 4,
-            height: isVertical ? 4 : 38,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.35),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
         ),
       ),
     );
@@ -1565,7 +1397,6 @@ class _EditorPageState extends State<EditorPage>
     final tabs = context.watch<TabManager>();
     final tab = tabs.active;
     _syncTabController(tabs.tabs.length);
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
 
     return PopScope(
       canPop: false,
@@ -1589,18 +1420,10 @@ class _EditorPageState extends State<EditorPage>
           style: const TextStyle(fontSize: 16),
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-              _showSplitPreview ? Icons.splitscreen_rounded : Icons.splitscreen_outlined,
-              color: _showSplitPreview ? const Color(0xFF64B5F6) : null,
-            ),
-            tooltip: _showSplitPreview ? 'Close live preview' : 'Split live preview',
-            onPressed: _toggleSplitPreview,
-          ),
           if (tab != null && _isPreviewable(tab.filePath))
             IconButton(
               icon: const Icon(Icons.open_in_browser_rounded),
-              tooltip: 'Preview full screen',
+              tooltip: 'Preview in browser',
               onPressed: _openPreview,
             ),
           if (tab != null)
@@ -1857,12 +1680,10 @@ class _EditorPageState extends State<EditorPage>
                     onExtractArchive: _importAndExtractArchive,
                     onExportProject: _exportProject,
                   )
-                : (_showSplitPreview && _liveServer?.isRunning == true
-                    ? _buildSplitEditorView(tab)
-                    : Focus(
-                        onKeyEvent: _onKeyEvent,
-                        child: _buildCodeView(tab),
-                      )),
+                : Focus(
+                    onKeyEvent: _onKeyEvent,
+                    child: _buildCodeView(tab),
+                  ),
           ),
           if (tab != null && _diagnostics.isNotEmpty)
             DiagnosticsBar(
@@ -1876,21 +1697,16 @@ class _EditorPageState extends State<EditorPage>
             _StatusBar(
               tab: tab,
               langName: _langName(tab.languageId, tab.name.contains('.') ? tab.name.split('.').last.toLowerCase() : ''),
-              showShortcuts: isLandscape ? _showLandscapeShortcuts : sl<SettingsStore>().showShortcutBar,
-              onToggleShortcuts: () {
-                if (isLandscape) {
-                  setState(() => _showLandscapeShortcuts = !_showLandscapeShortcuts);
-                } else {
-                  sl<SettingsStore>().showShortcutBar = !sl<SettingsStore>().showShortcutBar;
-                }
-              },
+              showShortcuts: sl<SettingsStore>().showShortcutBar,
+              onToggleShortcuts: () =>
+                  sl<SettingsStore>().showShortcutBar = !sl<SettingsStore>().showShortcutBar,
             ),
           if (tab != null)
             AutocompleteBar(
               engine: _autocomplete,
               controller: tab.controller,
             ),
-          if (tab != null && (isLandscape ? _showLandscapeShortcuts : sl<SettingsStore>().showShortcutBar))
+          if (tab != null && sl<SettingsStore>().showShortcutBar)
             FutureBuilder<int>(
               future: _indentFutureFor(tab.languageId),
               builder: (context, snapshot) => EditorShortcutBar(
@@ -1898,13 +1714,7 @@ class _EditorPageState extends State<EditorPage>
                 indentWidth: snapshot.data ?? 2,
                 onFind: () => setState(() => _showFind = true),
                 onSave: tabs.save,
-                onToggle: () {
-                  if (isLandscape) {
-                    setState(() => _showLandscapeShortcuts = false);
-                  } else {
-                    sl<SettingsStore>().showShortcutBar = false;
-                  }
-                },
+                onToggle: () => sl<SettingsStore>().showShortcutBar = false,
                 languageId: tab.languageId,
               ),
             ),
