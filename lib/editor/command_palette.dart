@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 
 import '../core/di.dart';
 import '../execution/console_panel.dart';
-import '../execution/ui/downloads_page.dart';
 import '../github/auth/token_store.dart';
 import '../github/ui/cloud_build_sheet.dart';
 import '../github/ui/github_page.dart';
@@ -260,11 +259,14 @@ class _CommandPaletteState extends State<CommandPalette> {
         },
       ),
       CommandPaletteAction(
-        label: 'Downloads',
+        label: 'Language Runtimes',
         category: 'Tools',
-        icon: Icons.download,
+        icon: Icons.memory_outlined,
         onExecute: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadsPage()));
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const ExtensionsPage(initialTab: 1)));
         },
       ),
       CommandPaletteAction(

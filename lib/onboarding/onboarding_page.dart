@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/di.dart';
+import '../plugins/host/extension_install_store.dart';
 import '../workspace/fs_service.dart';
 import '../editor/tab_manager.dart';
 import '../editor/editor_page.dart';
@@ -85,6 +86,25 @@ class _OnboardingPageState extends State<OnboardingPage>
   void _skip() => _finish();
 
   void _finish() {
+    final installStore = sl<ExtensionInstallStore>();
+    const langToExtId = <String, String>{
+      'python': 'bcode.lang.python',
+      'java': 'bcode.lang.java',
+      'c': 'bcode.lang.c',
+      'cpp': 'bcode.lang.cpp',
+      'javascript': 'bcode.lang.javascript',
+      'typescript': 'bcode.lang.typescript',
+      'html': 'bcode.lang.html',
+      'css': 'bcode.lang.css',
+      'json': 'bcode.lang.json',
+      'markdown': 'bcode.lang.markdown',
+    };
+    for (final lang in _selectedLanguages) {
+      final extId = langToExtId[lang];
+      if (extId != null) {
+        installStore.install(extId);
+      }
+    }
     sl<SettingsStore>().onboardingComplete = true;
     if (!mounted) return;
     Navigator.of(context).pushReplacement(

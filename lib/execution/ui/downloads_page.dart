@@ -7,16 +7,16 @@ import '../../monetization/runtime_unlock_flow.dart';
 import '../runtime_catalog.dart';
 import '../runtime_download_service.dart';
 
-class DownloadsPage extends StatefulWidget {
+class RuntimesView extends StatefulWidget {
   final String? focusRuntimeId;
 
-  const DownloadsPage({super.key, this.focusRuntimeId});
+  const RuntimesView({super.key, this.focusRuntimeId});
 
   @override
-  State<DownloadsPage> createState() => _DownloadsPageState();
+  State<RuntimesView> createState() => _RuntimesViewState();
 }
 
-class _DownloadsPageState extends State<DownloadsPage> {
+class _RuntimesViewState extends State<RuntimesView> {
   RuntimeDownloadService get _downloads => sl<RuntimeDownloadService>();
 
   final Map<String, RuntimePreview?> _previews = {};
@@ -44,8 +44,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
 
   void _onChange() => setState(() {});
 
-  /// Asks the repository what each runtime currently is, so the list can show a
-  /// version and a download size before anything is fetched.
   Future<void> _loadPreviews() async {
     for (final spec in runtimeCatalog.values) {
       if (_previews.containsKey(spec.runtimeId)) continue;
@@ -78,35 +76,46 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final entitlements = sl<EntitlementService>();
     final isPro = entitlements.isRuntimeUnlocked('');
 
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        if (!isPro)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            child: MissionBanner(
+              onGoAdFree: () async {
+                final activated = await showProPaywallSheet(context);
+                if (activated && mounted) setState(() {});
+              },
+            ),
+          ),
+        for (final spec in specs)
+          _DownloadCard(
+            spec: spec,
+            state: _downloads.stateFor(spec.runtimeId),
+            installed: _downloads.isInstalled(spec.runtimeId),
+            unlocked: entitlements.isRuntimeUnlocked(spec.runtimeId),
+            onDownload: () => _requestDownload(spec),
+            onCancel: () => _downloads.cancel(spec.runtimeId),
+            onDelete: () => _downloads.remove(spec.runtimeId),
+            sizeLabel: _sizeLabel,
+            preview: _previews[spec.runtimeId],
+          ),
+      ],
+    );
+  }
+}
+
+class DownloadsPage extends StatelessWidget {
+  final String? focusRuntimeId;
+
+  const DownloadsPage({super.key, this.focusRuntimeId});
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Downloads')),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        children: [
-          if (!isPro)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-              child: MissionBanner(
-                onGoAdFree: () async {
-                  final activated = await showProPaywallSheet(context);
-                  if (activated && mounted) setState(() {});
-                },
-              ),
-            ),
-          for (final spec in specs)
-            _DownloadCard(
-              spec: spec,
-              state: _downloads.stateFor(spec.runtimeId),
-              installed: _downloads.isInstalled(spec.runtimeId),
-              unlocked: entitlements.isRuntimeUnlocked(spec.runtimeId),
-              onDownload: () => _requestDownload(spec),
-              onCancel: () => _downloads.cancel(spec.runtimeId),
-              onDelete: () => _downloads.remove(spec.runtimeId),
-              sizeLabel: _sizeLabel,
-              preview: _previews[spec.runtimeId],
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Language Runtimes')),
+      body: RuntimesView(focusRuntimeId: focusRuntimeId),
     );
   }
 }

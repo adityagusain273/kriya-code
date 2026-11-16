@@ -155,13 +155,24 @@ const _extensions = <_ExtUi>[
 ];
 
 class ExtensionsPage extends StatefulWidget {
-  const ExtensionsPage({super.key});
+  final String? initialQuery;
+  final int initialTab;
+  final String? focusRuntimeId;
+
+  const ExtensionsPage({
+    super.key,
+    this.initialQuery,
+    this.initialTab = 0,
+    this.focusRuntimeId,
+  });
 
   @override
   State<ExtensionsPage> createState() => _ExtensionsPageState();
 }
 
-class _ExtensionsPageState extends State<ExtensionsPage> {
+class _ExtensionsPageState extends State<ExtensionsPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   ExtensionInstallStore get _store => sl<ExtensionInstallStore>();
   RuntimeDownloadService get _downloads => sl<RuntimeDownloadService>();
 
@@ -226,12 +237,22 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 1),
+    );
+    if (widget.initialQuery != null) {
+      _query = widget.initialQuery!;
+      _searchController.text = widget.initialQuery!;
+    }
     _refreshInstalled();
     _refreshCatalog();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -274,12 +295,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
   }
 
   void _openDownloads({String? runtimeId}) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => DownloadsPage(focusRuntimeId: runtimeId),
-      ),
-    );
+    _tabController.animateTo(1);
   }
 
   Future<void> _refreshInstalled() async {
@@ -756,13 +772,15 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Extensions'),
+        title: const Text('Extensions & Runtimes'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.extension_outlined), text: 'Extensions'),
+            Tab(icon: Icon(Icons.memory_outlined), text: 'Runtimes'),
+          ],
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.download_rounded),
-            tooltip: 'Downloads',
-            onPressed: _openDownloads,
-          ),
           PopupMenuButton<String>(
             tooltip: 'Extension actions',
             onSelected: (value) {
@@ -793,10 +811,13 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
           ),
         ],
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          if (_busy || _loadingCatalog)
-            const LinearProgressIndicator(minHeight: 2),
+          Column(
+            children: [
+              if (_busy || _loadingCatalog)
+                const LinearProgressIndicator(minHeight: 2),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: TextField(
@@ -941,7 +962,10 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
           ),
         ],
       ),
-    );
+      RuntimesView(focusRuntimeId: widget.focusRuntimeId),
+    ],
+  ),
+);
   }
 
   Widget _bundledTile(_ExtUi ext) {
@@ -985,7 +1009,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
               if (ext.runtimeId != null)
                 const PopupMenuItem(
                   value: 'downloads',
-                  child: Text('Runtime downloads'),
+                  child: Text('Language Runtime'),
                 ),
               const PopupMenuItem(
                 value: 'uninstall',

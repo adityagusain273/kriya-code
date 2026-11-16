@@ -18,7 +18,6 @@ import '../execution/local/local_runner.dart';
 import '../execution/models.dart';
 import '../execution/runner_service.dart';
 import '../execution/termux_runner.dart';
-import '../execution/ui/downloads_page.dart';
 import '../execution/ui/runtime_download_sheet.dart';
 import '../github/ui/github_page.dart';
 import '../lsp/autocomplete_engine.dart';
@@ -28,6 +27,7 @@ import '../lsp/runtime_error_parser.dart';
 import '../plugins/api/run_config.dart';
 import '../plugins/host/extension_install_store.dart';
 import '../plugins/host/language_registry.dart';
+import '../plugins/packages/extension_installer.dart';
 import '../plugins/ui/extensions_page.dart';
 import '../servers/server_panel.dart';
 import '../settings/settings_page.dart';
@@ -814,7 +814,141 @@ class _EditorPageState extends State<EditorPage>
     'html': 'bcode.lang.html',
     'css': 'bcode.lang.css',
     'json': 'bcode.lang.json',
+    'markdown': 'bcode.lang.markdown',
+    'rust': 'com.bcode.extension.rust',
+    'go': 'com.bcode.extension.go',
+    'kotlin': 'com.bcode.extension.kotlin',
   };
+
+  String _displayNameForLang(String langId) {
+    switch (langId) {
+      case 'python':
+        return 'Python';
+      case 'java':
+        return 'Java';
+      case 'c':
+        return 'C';
+      case 'cpp':
+        return 'C++';
+      case 'javascript':
+        return 'JavaScript';
+      case 'typescript':
+        return 'TypeScript';
+      case 'html':
+        return 'HTML';
+      case 'css':
+        return 'CSS';
+      case 'json':
+        return 'JSON';
+      case 'markdown':
+        return 'Markdown';
+      case 'rust':
+        return 'Rust';
+      case 'go':
+        return 'Go';
+      case 'kotlin':
+        return 'Kotlin';
+      default:
+        return langId.isNotEmpty
+            ? '${langId[0].toUpperCase()}${langId.substring(1)}'
+            : 'Language';
+    }
+  }
+
+  Future<void> _showExtensionRequiredSheet(
+    BuildContext context, {
+    required String langName,
+    required String extId,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.extension_outlined,
+                          color: cs.primary, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$langName Extension Required',
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Install the extension to run $langName code.',
+                            style: TextStyle(
+                                fontSize: 13, color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Code execution for $langName requires its native extension pack for language support and toolchain configuration.',
+                  style: TextStyle(
+                      fontSize: 14, color: cs.onSurfaceVariant, height: 1.4),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.download_rounded, size: 18),
+                        label: const Text('Open Extensions'),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  ExtensionsPage(initialQuery: langName),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _run() async {
     await _runWithArgs(null);
   }
@@ -829,25 +963,36 @@ class _EditorPageState extends State<EditorPage>
 
     final langId = tab.languageId ?? '';
     final extId = _langToExtId[langId];
-    // Language packs are bundled Dart, not downloads, so a missing install flag
-    // is bookkeeping, not a reason to refuse. The old gate told a first-run user
-    // to install the pack they had just chosen in onboarding.
-    if (extId != null && !sl<ExtensionInstallStore>().isInstalled(extId)) {
-      sl<ExtensionInstallStore>().install(extId);
+    if (extId != null) {
+      final isInstalled = extId.startsWith('bcode.')
+          ? sl<ExtensionInstallStore>().isInstalled(extId)
+          : (sl.isRegistered<ExtensionInstaller>() &&
+              (await sl<ExtensionInstaller>().installed())
+                  .any((e) => e.manifest.id == extId));
+
+      if (!isInstalled) {
+        if (!mounted) return;
+        final langName = _displayNameForLang(langId);
+        await _showExtensionRequiredSheet(context,
+            langName: langName, extId: extId);
+        return;
+      }
     }
 
     final online = await NetworkHelper.isOnline;
     if (!online && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('No internet connection. Code will run offline if a runtime is installed.'),
+          content: const Text(
+              'No internet connection. Code will run offline if a runtime is installed.'),
           duration: const Duration(seconds: 3),
           action: SnackBarAction(
-            label: 'Downloads',
+            label: 'Runtimes',
             textColor: Colors.white,
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const DownloadsPage()),
+              MaterialPageRoute(
+                  builder: (_) => const ExtensionsPage(initialTab: 1)),
             ),
           ),
         ),
@@ -1459,8 +1604,10 @@ class _EditorPageState extends State<EditorPage>
                       MaterialPageRoute(builder: (_) => const ExtensionsPage()));
                   break;
                 case 'downloads':
-                  await Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const DownloadsPage()));
+                  await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const ExtensionsPage(initialTab: 1)));
                   break;
                 case 'settings':
                   await Navigator.push(context,
