@@ -45,6 +45,17 @@ class FsService {
 
   bool _showHidden = false;
 
+  /// Build/dependency directories that bury the tree and make listing a phone
+  /// project slow. They stay reachable from the terminal and from search, which
+  /// keeps its own ignore list.
+  static const ignoredDirectoryNames = {
+    'node_modules',
+    'build',
+    'dist',
+    '.cache',
+    '.next',
+  };
+
   /// Whether [list] includes dotfiles. `.git` stays hidden either way: it is
   /// large, never opened in the editor, and floods the tree.
   bool get showHidden => _showHidden;
@@ -141,6 +152,7 @@ class FsService {
     final entries = <FsEntry>[];
     await for (final entity in dir.list(followLinks: false)) {
       final name = p.basename(entity.path);
+      if (entity is Directory && ignoredDirectoryNames.contains(name)) continue;
       if (name.startsWith('.') && (!_showHidden || name == '.git')) continue;
       entries.add(FsEntry(
         path: entity.path,

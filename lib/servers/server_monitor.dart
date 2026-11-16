@@ -18,10 +18,29 @@ class ServerMonitor extends ChangeNotifier {
   Timer? _probeTimer;
   Timer? _initialTimer;
   bool _disposed = false;
+  int _pollingRefs = 0;
+
+  /// Polling is off until a screen that shows servers asks for it. Ten port
+  /// probes every ten seconds on app launch is pure battery cost when the user
+  /// is only editing.
+  bool get isPolling => _probeTimer != null;
 
   ServerMonitor(this._prefs) {
     _load();
+  }
+
+  void startPolling() {
+    if (_disposed) return;
+    _pollingRefs++;
+    if (_pollingRefs > 1) return;
     _startProbing();
+  }
+
+  void stopPolling() {
+    if (_pollingRefs == 0) return;
+    _pollingRefs--;
+    if (_pollingRefs > 0) return;
+    _stopProbing();
   }
 
   List<DevServer> get servers => _servers.values.toList()
@@ -71,8 +90,17 @@ class ServerMonitor extends ChangeNotifier {
   }
 
   void _startProbing() {
+    _probeTimer?.cancel();
+    _initialTimer?.cancel();
     _probeTimer = Timer.periodic(_probeInterval, (_) => _probeAll());
     _initialTimer = Timer(const Duration(seconds: 2), _initialProbe);
+  }
+
+  void _stopProbing() {
+    _probeTimer?.cancel();
+    _probeTimer = null;
+    _initialTimer?.cancel();
+    _initialTimer = null;
   }
 
   Future<void> _initialProbe() async {
@@ -136,8 +164,7 @@ class ServerMonitor extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _probeTimer?.cancel();
-    _initialTimer?.cancel();
+    _stopProbing();
     super.dispose();
   }
 }

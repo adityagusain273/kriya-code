@@ -66,6 +66,31 @@ void main() {
     expect(names, isNot(contains('.git')));
   });
 
+  test('build and dependency directories stay out of the tree', () async {
+    for (final name in [
+      'node_modules',
+      'build',
+      'dist',
+      '.cache',
+      '.next',
+      'src',
+    ]) {
+      Directory('${root.path}/$name').createSync();
+    }
+
+    final names = (await fs.list('.')).map((e) => e.name);
+    expect(names, contains('src'));
+    expect(names, isNot(contains('node_modules')));
+    expect(names, isNot(contains('build')));
+    expect(names, isNot(contains('dist')));
+
+    // The dot-directories stay hidden even when dotfiles are opted in.
+    fs.showHidden = true;
+    final visible = (await fs.list('.')).map((e) => e.name);
+    expect(visible, isNot(contains('.cache')));
+    expect(visible, isNot(contains('.next')));
+  });
+
   test('binary files are refused with a readable message', () async {
     File('${root.path}/image.png').writeAsBytesSync([0x89, 0x50, 0x4E, 0x47, 0]);
 

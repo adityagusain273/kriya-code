@@ -161,6 +161,11 @@ class StaticFileHandler {
 
       final target = await _resolveTarget(request.uri.path);
       if (target == null) {
+        if ((request.uri.path == '/' || request.uri.path == '/index.html' || request.uri.path.isEmpty) &&
+            transformHtml != null) {
+          await _serveEmptyFallback(request, port: port);
+          return;
+        }
         await _fail(request, HttpStatus.notFound);
         return;
       }
@@ -267,6 +272,51 @@ class StaticFileHandler {
       HttpHeaders.locationHeader,
       params.isEmpty ? path : Uri(path: path, queryParameters: params).toString(),
     );
+    await response.close();
+  }
+
+  Future<void> _serveEmptyFallback(HttpRequest request, {required int port}) async {
+    final response = request.response;
+    response.statusCode = HttpStatus.ok;
+    response.headers.contentType = ContentType.html;
+
+    const html = '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>B Code Live Server</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #121212; color: #e0e0e0; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; text-align: center; }
+    .card { background: #1e1e1e; border: 1px solid #333; border-radius: 12px; padding: 28px 20px; max-width: 380px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+    .badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(76, 175, 80, 0.15); color: #4caf50; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 20px; margin-bottom: 16px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #4caf50; }
+    h2 { margin: 0 0 10px 0; font-size: 18px; color: #fff; }
+    p { margin: 8px 0; font-size: 14px; line-height: 1.5; color: #aaa; }
+    code { background: #2a2a2a; color: #ffb74d; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge"><span class="dot"></span> Live Server Active</div>
+    <h2>No index.html detected</h2>
+    <p>Create an <code>index.html</code> or open an HTML file in the editor.</p>
+    <p style="font-size: 12px; color: #777;">This preview updates live as you edit and save files.</p>
+  </div>
+</body>
+</html>''';
+
+    final inject = transformHtml;
+    if (inject == null) {
+      response.write(html);
+    } else {
+      final nonce = _nonce();
+      response.headers.set(
+        'Content-Security-Policy',
+        _policy(port: port, nonce: nonce),
+      );
+      response.write(inject(html, nonce));
+    }
     await response.close();
   }
 

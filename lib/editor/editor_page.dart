@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show File;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
@@ -36,6 +37,7 @@ import 'find_replace.dart';
 import 'preview/preview_page.dart';
 import 'preview/preview_server.dart';
 import 'preview/live_server.dart';
+import 'preview/split_preview_pane.dart';
 import 'recent_files_service.dart';
 import 'tab_manager.dart';
 import '../workspace/import_actions.dart';
@@ -265,8 +267,12 @@ class _EditorPageState extends State<EditorPage>
 
     final controller = tab.controller;
     final offset = controller.selection.baseOffset;
+    // Lazy placeholders have no buffer; reading every open tab here would undo
+    // the session-restore saving. Loaded tabs cover the common same-file and
+    // recently-open cases.
     final open = sl<TabManager>()
         .tabs
+        .where((t) => t.isLoaded)
         .map((t) => DocumentSnapshot(t.filePath, t.controller.text))
         .toList();
 
@@ -335,16 +341,23 @@ class _EditorPageState extends State<EditorPage>
     tab.controller.selection = TextSelection.collapsed(offset: offset);
   }
 
-  void _onTabTapped() {
+  Future<void> _onTabTapped() async {
     if (_tabController!.indexIsChanging) return;
     final manager = sl<TabManager>();
     final i = _tabController!.index;
     if (i >= 0 && i < manager.tabs.length && i != manager.activeIndex) {
-      manager.activate(i);
+      await manager.activate(i);
+      // A placeholder can fail to load (deleted file, binary, oversize); put the
+      // strip back on the tab that is actually loaded.
+      if (mounted && manager.activeIndex != i && manager.activeIndex >= 0) {
+        _tabController!.index = manager.activeIndex;
+      }
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _revealPendingMatch();
-    });
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _revealPendingMatch();
+      });
+    }
   }
 
   @override
@@ -374,7 +387,9 @@ class _EditorPageState extends State<EditorPage>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
-      unawaited(sl<TabManager>().saveAll());
+      final tabs = sl<TabManager>();
+      unawaited(tabs.saveAll());
+      unawaited(tabs.flushSession());
     }
   }
 
@@ -1130,11 +1145,40 @@ class _EditorPageState extends State<EditorPage>
       PreviewServer(sl<FsService>().rootPath);
 
   LiveServer? _liveServer;
+  bool _showSplitPreview = false;
+  double _splitRatio = 0.55;
+  final GlobalKey<SplitPreviewPaneState> _previewPaneKey = GlobalKey<SplitPreviewPaneState>();
 
   bool _isPreviewable(String? path) {
     if (path == null) return false;
     final ext = path.split('.').last.toLowerCase();
     return ext == 'html' || ext == 'htm';
+  }
+
+  String _currentPreviewRelPath() {
+    final tab = sl<TabManager>().active;
+    if (tab != null && _isPreviewable(tab.filePath)) {
+      return p.relative(tab.filePath, from: sl<FsService>().rootPath);
+    }
+    final root = sl<FsService>().rootPath;
+    if (File(p.join(root, 'index.html')).existsSync()) {
+      return 'index.html';
+    }
+    return '';
+  }
+
+  Future<void> _toggleSplitPreview() async {
+    if (_showSplitPreview) {
+      setState(() => _showSplitPreview = false);
+      return;
+    }
+    if (_liveServer?.isRunning != true) {
+      _liveServer = LiveServer(sl<FsService>().rootPath);
+      await _liveServer!.start();
+    }
+    if (mounted) {
+      setState(() => _showSplitPreview = true);
+    }
   }
 
   Future<void> _openPreview() async {
@@ -1161,36 +1205,37 @@ class _EditorPageState extends State<EditorPage>
     if (_liveServer?.isRunning == true) {
       await _liveServer!.stop();
       if (mounted) {
+        setState(() => _showSplitPreview = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Live Server stopped.'),
             duration: Duration(seconds: 2),
           ),
         );
-        setState(() {});
       }
       return;
     }
     _liveServer = LiveServer(sl<FsService>().rootPath);
     final url = await _liveServer!.start();
     if (mounted) {
+      setState(() => _showSplitPreview = true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Live Server running at $url'),
           duration: const Duration(seconds: 4),
           action: SnackBarAction(
-            label: 'Open',
+            label: 'Full screen',
             textColor: Colors.white,
             onPressed: () => _openLivePreview(),
           ),
         ),
       );
-      setState(() {});
     }
   }
 
   void _openLivePreview() {
-    final url = _liveServer?.urlFor('');
+    final rel = _currentPreviewRelPath();
+    final url = _liveServer?.urlFor(rel);
     if (url == null) return;
     Navigator.push(
       context,
@@ -1198,7 +1243,156 @@ class _EditorPageState extends State<EditorPage>
         builder: (_) => PreviewPage(
           baseUrl: url,
           relativePath: '',
-          title: 'Live Server',
+          title: rel.isEmpty ? 'Live Server' : rel,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSplitEditorView(EditorTab tab) {
+    final previewRel = _currentPreviewRelPath();
+    final url = _liveServer?.urlFor(previewRel);
+    if (url == null) {
+      return Focus(
+        onKeyEvent: _onKeyEvent,
+        child: _buildCodeView(tab),
+      );
+    }
+
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 100;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final codeWidget = Focus(
+          onKeyEvent: _onKeyEvent,
+          child: _buildCodeView(tab),
+        );
+
+        final previewWidget = SplitPreviewPane(
+          key: _previewPaneKey,
+          baseUrl: url,
+          relativePath: previewRel,
+          title: previewRel.isNotEmpty ? previewRel : tab.name,
+          onClose: () => setState(() => _showSplitPreview = false),
+          onExpand: _openLivePreview,
+        );
+
+        if (isLandscape) {
+          return Row(
+            children: [
+              Expanded(
+                flex: (_splitRatio * 1000).toInt(),
+                child: codeWidget,
+              ),
+              _buildSplitDivider(isVertical: false, totalSize: constraints.maxWidth),
+              Expanded(
+                flex: ((1 - _splitRatio) * 1000).toInt(),
+                child: previewWidget,
+              ),
+            ],
+          );
+        }
+
+        if (isKeyboardOpen) {
+          return Column(
+            children: [
+              Expanded(child: codeWidget),
+              _buildDockedPreviewBar(previewRel.isNotEmpty ? previewRel : tab.name),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            Expanded(
+              flex: (_splitRatio * 1000).toInt(),
+              child: codeWidget,
+            ),
+            _buildSplitDivider(isVertical: true, totalSize: constraints.maxHeight),
+            Expanded(
+              flex: ((1 - _splitRatio) * 1000).toInt(),
+              child: previewWidget,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDockedPreviewBar(String fileName) {
+    return Container(
+      height: 32,
+      color: const Color(0xFF1E1E1E),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: Color(0xFF4CAF50),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Live Preview ($fileName)',
+            style: const TextStyle(fontSize: 11, color: Colors.white70),
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.refresh, size: 14),
+            tooltip: 'Reload',
+            padding: const EdgeInsets.all(4),
+            constraints: const BoxConstraints(),
+            onPressed: () => _previewPaneKey.currentState?.reload(),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.close, size: 14),
+            tooltip: 'Close preview',
+            padding: const EdgeInsets.all(4),
+            constraints: const BoxConstraints(),
+            onPressed: () => setState(() => _showSplitPreview = false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSplitDivider({required bool isVertical, required double totalSize}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: isVertical
+          ? (details) {
+              if (totalSize <= 0) return;
+              setState(() {
+                _splitRatio = (_splitRatio + details.delta.dy / totalSize).clamp(0.20, 0.80);
+              });
+            }
+          : null,
+      onHorizontalDragUpdate: !isVertical
+          ? (details) {
+              if (totalSize <= 0) return;
+              setState(() {
+                _splitRatio = (_splitRatio + details.delta.dx / totalSize).clamp(0.20, 0.80);
+              });
+            }
+          : null,
+      child: Container(
+        width: isVertical ? double.infinity : 12,
+        height: isVertical ? 12 : double.infinity,
+        color: const Color(0xFF161616),
+        child: Center(
+          child: Container(
+            width: isVertical ? 38 : 4,
+            height: isVertical ? 4 : 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
         ),
       ),
     );
@@ -1393,10 +1587,18 @@ class _EditorPageState extends State<EditorPage>
           style: const TextStyle(fontSize: 16),
         ),
         actions: [
+          IconButton(
+            icon: Icon(
+              _showSplitPreview ? Icons.splitscreen_rounded : Icons.splitscreen_outlined,
+              color: _showSplitPreview ? const Color(0xFF64B5F6) : null,
+            ),
+            tooltip: _showSplitPreview ? 'Close live preview' : 'Split live preview',
+            onPressed: _toggleSplitPreview,
+          ),
           if (tab != null && _isPreviewable(tab.filePath))
             IconButton(
               icon: const Icon(Icons.open_in_browser_rounded),
-              tooltip: 'Preview in browser',
+              tooltip: 'Preview full screen',
               onPressed: _openPreview,
             ),
           if (tab != null)
@@ -1653,10 +1855,12 @@ class _EditorPageState extends State<EditorPage>
                     onExtractArchive: _importAndExtractArchive,
                     onExportProject: _exportProject,
                   )
-                : Focus(
-                    onKeyEvent: _onKeyEvent,
-                    child: _buildCodeView(tab),
-                  ),
+                : (_showSplitPreview && _liveServer?.isRunning == true
+                    ? _buildSplitEditorView(tab)
+                    : Focus(
+                        onKeyEvent: _onKeyEvent,
+                        child: _buildCodeView(tab),
+                      )),
           ),
           if (tab != null && _diagnostics.isNotEmpty)
             DiagnosticsBar(
@@ -1829,6 +2033,11 @@ class _StatusBarState extends State<_StatusBar> {
   String? _statsText;
   Timer? _statsTimer;
 
+  /// The exact controller listener this widget attached. A background tab can
+  /// be unloaded while its status bar is still being swapped out, and asking
+  /// the tab for its controller then would throw.
+  CodeController? _controller;
+
   @override
   void initState() {
     super.initState();
@@ -1838,28 +2047,36 @@ class _StatusBarState extends State<_StatusBar> {
   @override
   void didUpdateWidget(covariant _StatusBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.tab.controller != widget.tab.controller) {
-      oldWidget.tab.controller.removeListener(_onChanged);
-      _attach();
-    }
+    if (!identical(_controller, widget.tab.controller)) _attach();
   }
 
   void _attach() {
     _statsTimer?.cancel();
-    final text = widget.tab.controller.text;
+    final controller = widget.tab.controller;
+    if (!identical(_controller, controller)) {
+      _controller?.removeListener(_onChanged);
+      _controller = controller;
+      controller.addListener(_onChanged);
+    }
+    final text = controller.text;
     _statsText = text;
     _stats = _DocumentStats.of(text);
-    widget.tab.controller.addListener(_onChanged);
   }
 
   void _onChanged() {
     if (!mounted) return;
+    final controller = _controller;
+    if (controller == null) return;
     setState(() {});
-    if (identical(widget.tab.controller.text, _statsText)) return;
+    if (identical(controller.text, _statsText)) return;
     _statsTimer?.cancel();
     _statsTimer = Timer(const Duration(milliseconds: 200), () {
-      if (!mounted) return;
-      final text = widget.tab.controller.text;
+      if (!mounted ||
+          !widget.tab.isLoaded ||
+          !identical(_controller, widget.tab.controller)) {
+        return;
+      }
+      final text = controller.text;
       setState(() {
         _statsText = text;
         _stats = _DocumentStats.of(text);
@@ -1869,7 +2086,7 @@ class _StatusBarState extends State<_StatusBar> {
 
   @override
   void dispose() {
-    widget.tab.controller.removeListener(_onChanged);
+    _controller?.removeListener(_onChanged);
     _statsTimer?.cancel();
     super.dispose();
   }

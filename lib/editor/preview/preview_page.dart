@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
+import '../../core/di.dart';
+import '../../servers/server_monitor.dart';
 import 'preview_navigation.dart';
 
 class PreviewPage extends StatefulWidget {
@@ -33,6 +35,7 @@ class _PreviewPageState extends State<PreviewPage> {
   @override
   void initState() {
     super.initState();
+    sl<ServerMonitor>().startPolling();
     _origin = Uri.parse(widget.baseUrl);
     _policy = PreviewNavigationPolicy(_origin);
 
@@ -68,6 +71,12 @@ class _PreviewPageState extends State<PreviewPage> {
       android.setAllowFileAccess(false);
       android.setAllowContentAccess(false);
     }
+  }
+
+  @override
+  void dispose() {
+    sl<ServerMonitor>().stopPolling();
+    super.dispose();
   }
 
   NavigationDecision _allowNavigation(NavigationRequest request) {

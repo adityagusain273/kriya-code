@@ -325,5 +325,22 @@ void main() {
       final res = await send(port, get(port, '/'));
       expect(res.status, 403);
     });
+
+    test('missing root index.html serves empty fallback with 200 instead of 404', () async {
+      final emptyDir = Directory.systemTemp.createTempSync('live_server_empty_');
+      final emptyServer = LiveServer(emptyDir.path);
+      await emptyServer.start();
+      final emptyPort = Uri.parse(emptyServer.baseUrl!).port;
+      final emptyToken = Uri.parse(emptyServer.urlFor('')!).queryParameters['bct']!;
+      try {
+        final res = await send(emptyPort, get(emptyPort, '/', cookie: 'bct=$emptyToken'));
+        expect(res.status, 200);
+        expect(res.body, contains('No index.html detected'));
+        expect(res.body, contains('Live Server Active'));
+      } finally {
+        await emptyServer.stop();
+        emptyDir.deleteSync(recursive: true);
+      }
+    });
   });
 }

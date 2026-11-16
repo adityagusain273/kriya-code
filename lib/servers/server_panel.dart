@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -29,6 +31,19 @@ class ServerPanel extends StatefulWidget {
 
 class _ServerPanelState extends State<ServerPanel> {
   bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    sl<ServerMonitor>().startPolling();
+    unawaited(sl<ServerMonitor>().refresh());
+  }
+
+  @override
+  void dispose() {
+    sl<ServerMonitor>().stopPolling();
+    super.dispose();
+  }
 
   Future<void> _refresh() async {
     setState(() => _refreshing = true);
