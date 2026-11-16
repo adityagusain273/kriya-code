@@ -16,9 +16,16 @@
 # run before any Gradle invocation.
 set -euo pipefail
 
+cache="${PUB_CACHE:-$HOME/.pub-cache}"
+files="$(find "$cache/hosted" -path '*/google_mobile_ads-*/android/build.gradle' 2>/dev/null || true)"
+
+if [ -z "$files" ]; then
+    echo "google_mobile_ads not found under $cache/hosted; nothing to do"
+    exit 0
+fi
+
 patched=0
-for build_gradle in "$HOME"/.pub-cache/hosted/pub.dev/google_mobile_ads-*/android/build.gradle; do
-    [ -f "$build_gradle" ] || continue
+while IFS= read -r build_gradle; do
     grep -q 'for (def configuration : configurations)' "$build_gradle" || continue
 
     python3 - "$build_gradle" <<'PY'
@@ -46,8 +53,8 @@ open(path, 'w').write(''.join(lines[:start] + lines[end + 1:]))
 print(f'patched {path}')
 PY
     patched=1
-done
+done <<< "$files"
 
 if [ "$patched" -eq 0 ]; then
-    echo "google_mobile_ads 5.3.1 not found or already patched; nothing to do"
+    echo "google_mobile_ads already patched; nothing to do"
 fi
