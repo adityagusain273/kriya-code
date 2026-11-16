@@ -28,6 +28,9 @@ internal-testing track). Do not restore app data from another device.
 - [ ] `print("hi")` in Python/Node runs and output appears in console.
 - [ ] A crashing program shows the exit code and stack, not a frozen tab.
 - [ ] Long output (e.g. `seq 1 200000`) does not hang or OOM the app.
+- [ ] A single-file script still runs with no extra output before it.
+- [ ] A project with `next`/`vite` in package.json prints one "Cloud Tier
+      recommended" line before its output, and still runs.
 
 ## 4. Git
 - [ ] Connect GitHub (device flow). Sign-in works with a real OAuth app id;
@@ -44,6 +47,8 @@ internal-testing track). Do not restore app data from another device.
 ## 6. Runtimes / Termux
 - [ ] Download a runtime from the package manager on a metered connection —
       download works over TLS without errors (pins must not reject).
+- [ ] With less than ~1 GB free, the download screen refuses with a free-space
+      message instead of starting (test by filling the device first).
 - [ ] With Termux installed: permission appears, RUN_COMMAND reaches Termux;
       concurrent commands in two terminal tabs do not cross their outputs
       (result request_ids no longer collide).

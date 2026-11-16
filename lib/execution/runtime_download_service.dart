@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
 import 'runtime_catalog.dart';
+import 'storage_preflight.dart';
 
 class TermuxPackageRef {
   final String name;
@@ -175,6 +176,10 @@ class RuntimeDownloadService extends ChangeNotifier {
   final Future<String> Function() runtimesRootResolver;
   final Future<bool> Function(String runtimeId) extractor;
 
+  /// Free-space probe. Injectable so the preflight can be exercised without a
+  /// device; defaults to the platform's StatFs.
+  final FreeBytesProbe freeBytes;
+
   final _states = <String, RuntimeDownloadState>{};
   final _active = <String>{};
   final _cancelled = <String>{};
@@ -188,7 +193,9 @@ class RuntimeDownloadService extends ChangeNotifier {
     String? arch,
     required this.runtimesRootResolver,
     required this.extractor,
-  }) : arch = arch ?? detectRuntimeArch() ?? _fallbackArch;
+    FreeBytesProbe? freeBytes,
+  })  : arch = arch ?? detectRuntimeArch() ?? _fallbackArch,
+        freeBytes = freeBytes ?? DeviceStorage.freeBytes;
 
   /// Falls back to the only ABI Termux still ships a full tree for, so a device
   /// whose ABI cannot be read gets a clear failure at install time rather than a
@@ -389,6 +396,18 @@ class RuntimeDownloadService extends ChangeNotifier {
       var received = 0;
 
       final rootDir = Directory(await runtimesRootResolver());
+
+      // Refuse before a byte moves. A phone that fills up mid-extract is left
+      // with a half-unpacked runtime it cannot run, and a completely full
+      // volume takes the app's own databases with it.
+      final space = StoragePreflight.evaluate(
+        packedBytes: total,
+        freeBytes: await freeBytes(rootDir.path),
+      );
+      if (!space.allowsInstall) {
+        throw StateError(space.message);
+      }
+
       final pkgsDir = Directory('${rootDir.path}/${spec.runtimeId}/pkgs');
       await pkgsDir.create(recursive: true);
 
@@ -495,7 +514,17 @@ class RuntimeDownloadService extends ChangeNotifier {
           phase: RuntimeDownloadPhase.installing));
       
       if (_cancelled.contains(runtimeId)) throw StateError('Cancelled');
-      
+
+      // The packed files are on disk now, so unpacking needs one more copy of
+      // the runtime rather than the two a fresh download needs.
+      final unpackSpace = StoragePreflight.evaluateExtraction(
+        packedBytes: total,
+        freeBytes: await freeBytes(rootDir.path),
+      );
+      if (!unpackSpace.allowsInstall) {
+        throw StateError(unpackSpace.message);
+      }
+
       final extracted = await extractor(runtimeId);
       if (!extracted) {
         throw StateError('Runtime extraction failed on device');

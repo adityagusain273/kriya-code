@@ -248,6 +248,43 @@ Filename: pool/main/g/golang/golang_1.0_x86_64.deb
       expect(service.isInstalled('cpython'), isFalse);
     });
 
+    test('refuses to download when the volume is too full', () async {
+      var sends = 0;
+      client.onSend = (_) async {
+        sends++;
+        return http.StreamedResponse(
+          Stream.value(List.filled(body, 65)),
+          200,
+          contentLength: body,
+        );
+      };
+
+      final cramped = RuntimeDownloadService(
+        client: client,
+        prefs: await SharedPreferences.getInstance(),
+        repoBase: 'https://repo.test/apt/termux-main',
+        expectedRepoHost: 'repo.test',
+        runtimesRootResolver: () async => testDir.path,
+        extractor: (_) async => true,
+        // The packed set is packageCount * body; one copy is not the two the
+        // unpack needs.
+        freeBytes: (_) async => packageCount * body,
+      );
+
+      await cramped.download('cpython');
+
+      final state = cramped.stateFor('cpython');
+      expect(state.phase, RuntimeDownloadPhase.failed);
+      expect(state.error, contains('free space'));
+      expect(cramped.isInstalled('cpython'), isFalse);
+      expect(sends, 0, reason: 'nothing is fetched when it cannot be unpacked');
+      expect(
+        Directory('${testDir.path}/cpython/pkgs').existsSync(),
+        isFalse,
+        reason: 'no staging directory is created before the check',
+      );
+    });
+
     test('remove clears installed marker and state', () async {
       await service.download('cpython');
       await service.remove('cpython');
