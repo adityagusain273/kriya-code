@@ -1,18 +1,89 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
-import 'package:highlight/highlight.dart';
+import 'package:highlight/highlight_core.dart';
 
 import '../../lsp/diagnostics.dart';
+import 'async_highlighter.dart';
 import 'diagnostic_highlight_builder.dart';
 
+typedef HighlightRequest = Future<List<HighlightRun>?> Function(
+  String text,
+  Mode mode,
+);
+
 class BCodeController extends CodeController {
+  // ignore: use_super_parameters
   BCodeController({
-    super.text,
-    super.language,
-    super.params,
-  });
+    String? text,
+    Mode? language,
+    EditorParams params = const EditorParams(),
+    HighlightRequest? highlightRequest,
+  })  : _request = highlightRequest ?? AsyncHighlighter.instance.highlight,
+        super(text: text, language: null, params: params) {
+    _seenText = this.text;
+    addListener(_onChanged);
+    this.language = language;
+  }
+
+  /// Re-tokenises after the user stops typing. Long enough that a burst of
+  /// keystrokes costs one pass, short enough that colours catch up before the
+  /// next thought.
+  static const highlightDebounce = Duration(milliseconds: 180);
+
+  final HighlightRequest _request;
+
+  Mode? _mode;
+  String _seenText = '';
+  Timer? _debounce;
+
+  /// Runs for the buffer at [_runsVersion]. Rendering only trusts them while
+  /// that matches [_textVersion], so a stale tree can never be shown against
+  /// newer text.
+  List<HighlightRun>? _runs;
+  String _runsText = '';
+  int _runsVersion = 0;
+  int _textVersion = 0;
 
   List<Diagnostic> _diagnostics = const [];
+  bool _disposed = false;
+  int _renderVersion = 0;
+
+  TextSpan? _cachedSpan;
+  String? _cachedText;
+  TextStyle? _cachedStyle;
+  CodeThemeData? _cachedTheme;
+  List<Diagnostic>? _cachedDiagnostics;
+  int _cachedVersion = -1;
+
+  /// Tokenisation no longer runs inside the package: answering null keeps
+  /// `CodeController` building only line metadata, and keeps the per-keystroke
+  /// `Code` work linear instead of re-parsing. The grammar lives in [_mode] for
+  /// the async request.
+  @override
+  Mode? get language => null;
+
+  @override
+  set language(Mode? mode) {
+    if (identical(mode, _mode)) return;
+    _mode = mode;
+    // The package's inline completion popup is independent of tokenisation.
+    autocompleter.mode = mode;
+    _runs = null;
+    _runsVersion = _textVersion;
+    _renderVersion++;
+    _scheduleHighlight(immediate: true);
+    notifyListeners();
+  }
+
+  /// Keeps the package's own language setter from re-enabling synchronous
+  /// tokenisation if it is ever called directly.
+  @override
+  void setLanguage(Mode? language, {required AbstractAnalyzer analyzer}) {
+    if (identical(language, _mode)) return;
+    this.language = language;
+  }
 
   List<Diagnostic> get diagnostics => _diagnostics;
 
@@ -21,6 +92,22 @@ class BCodeController extends CodeController {
       _diagnostics = val;
       notifyListeners();
     }
+  }
+
+  /// Runs currently backing the rendered span. Empty until tokenisation lands.
+  @visibleForTesting
+  List<HighlightRun>? get highlightRuns =>
+      _runsVersion == _textVersion ? _runs : null;
+
+  /// Cancels the debounce and tokenises now. Tests use this to await colours;
+  /// production relies on the timer.
+  @visibleForTesting
+  Future<void> settleHighlight() async {
+    _debounce?.cancel();
+    _debounce = null;
+    final mode = _mode;
+    if (mode == null) return;
+    await _runHighlight(text, mode);
   }
 
   /// Pairs whose closing half the editor inserts automatically, mapped to the
@@ -94,278 +181,125 @@ class BCodeController extends CodeController {
     return open > close;
   }
 
+  void _onChanged() {
+    if (_disposed) return;
+    final current = text;
+    if (identical(current, _seenText)) return;
+    _seenText = current;
+    _textVersion++;
+
+    final runs = _runs;
+    if (runs != null && _runsVersion == _textVersion - 1) {
+      _runs = spliceHighlightRuns(runs, _runsText, current);
+      _runsText = current;
+      _runsVersion = _textVersion;
+      _renderVersion++;
+    }
+    _scheduleHighlight();
+  }
+
+  void _scheduleHighlight({bool immediate = false}) {
+    _debounce?.cancel();
+    final mode = _mode;
+    if (mode == null) return;
+
+    final snapshot = text;
+    _debounce = Timer(
+      immediate ? Duration.zero : highlightDebounce,
+      () => unawaited(_runHighlight(snapshot, mode)),
+    );
+  }
+
+  Future<void> _runHighlight(String snapshot, Mode mode) async {
+    List<HighlightRun>? runs;
+    try {
+      runs = await _request(snapshot, mode);
+    } catch (e) {
+      debugPrint('BCodeController: highlight failed: $e');
+      return;
+    }
+    if (_disposed || !identical(_mode, mode) || text != snapshot) return;
+
+    _runs = runs;
+    _runsText = snapshot;
+    _runsVersion = _textVersion;
+    _renderVersion++;
+    notifyListeners();
+  }
+
   @override
   TextSpan buildTextSpan({
     required BuildContext context,
     TextStyle? style,
     bool? withComposing,
   }) {
-    // Both transforms rebuild the entire node tree. `buildTextSpan` runs on
-    // every frame that repaints the field, including plain selection changes,
-    // and re-decorating an already-decorated tree wrapped nodes repeatedly.
-    final highlighted = code.visibleHighlighted;
-    if (highlighted?.nodes != null &&
-        !identical(highlighted!.nodes, _decoratedNodes)) {
-      _splitStringNodes();
-      _colorizeBrackets();
-      _decoratedNodes = highlighted.nodes;
-    }
-    final span = super.buildTextSpan(
-      context: context,
-      style: style,
-      withComposing: withComposing,
-    );
+    final current = text;
+    final theme = CodeTheme.of(context);
 
-    if (_diagnostics.isEmpty) {
-      return span;
+    if (_cachedSpan != null &&
+        identical(current, _cachedText) &&
+        _cachedVersion == _renderVersion &&
+        _cachedStyle == style &&
+        identical(theme, _cachedTheme) &&
+        identical(_diagnostics, _cachedDiagnostics)) {
+      return _cachedSpan!;
     }
 
-    return DiagnosticHighlightedBuilder(
-      diagnostics: _diagnostics,
-      textLength: text.length,
-      rootStyle: style,
-      textSpan: span,
-    ).build();
-  }
+    final runs = _runsVersion == _textVersion ? _runs : null;
+    final textLength = current.length;
+    final valid =
+        runs != null && runs.isNotEmpty && _coversBuffer(runs, textLength);
 
-  List<Node>? _decoratedNodes;
-
-  static final _bracketPattern = RegExp(r'[\[\]\(\)\{\}]');
-
-  void _colorizeBrackets() {
-    final highlighted = code.visibleHighlighted;
-    if (highlighted == null || highlighted.nodes == null) return;
-    
-    int depth = 0;
-    
-    List<Node> process(List<Node> input, String? parentClass) {
-      final result = <Node>[];
-      for (final node in input) {
-        final currentClass = node.className ?? parentClass;
-        
-        if (currentClass == 'string' || currentClass == 'comment') {
-          result.add(node);
-          continue;
-        }
-        
-        if (node.children != null && node.children!.isNotEmpty) {
-          result.add(Node(
-            className: node.className,
-            children: process(node.children!, currentClass),
-            noPrefix: node.noPrefix,
-          ));
-        } else if (node.value != null) {
-          final val = node.value!;
-          int lastMatchEnd = 0;
-          final matches = _bracketPattern.allMatches(val);
-          for (final match in matches) {
-            if (match.start > lastMatchEnd) {
-              result.add(Node(className: node.className, value: val.substring(lastMatchEnd, match.start)));
-            }
-            final bracket = match.group(0)!;
-            final isOpening = bracket == '(' || bracket == '[' || bracket == '{';
-            final isClosing = bracket == ')' || bracket == ']' || bracket == '}';
-            
-            if (isOpening) {
-              depth++;
-              final classDepth = ((depth - 1) % 8) + 1;
-              result.add(Node(className: 'bracket-$classDepth', value: bracket));
-            } else if (isClosing) {
-              final classDepth = depth > 0 ? ((depth - 1) % 8) + 1 : 1;
-              result.add(Node(className: 'bracket-$classDepth', value: bracket));
-              depth--;
-              if (depth < 0) depth = 0;
-            }
-            lastMatchEnd = match.end;
-          }
-          if (lastMatchEnd < val.length) {
-            result.add(Node(className: node.className, value: val.substring(lastMatchEnd)));
-          }
-        } else {
-          result.add(node);
-        }
-      }
-      return result;
-    }
-    
-    highlighted.nodes = process(highlighted.nodes!, null);
-  }
-
-  void _splitStringNodes() {
-    final highlighted = code.visibleHighlighted;
-    if (highlighted == null || highlighted.nodes == null) return;
-
-    final original = highlighted.nodes!;
-    final newNodes = <Node>[];
-    for (final node in original) {
-      newNodes.addAll(_processNode(node));
-    }
-    highlighted.nodes = newNodes;
-  }
-
-  List<Node> _processNode(Node node) {
-    if (node.className == 'string') {
-      if (node.children != null && node.children!.isNotEmpty) {
-        return _splitStringChildren(node);
-      }
-      return [node];
-    }
-
-    if (node.children != null && node.children!.isNotEmpty) {
-      final newChildren = <Node>[];
-      for (final child in node.children!) {
-        newChildren.addAll(_processNode(child));
-      }
-      return [
-        Node(className: node.className, children: newChildren, noPrefix: node.noPrefix)
-      ];
-    }
-
-    return [node];
-  }
-
-  static const _prefixes = {'f', 'r', 'u', 'b'};
-
-  static int _countLeadingQuotes(String s, int start) {
-    if (start >= s.length) return 0;
-    final ch = s[start];
-    if (ch != '"' && ch != "'") return 0;
-    int count = 0;
-    for (int i = start; i < s.length && i < start + 3; i++) {
-      if (s[i] == ch) {
-        count++;
-      } else {
-        break;
-      }
-    }
-    return count;
-  }
-
-  static int _countTrailingQuotes(String s, int end) {
-    if (end <= 0) return 0;
-    final ch = s[end - 1];
-    if (ch != '"' && ch != "'") return 0;
-    int count = 0;
-    for (int i = end - 1; i >= 0 && i > end - 4; i--) {
-      if (s[i] == ch) {
-        count++;
-      } else {
-        break;
-      }
-    }
-    return count;
-  }
-
-  static int _skipPrefix(String s) {
-    int i = 0;
-    while (i < s.length && _prefixes.contains(s[i])) {
-      i++;
-    }
-    return i;
-  }
-
-  List<Node> _splitStringValue(Node node) {
-    final value = node.value!;
-    final result = <Node>[];
-
-    final prefixEnd = _skipPrefix(value);
-    final openCount = _countLeadingQuotes(value, prefixEnd);
-
-    if (openCount > 0) {
-      final openQuote = value.substring(0, prefixEnd + openCount);
-      result.add(Node(className: 'string', value: openQuote));
-
-      final afterOpen = prefixEnd + openCount;
-      final closeCount = _countTrailingQuotes(value, value.length);
-
-      if (closeCount > 0 && openCount == closeCount &&
-          afterOpen <= value.length - closeCount &&
-          value.substring(value.length - closeCount) ==
-              value.substring(prefixEnd, prefixEnd + openCount)) {
-        final content = value.substring(afterOpen, value.length - closeCount);
-        if (content.isNotEmpty) {
-          result.add(Node(className: 'string', value: content));
-        }
-        result.add(
-            Node(className: 'string', value: value.substring(value.length - closeCount)));
-      } else {
-        final content = value.substring(afterOpen);
-        if (content.isNotEmpty) {
-          result.add(Node(className: 'string', value: content));
-        }
-      }
+    TextSpan span;
+    if (!valid) {
+      span = TextSpan(text: current, style: style);
     } else {
-      final closeCount = _countTrailingQuotes(value, value.length);
-      if (closeCount > 0 && closeCount <= value.length) {
-        final content = value.substring(0, value.length - closeCount);
-        if (content.isNotEmpty) {
-          result.add(Node(className: 'string', value: content));
-        }
-        result.add(
-            Node(className: 'string', value: value.substring(value.length - closeCount)));
-      } else {
-        result.add(node);
+      final styles = theme?.styles;
+      final children = <InlineSpan>[];
+      for (final run in runs) {
+        children.add(TextSpan(
+          text: current.substring(run.start, run.end),
+          style: styles?[run.className],
+        ));
       }
+      span = TextSpan(style: style, children: children);
     }
 
-    return result;
+    if (_diagnostics.isNotEmpty) {
+      span = DiagnosticHighlightedBuilder(
+        diagnostics: _diagnostics,
+        textLength: current.length,
+        rootStyle: style,
+        textSpan: span,
+      ).build();
+    }
+
+    _cachedSpan = span;
+    _cachedText = current;
+    _cachedStyle = style;
+    _cachedTheme = theme;
+    _cachedDiagnostics = _diagnostics;
+    _cachedVersion = _renderVersion;
+    return span;
   }
 
-  List<Node> _splitStringChildren(Node node) {
-    final children = node.children!;
-    if (children.isEmpty) return [node];
+  @override
+  void dispose() {
+    _disposed = true;
+    _debounce?.cancel();
+    removeListener(_onChanged);
+    super.dispose();
+  }
 
-    if (children.length == 1 && children.first.value != null) {
-      return _splitStringValue(
-        Node(className: 'string', value: children.first.value),
-      );
+  /// Guards the caret: a span must cover every character exactly once, or Flutter
+  /// maps offsets through spans that do not exist and the selection lands in the
+  /// wrong place.
+  static bool _coversBuffer(List<HighlightRun> runs, int length) {
+    var cursor = 0;
+    for (final run in runs) {
+      if (run.start != cursor || run.end <= run.start) return false;
+      cursor = run.end;
     }
-
-    final result = <Node>[];
-
-    final first = children.first;
-    if (first.value != null) {
-      final prefixEnd = _skipPrefix(first.value!);
-      final openCount = _countLeadingQuotes(first.value!, prefixEnd);
-      if (openCount > 0) {
-        final openQuote = first.value!.substring(0, prefixEnd + openCount);
-        result.add(Node(className: 'string', value: openQuote));
-        final rest = first.value!.substring(prefixEnd + openCount);
-        if (rest.isNotEmpty) {
-          result.add(Node(className: 'string', value: rest));
-        }
-      } else {
-        result.add(first);
-      }
-    } else {
-      result.add(first);
-    }
-
-    for (int i = 1; i < children.length - 1; i++) {
-      result.add(children[i]);
-    }
-
-    if (children.length > 1) {
-      final last = children.last;
-      if (last.value != null) {
-        final closeCount = _countTrailingQuotes(last.value!, last.value!.length);
-        if (closeCount > 0) {
-          final content =
-              last.value!.substring(0, last.value!.length - closeCount);
-          if (content.isNotEmpty) {
-            result.add(Node(className: 'string', value: content));
-          }
-          result.add(Node(
-              className: 'string',
-              value: last.value!.substring(last.value!.length - closeCount)));
-        } else {
-          result.add(last);
-        }
-      } else {
-        result.add(last);
-      }
-    }
-
-    return result;
+    return cursor == length;
   }
 }

@@ -1,3 +1,4 @@
+import 'package:b_code/editor/highlighting/async_highlighter.dart';
 import 'package:b_code/editor/highlighting/bcode_controller.dart';
 import 'package:b_code/editor/highlighting/bcode_theme.dart';
 import 'package:b_code/editor/highlighting/highlight_engine.dart';
@@ -26,10 +27,12 @@ const samples = <String, String>{
   'java':
       'class A {\n  int x = 1;\n  void m(String s) { System.out.println(s); }\n}\n',
   'c': '#include <stdio.h>\nint main(void) { printf("hi\\n"); return 0; }\n',
-  'cpp': '#include <iostream>\nint main() { std::cout << "hi" << std::endl; }\n',
+  'cpp':
+      '#include <iostream>\nint main() { std::cout << "hi" << std::endl; }\n',
   'javascript':
       'function f(a) { return a + 1; }\nconst y = [1, 2].map(v => v + 1);\n',
-  'typescript': 'interface A { x: number }\nconst f = (a: A): number => a.x + 1;\n',
+  'typescript':
+      'interface A { x: number }\nconst f = (a: A): number => a.x + 1;\n',
   'html': '<!DOCTYPE html>\n<html><body class="x"><p>hi</p></body></html>\n',
   'css': '.a { color: #fff; }\n.b > .c { margin: 0 auto; }\n',
   'json': '{"a": 1, "b": [true, null], "c": "s"}\n',
@@ -106,13 +109,6 @@ String flatten(InlineSpan span) {
   return b.toString();
 }
 
-void collectClasses(List<Node>? nodes, Set<String> into, {String? inherited}) {
-  for (final n in nodes ?? const <Node>[]) {
-    if (n.className != null) into.add(n.className!);
-    collectClasses(n.children, into, inherited: n.className ?? inherited);
-  }
-}
-
 Future<BCodeController> pump(WidgetTester tester, String text, Mode? g) async {
   final controller = BCodeController(
     text: text,
@@ -130,21 +126,27 @@ Future<BCodeController> pump(WidgetTester tester, String text, Mode? g) async {
     ),
   );
   await tester.pump();
+  await tester.runAsync(controller.settleHighlight);
+  await tester.pump();
   return controller;
 }
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final engine = buildEngine();
+  tearDownAll(AsyncHighlighter.instance.close);
 
   group('theme coverage', () {
-    testWidgets('every token class a bundled grammar emits is styled by every '
+    testWidgets(
+        'every token class a bundled grammar emits is styled by every '
         'shipped theme', (tester) async {
       final emitted = <String>{};
       for (final entry in samples.entries) {
         final g = await engine.grammarFor(entry.key);
         final c = await pump(tester, entry.value, g);
-        collectClasses(c.code.visibleHighlighted?.nodes, emitted);
+        for (final run in c.highlightRuns ?? const <HighlightRun>[]) {
+          if (run.className != null) emitted.add(run.className!);
+        }
         c.dispose();
       }
       expect(emitted, isNotEmpty);
@@ -208,8 +210,8 @@ void main() {
         for (final src in entry.value) {
           final c = await pump(tester, src, g);
           final ctx = tester.element(find.byType(CodeField));
-          expect(flatten(c.buildTextSpan(context: ctx, withComposing: false)),
-              src,
+          expect(
+              flatten(c.buildTextSpan(context: ctx, withComposing: false)), src,
               reason: '${entry.key}: $src');
           c.dispose();
         }
@@ -227,9 +229,8 @@ void main() {
     });
 
     testWidgets('rebuilding does not mutate the tree further', (tester) async {
-      // `_splitStringNodes` and `_colorizeBrackets` write their results back into
-      // the cached highlight tree, so a second pass sees its own output. They have to
-      // be idempotent or the buffer drifts on every repaint.
+      // The rendered span is cached and must stay byte-for-byte identical across
+      // repaints, including after the highlight result has been flattened.
       for (final entry in samples.entries) {
         final g = await engine.grammarFor(entry.key);
         final c = await pump(tester, entry.value, g);
@@ -313,4 +314,3 @@ void main() {
     });
   });
 }
-
