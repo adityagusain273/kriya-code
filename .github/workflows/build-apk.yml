@@ -10,6 +10,7 @@ on:
       - 'lib/**'
       - 'test/**'
       - 'android/**'
+      - 'tool/**'
       - 'pubspec.yaml'
       - '.github/workflows/build-apk.yml'
 
