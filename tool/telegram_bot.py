@@ -46,34 +46,194 @@ def load_env():
                     k, v = line.split("=", 1)
                     os.environ.setdefault(k.strip(), v.strip())
 
-def load_state() -> dict:
-    if STATE_FILE.exists():
+class StateStore:
+    def __init__(self, db_url: str | None = None, state_file: Path | None = None):
+        self.db_url = db_url or os.environ.get("DATABASE_URL")
+        self.state_file = state_file or STATE_FILE
+        self._pg_conn = None
+        self._sqlite_conn = None
+        self._backend = "json"
+        self._init_backend()
+
+    def _init_backend(self):
+        if self.db_url:
+            if self.db_url.startswith("postgres://") or self.db_url.startswith("postgresql://"):
+                try:
+                    import psycopg2
+                    url = self.db_url
+                    if url.startswith("postgres://"):
+                        url = "postgresql://" + url[len("postgres://"):]
+                    self._pg_conn = psycopg2.connect(url)
+                    self._pg_conn.autocommit = True
+                    with self._pg_conn.cursor() as cur:
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS bcode_bot_state (
+                                id INT PRIMARY KEY,
+                                data JSONB,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            );
+                        """)
+                    self._backend = "postgres"
+                    print("🗄️ State store connected to PostgreSQL database")
+                    return
+                except Exception as e:
+                    print(f"⚠️ Failed to connect to PostgreSQL ({e}), falling back to file/SQLite.", file=sys.stderr)
+            elif self.db_url.startswith("sqlite://"):
+                try:
+                    import sqlite3
+                    path = self.db_url[len("sqlite://"):] or "bot_state.db"
+                    self._sqlite_conn = sqlite3.connect(path, check_same_thread=False)
+                    with self._sqlite_conn:
+                        self._sqlite_conn.execute("""
+                            CREATE TABLE IF NOT EXISTS bcode_bot_state (
+                                id INTEGER PRIMARY KEY,
+                                data TEXT,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            );
+                        """)
+                    self._backend = "sqlite"
+                    print(f"🗄️ State store connected to SQLite database ({path})")
+                    return
+                except Exception as e:
+                    print(f"⚠️ Failed to connect to SQLite ({e}), falling back to file.", file=sys.stderr)
+
+        self._backend = "json"
+
+    def _get_pg_conn(self):
         try:
-            with open(STATE_FILE, "r") as f:
-                data = json.load(f)
-                data.setdefault("offset", 0)
-                data.setdefault("admin_id", None)
-                data.setdefault("pending", {})
-                data.setdefault("sessions", {})
-                data.setdefault("blocked_users", [])
-                data.setdefault("rejections", {})
-                data.setdefault("used_utrs", [])
-                return data
+            if self._pg_conn is None or self._pg_conn.closed:
+                import psycopg2
+                url = self.db_url
+                if url.startswith("postgres://"):
+                    url = "postgresql://" + url[len("postgres://"):]
+                self._pg_conn = psycopg2.connect(url)
+                self._pg_conn.autocommit = True
+            else:
+                with self._pg_conn.cursor() as cur:
+                    cur.execute("SELECT 1")
         except Exception:
-            pass
-    return {
-        "offset": 0,
-        "admin_id": None,
-        "pending": {},
-        "sessions": {},
-        "blocked_users": [],
-        "rejections": {},
-        "used_utrs": [],
-    }
+            import psycopg2
+            url = self.db_url
+            if url.startswith("postgres://"):
+                url = "postgresql://" + url[len("postgres://"):]
+            self._pg_conn = psycopg2.connect(url)
+            self._pg_conn.autocommit = True
+        return self._pg_conn
+
+    def load(self) -> dict:
+        default_state = {
+            "offset": 0,
+            "admin_id": None,
+            "pending": {},
+            "sessions": {},
+            "blocked_users": [],
+            "rejections": {},
+            "used_utrs": [],
+        }
+
+        if self._backend == "postgres":
+            try:
+                conn = self._get_pg_conn()
+                with conn.cursor() as cur:
+                    cur.execute("SELECT data FROM bcode_bot_state WHERE id = 1;")
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        data = row[0]
+                        if isinstance(data, str):
+                            data = json.loads(data)
+                        for k, v in default_state.items():
+                            data.setdefault(k, v)
+                        return data
+                    else:
+                        initial = self._load_file(default_state)
+                        self.save(initial)
+                        return initial
+            except Exception as e:
+                print(f"⚠️ Error reading from Postgres: {e}, falling back to file", file=sys.stderr)
+
+        elif self._backend == "sqlite":
+            try:
+                with self._sqlite_conn:
+                    cur = self._sqlite_conn.cursor()
+                    cur.execute("SELECT data FROM bcode_bot_state WHERE id = 1;")
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        data = json.loads(row[0])
+                        for k, v in default_state.items():
+                            data.setdefault(k, v)
+                        return data
+                    else:
+                        initial = self._load_file(default_state)
+                        self.save(initial)
+                        return initial
+            except Exception as e:
+                print(f"⚠️ Error reading from SQLite: {e}, falling back to file", file=sys.stderr)
+
+        return self._load_file(default_state)
+
+    def _load_file(self, default_state: dict) -> dict:
+        if self.state_file and self.state_file.exists():
+            try:
+                with open(self.state_file, "r") as f:
+                    data = json.load(f)
+                    for k, v in default_state.items():
+                        data.setdefault(k, v)
+                    return data
+            except Exception:
+                pass
+        return dict(default_state)
+
+    def save(self, state: dict):
+        raw_json = json.dumps(state)
+
+        if self._backend == "postgres":
+            try:
+                conn = self._get_pg_conn()
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO bcode_bot_state (id, data, updated_at)
+                        VALUES (1, %s::jsonb, CURRENT_TIMESTAMP)
+                        ON CONFLICT (id) DO UPDATE
+                        SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP;
+                    """, (raw_json,))
+            except Exception as e:
+                print(f"⚠️ Error saving state to Postgres: {e}", file=sys.stderr)
+
+        elif self._backend == "sqlite":
+            try:
+                with self._sqlite_conn:
+                    self._sqlite_conn.execute("""
+                        INSERT INTO bcode_bot_state (id, data, updated_at)
+                        VALUES (1, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(id) DO UPDATE
+                        SET data = excluded.data, updated_at = CURRENT_TIMESTAMP;
+                    """, (raw_json,))
+            except Exception as e:
+                print(f"⚠️ Error saving state to SQLite: {e}", file=sys.stderr)
+
+        if self.state_file:
+            try:
+                tmp = self.state_file.with_suffix(".tmp")
+                with open(tmp, "w") as f:
+                    f.write(raw_json)
+                tmp.replace(self.state_file)
+            except Exception:
+                pass
+
+_STORE = None
+
+def get_store(db_url: str | None = None) -> StateStore:
+    global _STORE
+    if _STORE is None or (db_url and _STORE.db_url != db_url):
+        load_env()
+        _STORE = StateStore(db_url=db_url)
+    return _STORE
+
+def load_state() -> dict:
+    return get_store().load()
 
 def save_state(state: dict):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    get_store().save(state)
 
 class BotHttpHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -681,7 +841,11 @@ def main():
     parser.add_argument("--admin", type=int, default=os.environ.get("ADMIN_CHAT_ID"), help="Admin chat ID")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="HTTP health/webhook port")
     parser.add_argument("--url", default=os.environ.get("RENDER_EXTERNAL_URL"), help="Public external URL for webhooks")
+    parser.add_argument("--db", default=os.environ.get("DATABASE_URL"), help="Database URL (postgresql:// or sqlite://)")
     args = parser.parse_args()
+
+    if args.db:
+        get_store(args.db)
 
     if not args.token:
         print("Error: No bot token provided. Set TELEGRAM_BOT_TOKEN in tool/.env or pass --token", file=sys.stderr)
