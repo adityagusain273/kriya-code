@@ -6,6 +6,12 @@ Handles buyer payment submissions in a simple, foolproof 2-step conversational f
   Step 2: Ask for B Code Device ID
 Once submitted, it sends a high-priority approval notification to the admin with
 [✅ Approve & Send Key] and [❌ Reject] buttons.
+
+Supports:
+- Webhook mode (automatic on Render via RENDER_EXTERNAL_URL) so incoming Telegram messages
+  hit Render directly and wake up spun-down instances.
+- Long-polling fallback mode (for local testing without a public domain).
+- Built-in HTTP health check endpoint on GET / (for Render & keep-alive pingers like UptimeRobot).
 """
 
 import os
@@ -56,23 +62,34 @@ def save_state(state: dict):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
-def start_health_server(port: int = 8080):
-    class HealthHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
+class BotHttpHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"B Code Pro Telegram Bot is online and healthy!\n")
+
+    def do_POST(self):
+        if self.path == "/webhook":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
             self.end_headers()
-            self.wfile.write(b"B Code Pro Telegram Bot is online and healthy!\n")
+            self.wfile.write(b"OK")
 
-        def log_message(self, format, *args):
-            return
+            try:
+                update = json.loads(body.decode("utf-8"))
+                if hasattr(self.server, "bot") and self.server.bot:
+                    threading.Thread(target=self.server.bot.handle_update, args=(update,), daemon=True).start()
+            except Exception as e:
+                print(f"[WEBHOOK JSON ERROR] {e}", file=sys.stderr)
+        else:
+            self.send_response(404)
+            self.end_headers()
 
-    try:
-        server = HTTPServer(("0.0.0.0", port), HealthHandler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        print(f"🌐 Health server listening on 0.0.0.0:{port}")
-    except Exception as e:
-        print(f"⚠️ Could not bind health server on {port}: {e}")
+    def log_message(self, format, *args):
+        return
 
 class TelegramBot:
     def __init__(self, token: str, admin_id: int | None = None):
@@ -95,6 +112,26 @@ class TelegramBot:
         except Exception as e:
             print(f"[API ERROR] {method}: {e}", file=sys.stderr)
             return {"ok": False, "error": str(e)}
+
+    def setup_webhook(self, external_url: str):
+        webhook_url = f"{external_url.rstrip('/')}/webhook"
+        res = self.call(
+            "setWebhook",
+            {
+                "url": webhook_url,
+                "allowed_updates": ["message", "callback_query"],
+                "drop_pending_updates": False,
+            },
+        )
+        if res.get("ok"):
+            print(f"🔗 Webhook registered with Telegram: {webhook_url}")
+        else:
+            print(f"⚠️ Failed to register webhook: {res.get('error') or res}")
+
+    def remove_webhook(self):
+        res = self.call("deleteWebhook")
+        if res.get("ok"):
+            print("🔄 Webhook removed from Telegram. Falling back to polling mode.")
 
     def send_message(self, chat_id: int, text: str, reply_markup: dict = None, disable_notification: bool = False):
         payload = {
@@ -185,7 +222,7 @@ class TelegramBot:
         else:
             self.send_message(admin_id, admin_text, reply_markup=buttons, disable_notification=False)
 
-    def run(self):
+    def run_polling(self):
         print("🤖 B Code Pro Bot started. Polling Telegram...")
         admin = self.state.get("admin_id")
         if admin:
@@ -466,16 +503,36 @@ def main():
     parser = argparse.ArgumentParser(description="B Code Pro Telegram Bot")
     parser.add_argument("--token", default=os.environ.get("TELEGRAM_BOT_TOKEN"), help="Bot API token")
     parser.add_argument("--admin", type=int, default=os.environ.get("ADMIN_CHAT_ID"), help="Admin chat ID")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="HTTP health port")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="HTTP health/webhook port")
+    parser.add_argument("--url", default=os.environ.get("RENDER_EXTERNAL_URL"), help="Public external URL for webhooks")
     args = parser.parse_args()
 
     if not args.token:
         print("Error: No bot token provided. Set TELEGRAM_BOT_TOKEN in tool/.env or pass --token", file=sys.stderr)
         sys.exit(1)
 
-    start_health_server(args.port)
     bot = TelegramBot(args.token, args.admin)
-    bot.run()
+
+    # Start HTTP server on port
+    try:
+        server = HTTPServer(("0.0.0.0", args.port), BotHttpHandler)
+        server.bot = bot
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        print(f"🌐 HTTP server listening on 0.0.0.0:{args.port}")
+    except Exception as e:
+        print(f"⚠️ Could not bind HTTP server on {args.port}: {e}")
+
+    if args.url:
+        bot.setup_webhook(args.url)
+        print(f"🤖 Bot running in WEBHOOK mode on {args.url}")
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            print("\n🛑 Bot stopped.")
+    else:
+        bot.remove_webhook()
+        bot.run_polling()
 
 if __name__ == "__main__":
     main()

@@ -15,3 +15,5 @@ services:
         sync: false
       - key: ADMIN_CHAT_ID
         value: "8300325340"
+      - key: RENDER_EXTERNAL_URL
+        value: "https://bcode-pro-telegram-bot.onrender.com"
