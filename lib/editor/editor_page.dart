@@ -979,25 +979,26 @@ class _EditorPageState extends State<EditorPage>
       }
     }
 
-    final online = await NetworkHelper.isOnline;
-    if (!online && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-              'No internet connection. Code will run offline if a runtime is installed.'),
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'Runtimes',
-            textColor: Colors.white,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => const ExtensionsPage(initialTab: 1)),
+    unawaited(NetworkHelper.isOnline.then((online) {
+      if (!online && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+                'No internet connection. Code will run offline if a runtime is installed.'),
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'Runtimes',
+              textColor: Colors.white,
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const ExtensionsPage(initialTab: 1)),
+              ),
             ),
           ),
-        ),
-      );
-    }
+        );
+      }
+    }));
 
     await tabs.save();
     final contribution = registry.byId(langId);

@@ -17,8 +17,9 @@ import 'workload_preflight.dart';
 class ConsoleLine {
   final String text;
   final bool isStderr;
+  final bool isInput;
 
-  const ConsoleLine(this.text, {this.isStderr = false});
+  const ConsoleLine(this.text, {this.isStderr = false, this.isInput = false});
 }
 
 class RunnerService extends ChangeNotifier {
@@ -29,7 +30,9 @@ class RunnerService extends ChangeNotifier {
   String? lastError;
   final List<ConsoleLine> lines = [];
 
-  RunnerService({required this.local});
+  RunnerService({required this.local}) {
+    _ensureStream();
+  }
 
   static const int _maxLines = 1000;
 
@@ -37,12 +40,10 @@ class RunnerService extends ChangeNotifier {
   StreamSubscription<ExecEvent>? _events;
   int _generation = 0;
 
-  // Output arrives in chunks that can split a line, so complete lines are
-  // drained and any partial tail waits for the next chunk.
-  final _stdout = LineCollector();
-  final _stderr = LineCollector();
   bool _sawStdout = false;
   bool _sawStderr = false;
+  bool _lastLineComplete = true;
+  bool _lastLineIsStderr = false;
 
   void _ensureStream() {
     if (_events != null) return;
@@ -58,28 +59,52 @@ class RunnerService extends ChangeNotifier {
     } else {
       _sawStdout = true;
     }
-    final collector = isStderr ? _stderr : _stdout;
-    for (final line in collector.add(event.data)) {
-      _append(line, isStderr: isStderr);
-    }
+    _appendChunk(event.data, isStderr: isStderr);
   }
 
   void _flushPending() {
-    for (final line in _stdout.flush()) {
-      _append(line);
-    }
-    for (final line in _stderr.flush()) {
-      _append(line, isStderr: true);
-    }
+    _lastLineComplete = true;
   }
 
-  void _append(String text, {bool isStderr = false}) {
+  void _appendChunk(String chunk, {bool isStderr = false}) {
+    final sanitized = chunk.replaceAll('\r', '');
+    if (sanitized.isEmpty) return;
+
+    final parts = sanitized.split('\n');
+    for (int i = 0; i < parts.length; i++) {
+      final part = parts[i];
+      final isFirst = i == 0;
+      final isLast = i == parts.length - 1;
+
+      if (isFirst && !_lastLineComplete && lines.isNotEmpty && _lastLineIsStderr == isStderr) {
+        final prev = lines.last;
+        lines[lines.length - 1] = ConsoleLine(
+          prev.text + part,
+          isStderr: prev.isStderr,
+          isInput: prev.isInput,
+        );
+      } else if (!isLast || part.isNotEmpty) {
+        lines.add(ConsoleLine(part, isStderr: isStderr));
+      }
+    }
+
+    _lastLineComplete = sanitized.endsWith('\n');
+    _lastLineIsStderr = isStderr;
+
+    if (lines.length > _maxLines) {
+      lines.removeRange(0, lines.length - _maxLines);
+    }
+    _scheduleNotify();
+  }
+
+  void _append(String text, {bool isStderr = false, bool isInput = false}) {
     for (final line in text.split('\n')) {
-      lines.add(ConsoleLine(line, isStderr: isStderr));
+      lines.add(ConsoleLine(line, isStderr: isStderr, isInput: isInput));
     }
     if (lines.length > _maxLines) {
       lines.removeRange(0, lines.length - _maxLines);
     }
+    _lastLineComplete = true;
     _scheduleNotify();
   }
 
@@ -95,8 +120,29 @@ class RunnerService extends ChangeNotifier {
     });
   }
 
+  void sendStdin(String input) {
+    if (!running || _runId == null) return;
+    unawaited(local.sendStdin(_runId!, input));
+    _lastLineComplete = true;
+    _append('> $input', isInput: true);
+    _lastLineComplete = true;
+  }
+
+  @visibleForTesting
+  void setRunningForTesting(bool isRunning, {String? runId}) {
+    running = isRunning;
+    _runId = runId;
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void appendChunkForTesting(String chunk, {bool isStderr = false}) {
+    _appendChunk(chunk, isStderr: isStderr);
+  }
+
   Future<void> clear() async {
     lines.clear();
+    _lastLineComplete = true;
     notifyListeners();
   }
 
@@ -122,10 +168,9 @@ class RunnerService extends ChangeNotifier {
     lastError = null;
     final generation = ++_generation;
     _runId = 'r${DateTime.now().microsecondsSinceEpoch}';
+    _lastLineComplete = true;
     _sawStdout = false;
     _sawStderr = false;
-    _stdout.clear();
-    _stderr.clear();
     _ensureStream();
     await clear();
     notifyListeners();

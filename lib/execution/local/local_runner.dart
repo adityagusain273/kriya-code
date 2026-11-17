@@ -46,6 +46,21 @@ class LocalRunner {
     }
   }
 
+  /// Sends [input] to the active process's stdin. Returns false if the process has exited.
+  Future<bool> sendStdin(String runId, String input) async {
+    try {
+      return await _channel.invokeMethod<bool>('sendStdin', {
+            'runId': runId,
+            'input': input,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> hasRuntime(String runtimeId) async {
     try {
       return await _channel.invokeMethod<bool>('hasRuntime', {'runtimeId': runtimeId}) ?? false;
@@ -56,9 +71,13 @@ class LocalRunner {
     }
   }
 
+  String? _cachedRuntimeRoot;
+
   Future<String?> runtimeRoot() async {
+    if (_cachedRuntimeRoot != null) return _cachedRuntimeRoot;
     try {
-      return await _channel.invokeMethod<String>('runtimesDir');
+      _cachedRuntimeRoot = await _channel.invokeMethod<String>('runtimesDir');
+      return _cachedRuntimeRoot;
     } catch (_) {
       return null;
     }

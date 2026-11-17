@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 
 KEY_PATH = Path(__file__).parent / "bcode_license_private.pem"
 
-def load_or_generate_key() -> rsa.RSAPrivateKey:
+def load_or_generate_key(generate_if_missing: bool = True) -> rsa.RSAPrivateKey:
     pem_b64 = os.environ.get("LICENSE_PRIVATE_KEY_B64")
     if pem_b64:
         pem_data = base64.b64decode(pem_b64.strip())
@@ -22,7 +22,15 @@ def load_or_generate_key() -> rsa.RSAPrivateKey:
     if KEY_PATH.exists():
         with open(KEY_PATH, "rb") as f:
             return serialization.load_pem_private_key(f.read(), password=None)
-    
+
+    if not generate_if_missing:
+        raise RuntimeError(
+            "No licence signing key configured. Set LICENSE_PRIVATE_KEY_B64 or "
+            "LICENSE_PRIVATE_KEY_PEM, or provision tool/bcode_license_private.pem. "
+            "Refusing to generate one at runtime: the app only trusts the modulus "
+            "compiled into it, so keys from a new pair never verify."
+        )
+
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     with open(KEY_PATH, "wb") as f:
         f.write(

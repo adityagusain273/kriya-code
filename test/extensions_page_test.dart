@@ -12,6 +12,8 @@ import 'package:b_code/monetization/entitlement_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/test_license.dart';
+
 class _StubResolver {
   static Future<String> root() async => '/tmp/bcode_ext_test_runtimes';
 }
@@ -198,7 +200,7 @@ void main() {
       extractor: (_) async => true,
     ));
     final entitlements = LocalEntitlementService(prefs);
-    await entitlements.setProTier(true);
+    await entitlements.activateWithLicenseKey(validTestLicense);
     sl.registerSingleton<EntitlementService>(entitlements);
     sl.registerSingleton<AdService>(AdMobAdService());
 

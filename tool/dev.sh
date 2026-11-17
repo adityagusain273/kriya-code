@@ -84,9 +84,11 @@ case "${1:-dev}" in
     for _ in $(seq 1 40); do
       sleep 2
       focus="$(adb -s "$serial" shell dumpsys window 2>/dev/null \
-        | grep -m1 mCurrentFocus || true)"
-      case "$focus" in
-        *"$APP_ID"*) echo "==> ready: $focus"; exit 0 ;;
+        | grep -E 'mCurrentFocus|mFocusedApp' || true)"
+      resumed="$(adb -s "$serial" shell dumpsys activity activities 2>/dev/null \
+        | grep mResumedActivity || true)"
+      case "$focus $resumed" in
+        *"$APP_ID"*) echo "==> ready: $APP_ID is in foreground"; exit 0 ;;
       esac
     done
     echo "==> app did not reach the foreground in 80s; last focus: ${focus:-none}" >&2

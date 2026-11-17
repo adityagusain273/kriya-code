@@ -19,6 +19,8 @@ import sys
 import re
 import json
 import time
+import hmac
+import secrets
 import argparse
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -70,23 +72,43 @@ class BotHttpHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"B Code Pro Telegram Bot is online and healthy!\n")
 
     def do_POST(self):
-        if self.path == "/webhook":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"OK")
-
-            try:
-                update = json.loads(body.decode("utf-8"))
-                if hasattr(self.server, "bot") and self.server.bot:
-                    threading.Thread(target=self.server.bot.handle_update, args=(update,), daemon=True).start()
-            except Exception as e:
-                print(f"[WEBHOOK JSON ERROR] {e}", file=sys.stderr)
-        else:
+        if self.path != "/webhook":
             self.send_response(404)
             self.end_headers()
+            return
+
+        # Without this, anyone who knows the Render URL can POST a forged
+        # update: "/setadmin" makes them the admin, a fake purchase creates a
+        # pending request, and "app_<id>" hands them a signed Pro licence.
+        bot = getattr(self.server, "bot", None)
+        expected = getattr(bot, "webhook_secret", None)
+        supplied = self.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not expected or not hmac.compare_digest(supplied, expected):
+            self.send_response(401)
+            self.end_headers()
+            return
+
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            content_length = 0
+        if content_length <= 0 or content_length > 1_000_000:
+            self.send_response(413)
+            self.end_headers()
+            return
+
+        body = self.rfile.read(content_length)
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+        try:
+            update = json.loads(body.decode("utf-8"))
+            if bot:
+                threading.Thread(target=bot.handle_update, args=(update,), daemon=True).start()
+        except Exception as e:
+            print(f"[WEBHOOK JSON ERROR] {e}", file=sys.stderr)
 
     def log_message(self, format, *args):
         return
@@ -99,7 +121,11 @@ class TelegramBot:
         if admin_id:
             self.state["admin_id"] = admin_id
             save_state(self.state)
-        self.priv_key = load_or_generate_key()
+        # Regenerated per process; setup_webhook() registers it with Telegram,
+        # so a restart rotates it instead of leaving a shared secret on disk.
+        self.webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET") or secrets.token_urlsafe(32)
+        self._lock = threading.Lock()
+        self.priv_key = load_or_generate_key(generate_if_missing=False)
 
     def call(self, method: str, data: dict = None, files: dict = None) -> dict:
         try:
@@ -119,14 +145,16 @@ class TelegramBot:
             "setWebhook",
             {
                 "url": webhook_url,
+                "secret_token": self.webhook_secret,
                 "allowed_updates": ["message", "callback_query"],
                 "drop_pending_updates": False,
             },
         )
         if res.get("ok"):
             print(f"🔗 Webhook registered with Telegram: {webhook_url}")
-        else:
-            print(f"⚠️ Failed to register webhook: {res.get('error') or res}")
+            return True
+        print(f"⚠️ Failed to register webhook: {res.get('error') or res}")
+        return False
 
     def remove_webhook(self):
         res = self.call("deleteWebhook")
@@ -249,6 +277,13 @@ class TelegramBot:
                 time.sleep(3)
 
     def handle_update(self, update: dict):
+        # Webhook mode handles each update on its own thread; the state file is
+        # read-modify-written, so unserialized updates can drop or duplicate a
+        # pending request.
+        with self._lock:
+            self._handle_update(update)
+
+    def _handle_update(self, update: dict):
         if "callback_query" in update:
             self.handle_callback(update["callback_query"])
             return
@@ -265,11 +300,18 @@ class TelegramBot:
 
         # 1. Admin setup command: /setadmin
         if text.startswith("/setadmin"):
-            self.state["admin_id"] = chat_id
-            save_state(self.state)
+            # Only the operator configured through ADMIN_CHAT_ID may claim
+            # admin. The old code promoted whoever sent this first, which let
+            # any buyer approve their own purchase.
+            if self.state.get("admin_id") != chat_id:
+                self.send_message(
+                    chat_id,
+                    "⛔ Not authorised. Set ADMIN_CHAT_ID on the bot host to register the admin.",
+                )
+                return
             self.send_message(
                 chat_id,
-                f"✅ *You are now registered as Admin!* (ID: `{chat_id}`)\n"
+                f"✅ *You are the registered Admin.* (ID: `{chat_id}`)\n"
                 "All buyer approval requests will be sent to this chat with notification alerts.",
             )
             return
@@ -438,6 +480,13 @@ class TelegramBot:
         chat_id = message.get("chat", {}).get("id")
         message_id = message.get("message_id")
 
+        # Inline buttons are reachable by anyone who can see the message, and
+        # Telegram echoes the presser in `from`. Signing a licence without this
+        # check means a forged "app_<id>" callback mints Pro for free.
+        if query.get("from", {}).get("id") != self.state.get("admin_id"):
+            self.answer_callback(callback_id, "Not authorised.")
+            return
+
         if data.startswith("app_"):
             req_id = data[4:]
             req = self.state["pending"].get(req_id)
@@ -511,7 +560,11 @@ def main():
         print("Error: No bot token provided. Set TELEGRAM_BOT_TOKEN in tool/.env or pass --token", file=sys.stderr)
         sys.exit(1)
 
-    bot = TelegramBot(args.token, args.admin)
+    try:
+        bot = TelegramBot(args.token, args.admin)
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     # Start HTTP server on port
     try:
@@ -523,7 +576,13 @@ def main():
         print(f"⚠️ Could not bind HTTP server on {args.port}: {e}")
 
     if args.url:
-        bot.setup_webhook(args.url)
+        if not bot.setup_webhook(args.url):
+            # Updates Telegram delivers without the registered secret header are
+            # rejected, so a bot that stayed in webhook mode here would look
+            # online and answer nothing.
+            print("⚠️ Falling back to long polling.")
+            bot.run_polling()
+            return
         print(f"🤖 Bot running in WEBHOOK mode on {args.url}")
         try:
             while True:

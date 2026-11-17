@@ -7,6 +7,8 @@ import 'package:b_code/monetization/pro_paywall_sheet.dart';
 import 'package:b_code/monetization/runtime_unlock_flow.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/test_license.dart';
+
 void main() {
   tearDown(sl.reset);
 
@@ -46,7 +48,7 @@ void main() {
 
       expect(service.isRuntimeUnlocked('clang'), isFalse);
       expect(service.isExtensionUnlocked('bcode.lang.rust'), isFalse);
-      await service.setProTier(true);
+      await service.activateWithLicenseKey(validTestLicense);
       expect(service.isRuntimeUnlocked('clang'), isTrue);
       expect(service.isRuntimeUnlocked('anything'), isTrue);
       expect(service.isExtensionUnlocked('bcode.lang.rust'), isTrue);
@@ -54,6 +56,26 @@ void main() {
 
       final entitlements = await service.current();
       expect(entitlements.proTier, isTrue);
+    });
+
+    test('a stored pro flag alone does not unlock paid features', () async {
+      SharedPreferences.setMockInitialValues({'bcode_pro_tier': true});
+      final prefs = await SharedPreferences.getInstance();
+      final service = LocalEntitlementService(prefs);
+      await service.restore();
+
+      expect(service.isRuntimeUnlocked('clang'), isFalse);
+      expect((await service.current()).proTier, isFalse);
+    });
+
+    test('a paid licence survives a restart by re-verifying its signature', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await LocalEntitlementService(prefs).activateWithLicenseKey(validTestLicense);
+
+      final restarted = LocalEntitlementService(prefs);
+      await restarted.restore();
+      expect(restarted.isRuntimeUnlocked('clang'), isTrue);
     });
 
     test('unlocking an extension persists across instances', () async {
@@ -90,9 +112,6 @@ void main() {
   });
 
   group('ProPaywallSheet', () {
-    const validTestLicense =
-        'BCODE.cHJvOnRlc3RAYmNvZGUuZGV2.nDrKf-Gmzu0BvXSHzMlS4PGd_ARgXRAMjn8OXiFO-P99-PIJDN0xtz794tmVtg22w-BnVofpwjA7r1J15Onx9BuquoHtGxoU-yjAZOY7vz7pyXj-KrSG6Y8PQ6sA7tBs5j_PRQNdbJyuxX--WXpZfsiUGnZUP5aMYyInx4IiCwqHwRgNuAhzUD8hOSUITI21EIdOwVGknGKFzErzYtPLoWjHVTU8SooALET62mKK8C0jbIzl_EscGSaQdi5SMw8FT0PUGRcSAniYfibDJz8rKZFstxfoAyX34kztL_hKif9ZeA9cMnlPL9iOFwj9tWIY0oME4v3sGezu64Z1UkYouQ';
-
     testWidgets('displays features and unlocks Pro with valid license key', (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
@@ -175,9 +194,10 @@ void main() {
 
     testWidgets('ProPaywallSheet shows active state and allows resetting to free tier',
         (tester) async {
-      SharedPreferences.setMockInitialValues({'bcode_pro_tier': true});
+      SharedPreferences.setMockInitialValues({'bcode_license_key': validTestLicense});
       final prefs = await SharedPreferences.getInstance();
       final entitlements = LocalEntitlementService(prefs);
+      await tester.runAsync(entitlements.restore);
       sl.registerSingleton<EntitlementService>(entitlements);
 
       await tester.pumpWidget(

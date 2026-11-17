@@ -22,6 +22,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -94,6 +95,11 @@ object ExecPlugin {
 
     // Sandbox: allowed root directories that commands can access
     private val allowedRoots = ConcurrentHashMap<String, Boolean>()
+
+    // Performance caches for runtime binary and manifest integrity verification
+    private val verifiedBinaries = ConcurrentHashMap<String, Long>()
+    private val manifestCache = ConcurrentHashMap<String, Pair<Long, Map<String, String>>>()
+    private val manifestHashCache = ConcurrentHashMap<String, Pair<Long, String>>()
 
     private fun runOnMain(block: () -> Unit) {
         mainHandler.post(block)
@@ -326,8 +332,30 @@ object ExecPlugin {
                 "kill" -> {
                     val runId = call.argument<String>("runId")
                     val process = runId?.let { activeProcesses.remove(it) }
+                    try { process?.outputStream?.close() } catch (_: Exception) {}
                     process?.destroyForcibly()
                     result.success(process != null)
+                }
+                "sendStdin" -> {
+                    val runId = call.argument<String>("runId")
+                    val input = call.argument<String>("input") ?: ""
+                    val process = runId?.let { activeProcesses[it] }
+                    if (process != null) {
+                        try {
+                            val line = if (input.endsWith("\n")) input else "$input\n"
+                            process.outputStream.write(line.toByteArray(Charsets.UTF_8))
+                            process.outputStream.flush()
+                            result.success(true)
+                        } catch (e: IOException) {
+                            android.util.Log.w("ExecPlugin", "Failed to write stdin for $runId", e)
+                            result.success(false)
+                        } catch (e: Exception) {
+                            android.util.Log.w("ExecPlugin", "Unexpected error writing stdin for $runId", e)
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(false)
+                    }
                 }
                 "installApk" -> {
                     val path = call.argument<String>("path") ?: ""
@@ -377,6 +405,9 @@ object ExecPlugin {
     }
 
     private fun extractRuntime(runtimeId: String) {
+        manifestCache.remove(runtimeId)
+        manifestHashCache.remove(runtimeId)
+        verifiedBinaries.clear()
         val dest = runtimeDir(runtimeId)
         // Fail before touching the archive when the volume cannot hold the
         // ceiling we allow, rather than dying mid-extraction with ENOSPC.
@@ -517,6 +548,12 @@ object ExecPlugin {
     /// [canonical] is a file inside the runtimes root; check it against the
     /// owning runtime's manifest and the manifest's own bound digest.
     private fun verifyAgainstManifest(canonical: String, rootCanonical: String) {
+        val targetFile = File(canonical)
+        val targetMtime = targetFile.lastModified()
+        if (verifiedBinaries[canonical] == targetMtime) {
+            return
+        }
+
         val relToRoot = canonical.removePrefix(rootCanonical)
         val runtimeId = relToRoot.substringBefore(File.separatorChar)
         if (!RUNTIME_ID_PATTERN.matches(runtimeId)) {
@@ -538,24 +575,46 @@ object ExecPlugin {
                 "No integrity record for runtime '$runtimeId'. " +
                     "Reinstall the runtime from the Runtimes screen."
             )
-        if (!sha256Hex(manifestFile).equals(bound, ignoreCase = true)) {
+
+        val manifestMtime = manifestFile.lastModified()
+        val cachedHash = manifestHashCache[runtimeId]
+        val manifestDigest = if (cachedHash != null && cachedHash.first == manifestMtime) {
+            cachedHash.second
+        } else {
+            val h = sha256Hex(manifestFile)
+            manifestHashCache[runtimeId] = Pair(manifestMtime, h)
+            h
+        }
+
+        if (!manifestDigest.equals(bound, ignoreCase = true)) {
             throw RuntimeIntegrityException(
                 "Runtime '$runtimeId' failed its integrity check. " +
                     "Reinstall the runtime from the Runtimes screen."
             )
         }
-        val expected = readIntegrityManifest(manifestFile)[relInRuntime]
+
+        val cachedMap = manifestCache[runtimeId]
+        val manifestMap = if (cachedMap != null && cachedMap.first == manifestMtime) {
+            cachedMap.second
+        } else {
+            val m = readIntegrityManifest(manifestFile)
+            manifestCache[runtimeId] = Pair(manifestMtime, m)
+            m
+        }
+
+        val expected = manifestMap[relInRuntime]
             ?: throw RuntimeIntegrityException(
                 "No recorded digest for '$relInRuntime' in runtime '$runtimeId'. " +
                     "Reinstall the runtime from the Runtimes screen."
             )
-        val actual = sha256Hex(File(canonical))
+        val actual = sha256Hex(targetFile)
         if (!actual.equals(expected, ignoreCase = true)) {
             throw RuntimeIntegrityException(
                 "'$relInRuntime' in runtime '$runtimeId' was modified after installation. " +
                     "Reinstall the runtime from the Runtimes screen."
             )
         }
+        verifiedBinaries[canonical] = targetMtime
     }
 
     private fun sha256Hex(file: File): String {
@@ -847,18 +906,16 @@ object ExecPlugin {
             File(it).exists()
         } ?: environment["PYTHONHOME"] ?: ""
         if (environment["PYTHONHOME"]!!.isEmpty()) environment.remove("PYTHONHOME")
+        environment["PYTHONUNBUFFERED"] = "1"
 
         val process = processBuilder.start()
-        // The console has no stdin row, so a program calling input() must see
-        // EOF instead of blocking until the user stops the run.
-        process.outputStream.close()
         if (runId != null) {
             activeProcesses[runId] = process
             // Dart subscribes to the run channel immediately before invoking
             // exec, but the native onListen lands on the main thread a moment
             // later. Waiting briefly for it avoids losing the first lines of a
             // program that exits instantly.
-            val deadline = System.currentTimeMillis() + 1500
+            val deadline = System.currentTimeMillis() + 200
             while (eventSink == null && System.currentTimeMillis() < deadline) {
                 Thread.sleep(10)
             }
@@ -911,6 +968,9 @@ object ExecPlugin {
                 "truncated" to (out.truncated || err.truncated)
             )
         } finally {
+            try {
+                process.outputStream.close()
+            } catch (_: Exception) {}
             if (runId != null) activeProcesses.remove(runId)
         }
     }

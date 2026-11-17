@@ -436,6 +436,7 @@ Future<void> _bootstrap() async {
   sl<TabManager>().attachSettings(settingsStore);
 
   final entitlementService = LocalEntitlementService(prefs);
+  await entitlementService.restore();
   sl.registerSingleton<EntitlementService>(entitlementService);
 
   final adService = AdMobAdService();
