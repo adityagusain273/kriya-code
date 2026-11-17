@@ -200,7 +200,9 @@ void main() {
       extractor: (_) async => true,
     ));
     final entitlements = LocalEntitlementService(prefs);
-    await entitlements.activateWithLicenseKey(validTestLicense);
+    // Real plugin channels do not resolve under the test binding's fake clock,
+    // so activation must run in a real async zone.
+    await tester.runAsync(() => entitlements.activateWithLicenseKey(validTestLicense));
     sl.registerSingleton<EntitlementService>(entitlements);
     sl.registerSingleton<AdService>(AdMobAdService());
 
