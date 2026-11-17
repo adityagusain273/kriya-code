@@ -55,10 +55,21 @@ def load_state() -> dict:
                 data.setdefault("admin_id", None)
                 data.setdefault("pending", {})
                 data.setdefault("sessions", {})
+                data.setdefault("blocked_users", [])
+                data.setdefault("rejections", {})
+                data.setdefault("used_utrs", [])
                 return data
         except Exception:
             pass
-    return {"offset": 0, "admin_id": None, "pending": {}, "sessions": {}}
+    return {
+        "offset": 0,
+        "admin_id": None,
+        "pending": {},
+        "sessions": {},
+        "blocked_users": [],
+        "rejections": {},
+        "used_utrs": [],
+    }
 
 def save_state(state: dict):
     with open(STATE_FILE, "w") as f:
@@ -190,12 +201,24 @@ class TelegramBot:
         return self.call("answerCallbackQuery", payload)
 
     def submit_request(self, chat_id: int, username: str, device_id: str, utr: str, photo_id: str | None = None):
+        clean_utr = utr.strip()
+        used_utrs = set(self.state.get("used_utrs", []))
+        if clean_utr in used_utrs:
+            self.send_message(
+                chat_id,
+                "⚠️ *Invalid or already processed UTR.*\n\n"
+                f"The reference number `{clean_utr}` has already been processed or flagged. "
+                "Each UPI transaction reference can only be used once.\n\n"
+                "If you believe this is an error, please message @bakadev directly with your payment receipt.",
+            )
+            return
+
         req_id = f"{chat_id}_{int(time.time())}"
         self.state["pending"][req_id] = {
             "chat_id": chat_id,
             "username": username,
             "device_id": device_id,
-            "utr": utr,
+            "utr": clean_utr,
             "photo_id": photo_id,
         }
         save_state(self.state)
@@ -203,7 +226,7 @@ class TelegramBot:
         # 1. Confirm to Buyer
         buyer_confirmation = (
             f"Payment details received for device `{device_id}`.\n"
-            f"UTR / Ref: `{utr}`\n\n"
+            f"UTR / Ref: `{clean_utr}`\n\n"
             "I have forwarded your request to Aditya for manual verification. "
             "Because B Code is built and maintained by an individual developer, please allow up to 6 hours for approval. "
             "The developer is human too and might be in class, working, or asleep.\n\n"
@@ -222,15 +245,16 @@ class TelegramBot:
             "🚨 *NEW PRO PURCHASE PENDING APPROVAL!*\n\n"
             f"👤 *Buyer:* @{username} (ID: `{chat_id}`)\n"
             f"📱 *Device ID:* `{device_id}`\n"
-            f"🧾 *UTR / Ref:* `{utr}`\n\n"
+            f"🧾 *UTR / Ref:* `{clean_utr}`\n\n"
             "Check your bank/UPI app for ₹49. Tap below to issue license:"
         )
 
         buttons = {
             "inline_keyboard": [
                 [
-                    {"text": "✅ Approve & Send Key", "callback_data": f"app_{req_id}"},
+                    {"text": "✅ Approve", "callback_data": f"app_{req_id}"},
                     {"text": "❌ Reject", "callback_data": f"rej_{req_id}"},
+                    {"text": "🚫 Reject & Block", "callback_data": f"blk_{req_id}"},
                 ]
             ]
         }
@@ -298,6 +322,41 @@ class TelegramBot:
         text = (message.get("text", "") or message.get("caption", "")).strip()
         photo = message.get("photo")
 
+        # 0. Drop messages from blocked users immediately
+        if chat_id in self.state.get("blocked_users", []):
+            return
+
+        # Check for active cooldown from repeated failed verifications
+        user_rej = self.state.get("rejections", {}).get(str(chat_id), {})
+        cooldown_until = user_rej.get("cooldown_until", 0)
+        if cooldown_until > time.time() and not text.startswith("/unblock"):
+            remaining_hours = int((cooldown_until - time.time()) / 3600) + 1
+            self.send_message(
+                chat_id,
+                f"⏳ *Account temporarily on cooldown.*\n\n"
+                f"Due to multiple failed verifications, submissions are paused for {remaining_hours} hour(s).\n"
+                "If this is a mistake, please reach out directly to @bakadev on Telegram with your payment receipt.",
+            )
+            return
+
+        # Admin unblock command: /unblock <user_id>
+        if text.startswith("/unblock"):
+            if self.state.get("admin_id") != chat_id:
+                self.send_message(chat_id, "⛔ Not authorised.")
+                return
+            parts = text.split()
+            if len(parts) == 2 and parts[1].isdigit():
+                target_id = int(parts[1])
+                blocked = self.state.setdefault("blocked_users", [])
+                if target_id in blocked:
+                    blocked.remove(target_id)
+                self.state.get("rejections", {}).pop(str(target_id), None)
+                save_state(self.state)
+                self.send_message(chat_id, f"✅ User `{target_id}` has been unblocked.")
+            else:
+                self.send_message(chat_id, "Usage: `/unblock <user_id>`")
+            return
+
         # 1. Admin setup command: /setadmin
         if text.startswith("/setadmin"):
             # Only the operator configured through ADMIN_CHAT_ID may claim
@@ -318,13 +377,30 @@ class TelegramBot:
 
         # 2. Reset session command: /reset or /cancel
         if text in ("/reset", "/cancel"):
+            # Also cancel any pending request if user explicitly resets
+            pending_to_del = [k for k, v in self.state.get("pending", {}).items() if v.get("chat_id") == chat_id]
+            for k in pending_to_del:
+                del self.state["pending"][k]
             if str(chat_id) in self.state.get("sessions", {}):
                 del self.state["sessions"][str(chat_id)]
-                save_state(self.state)
+            save_state(self.state)
             self.send_message(
                 chat_id,
-                "🔄 *Session reset.*\n\n"
+                "🔄 *Session and pending requests reset.*\n\n"
                 "Type /start to begin a fresh Pro activation.",
+            )
+            return
+
+        # 3. Limit to 1 active pending request per user to prevent notification flooding
+        has_pending = any(req.get("chat_id") == chat_id for req in self.state.get("pending", {}).values())
+        if has_pending and chat_id != self.state.get("admin_id") and not text.startswith("/"):
+            self.send_message(
+                chat_id,
+                "⏳ *Submission already pending review.*\n\n"
+                "You already have a payment submission waiting for verification. "
+                "Please allow up to 6 hours for Aditya to review your transaction. "
+                "You will receive your Pro key here once confirmed.\n\n"
+                "_(Send /cancel if you made an error and need to restart)_",
             )
             return
 
@@ -522,6 +598,10 @@ class TelegramBot:
             self.answer_callback(callback_id, "✅ Key delivered to buyer!")
 
             del self.state["pending"][req_id]
+            utr = req.get("utr", "")
+            if utr and utr not in self.state.setdefault("used_utrs", []):
+                self.state["used_utrs"].append(utr)
+            self.state.get("rejections", {}).pop(str(buyer_chat_id), None)
             save_state(self.state)
 
         elif data.startswith("rej_"):
@@ -534,15 +614,62 @@ class TelegramBot:
             buyer_chat_id = req["chat_id"]
             device_id = req["device_id"]
 
-            self.send_message(
-                buyer_chat_id,
-                f"❌ *Payment verification failed for Device `{device_id}`.*\n\n"
-                "The transaction could not be matched. Please verify your UTR number or message @bakadev directly.",
-            )
+            rejections = self.state.setdefault("rejections", {})
+            user_rej = rejections.setdefault(str(buyer_chat_id), {"count": 0, "cooldown_until": 0})
+            user_rej["count"] += 1
 
-            admin_msg = f"❌ *REJECTED* for Device `{device_id}` (@{req['username']})"
+            if user_rej["count"] >= 3:
+                user_rej["cooldown_until"] = time.time() + 86400
+                user_rej["count"] = 0
+                self.send_message(
+                    buyer_chat_id,
+                    f"❌ *Verification failed for Device `{device_id}` (3rd attempt).*\n\n"
+                    "Your account has been placed on a 24-hour cooldown. "
+                    "If you made a genuine payment, please contact @bakadev directly on Telegram with your receipt.",
+                )
+                admin_msg = f"❌ *REJECTED & 24h COOLDOWN* for Device `{device_id}` (@{req['username']})"
+            else:
+                attempts_left = 3 - user_rej["count"]
+                self.send_message(
+                    buyer_chat_id,
+                    f"❌ *Payment verification failed for Device `{device_id}`.*\n\n"
+                    f"The transaction could not be matched. Please double-check your 12-digit UTR or contact @bakadev directly. "
+                    f"({attempts_left} attempt(s) remaining before a 24h cooldown).",
+                )
+                admin_msg = f"❌ *REJECTED* (Strike {user_rej['count']}/3) for Device `{device_id}` (@{req['username']})"
+
             self.edit_message(chat_id, message_id, admin_msg, reply_markup={"inline_keyboard": []})
             self.answer_callback(callback_id, "❌ Rejected.")
+
+            del self.state["pending"][req_id]
+            save_state(self.state)
+
+        elif data.startswith("blk_"):
+            req_id = data[4:]
+            req = self.state["pending"].get(req_id)
+            if not req:
+                self.answer_callback(callback_id, "Request expired or already handled.")
+                return
+
+            buyer_chat_id = req["chat_id"]
+            device_id = req["device_id"]
+            utr = req.get("utr", "")
+
+            blocked = self.state.setdefault("blocked_users", [])
+            if buyer_chat_id not in blocked:
+                blocked.append(buyer_chat_id)
+
+            if utr and utr not in self.state.setdefault("used_utrs", []):
+                self.state["used_utrs"].append(utr)
+
+            self.send_message(
+                buyer_chat_id,
+                "🚫 *Your account has been blocked due to suspicious activity or repeated spam.*",
+            )
+
+            admin_msg = f"🚫 *REJECTED & BLOCKED* buyer @{req['username']} (Device `{device_id}`)"
+            self.edit_message(chat_id, message_id, admin_msg, reply_markup={"inline_keyboard": []})
+            self.answer_callback(callback_id, "🚫 User blocked permanently.")
 
             del self.state["pending"][req_id]
             save_state(self.state)
