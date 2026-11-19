@@ -113,3 +113,6 @@ tool/.env
 tool/bot_state.json
 tool/*.env
 
+
+# Ralph local run tracking
+scripts/ralph/.last-branch

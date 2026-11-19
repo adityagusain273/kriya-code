@@ -7,11 +7,13 @@ class LicenseValidationResult {
   final bool isValid;
   final String? errorMessage;
   final String? deviceId;
+  final DateTime? expiryDate;
 
   const LicenseValidationResult({
     required this.isValid,
     this.errorMessage,
     this.deviceId,
+    this.expiryDate,
   });
 
   static const valid = LicenseValidationResult(isValid: true);
@@ -96,8 +98,25 @@ class LicenseVerifier {
 
       final payload = utf8.decode(payloadBytes);
       String? boundId;
+      DateTime? expiryDate;
+
       if (payload.startsWith('pro:')) {
-        boundId = payload.substring(4);
+        final body = payload.substring(4);
+        final lastColon = body.lastIndexOf(':');
+        if (lastColon != -1) {
+          final epochSeconds = int.tryParse(body.substring(lastColon + 1));
+          if (epochSeconds != null) {
+            boundId = body.substring(0, lastColon);
+            expiryDate = DateTime.fromMillisecondsSinceEpoch(
+              epochSeconds * 1000,
+              isUtc: true,
+            );
+          } else {
+            boundId = body;
+          }
+        } else {
+          boundId = body;
+        }
       }
 
       if (boundId != null && boundId.startsWith('BCODE-')) {
@@ -108,12 +127,27 @@ class LicenseVerifier {
               errorMessage:
                   'This license key is locked to device $boundId and cannot be used on this phone.',
               deviceId: boundId,
+              expiryDate: expiryDate,
             );
           }
         }
       }
 
-      return LicenseValidationResult(isValid: true, deviceId: boundId);
+      if (expiryDate != null && DateTime.now().isAfter(expiryDate)) {
+        return LicenseValidationResult(
+          isValid: false,
+          deviceId: boundId,
+          errorMessage:
+              'Your 6-Month Semester Pass expired on ${expiryDate.toLocal().toString().split(" ")[0]}. Renew to continue enjoying Pro features.',
+          expiryDate: expiryDate,
+        );
+      }
+
+      return LicenseValidationResult(
+        isValid: true,
+        deviceId: boundId,
+        expiryDate: expiryDate,
+      );
     } catch (_) {
       return LicenseValidationResult.invalid;
     }

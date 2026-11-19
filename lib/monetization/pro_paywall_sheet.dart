@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/constants.dart';
@@ -124,8 +129,51 @@ Future<bool?> showLicenseInputDialog(BuildContext context) async {
   );
 }
 
-class ProPaywallSheet extends StatelessWidget {
+Future<String> _getProActiveTitle() async {
+  try {
+    String? key;
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      try {
+        const storage = FlutterSecureStorage();
+        key = await storage.read(key: 'bcode_license_key');
+      } catch (_) {}
+    }
+    if (key == null || key.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      key = prefs.getString('bcode_license_key');
+    }
+    if (key != null && key.isNotEmpty) {
+      final clean = key.replaceAll(RegExp(r'\s+'), '');
+      final parts = clean.split('.');
+      if (parts.length == 3 && parts[0] == 'BCODE') {
+        final payloadBytes = base64Url.decode(base64.normalize(parts[1]));
+        final payload = utf8.decode(payloadBytes);
+        final components = payload.split(':');
+        if (components.length >= 3 && components[2].isNotEmpty) {
+          return 'B Code Pro Active (Semester Pass)';
+        }
+        return 'B Code Pro Active (Lifetime Pass)';
+      }
+    }
+  } catch (_) {}
+  return 'B Code Pro Active (Semester Pass)';
+}
+
+class ProPaywallSheet extends StatefulWidget {
   const ProPaywallSheet({super.key});
+
+  @override
+  State<ProPaywallSheet> createState() => _ProPaywallSheetState();
+}
+
+class _ProPaywallSheetState extends State<ProPaywallSheet> {
+  late final Future<String> _proTitleFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _proTitleFuture = _getProActiveTitle();
+  }
 
   Future<void> _openPaymentModal(BuildContext context) async {
     Haptics.light();
@@ -231,7 +279,7 @@ class ProPaywallSheet extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'A one-time student pass to remove ads and unlock every compiler and extension offline forever.',
+                'The Semester Pass for mobile coding with zero ads, unlimited cloud builds, and instant compiler downloads.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: Colors.white70,
@@ -239,38 +287,7 @@ class ProPaywallSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1B2232),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF2A364F)),
-                ),
-                child: const Column(
-                  children: [
-                    _FeatureRow(
-                      icon: Icons.block_rounded,
-                      iconColor: Color(0xFF00E676),
-                      title: 'No ads',
-                      subtitle: 'Clean workspace with zero ad interruptions',
-                    ),
-                    SizedBox(height: 12),
-                    _FeatureRow(
-                      icon: Icons.offline_bolt_rounded,
-                      iconColor: Color(0xFF4FC3F7),
-                      title: 'All compilers unlocked',
-                      subtitle: 'Download Python, C/C++, Java, and Node.js immediately',
-                    ),
-                    SizedBox(height: 12),
-                    _FeatureRow(
-                      icon: Icons.favorite_rounded,
-                      iconColor: Color(0xFFFF5252),
-                      title: 'Help broke students code',
-                      subtitle: 'Supports ongoing development for developers without laptops',
-                    ),
-                  ],
-                ),
-              ),
+              const _FeatureMatrix(),
               const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -288,7 +305,7 @@ class ProPaywallSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          '₹49 LIFETIME',
+                          '₹49 / 6 MONTHS',
                           style: TextStyle(
                             color: Color(0xFF00E676),
                             fontSize: 18,
@@ -297,7 +314,7 @@ class ProPaywallSheet extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          'One-time payment · No subscription',
+                          'The Semester Pass (~₹8/month)',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.6),
                             fontSize: 11,
@@ -312,7 +329,7 @@ class ProPaywallSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Text(
-                        '100% OFFLINE',
+                        'SEMESTER PASS',
                         style: TextStyle(
                           color: Color(0xFF00E676),
                           fontSize: 10,
@@ -325,28 +342,34 @@ class ProPaywallSheet extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               if (isAlreadyPro) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF00E676).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFF00E676).withValues(alpha: 0.4)),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.verified_rounded, color: Color(0xFF00E676), size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'B Code Pro Active (Lifetime Pass)',
-                        style: TextStyle(
-                          color: Color(0xFF00E676),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                FutureBuilder<String>(
+                  future: _proTitleFuture,
+                  builder: (context, snapshot) {
+                    final title = snapshot.data ?? 'B Code Pro Active (Semester Pass)';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00E676).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFF00E676).withValues(alpha: 0.4)),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.verified_rounded, color: Color(0xFF00E676), size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              color: Color(0xFF00E676),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
@@ -514,7 +537,7 @@ class UpiScanPaySheet extends StatelessWidget {
     Haptics.light();
     final deviceId = await DeviceIdProvider.getDeviceId();
     final message = Uri.encodeComponent(
-      'Hi Aditya, I paid ₹49 for B Code Pro.\n'
+      'Hi Aditya, I paid ₹49 for B Code Pro (6-Month Semester Pass).\n'
       '- UPI UTR: [paste your 12-digit UTR here]\n'
       '- Device ID: $deviceId',
     );
@@ -888,17 +911,158 @@ class _UpiBadge extends StatelessWidget {
   }
 }
 
-class _FeatureRow extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
+class _FeatureMatrix extends StatelessWidget {
+  const _FeatureMatrix();
 
-  const _FeatureRow({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1B262C),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF00E676).withValues(alpha: 0.4),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.bolt_rounded, color: Color(0xFF00E676), size: 18),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'Pro Semester Pass (₹49 / 6 Months)',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'PRO',
+                      style: TextStyle(
+                        color: Color(0xFF00E676),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const _FeatureItem(text: '⚡ 100% Zero Ads across the entire app'),
+              const SizedBox(height: 8),
+              const _FeatureItem(text: '🚀 Unlimited GitHub Cloud Builds & 1-Tap APK Install'),
+              const SizedBox(height: 8),
+              const _FeatureItem(text: '✨ Auto-Format on Save (Prettier, Clang-Format, Black)'),
+              const SizedBox(height: 8),
+              const _FeatureItem(text: '🌐 Local Wi-Fi Live Web Dev Server (Share with friends)'),
+              const SizedBox(height: 8),
+              const _FeatureItem(text: '⚡ Instant 1-Tap Compiler Downloads (No sponsor countdown)'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF161B22),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF2A364F)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.school_rounded, color: Color(0xFF4FC3F7), size: 18),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'Free Forever (Student Guarantee)',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4FC3F7).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'FREE',
+                      style: TextStyle(
+                        color: Color(0xFF4FC3F7),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const _FeatureItem(
+                text: 'All Languages: C, C++, Python, Java, Web',
+                icon: Icons.check_circle_outline_rounded,
+                iconColor: Color(0xFF4FC3F7),
+              ),
+              const SizedBox(height: 8),
+              const _FeatureItem(
+                text: 'Offline Syntax Highlighting & Autocomplete',
+                icon: Icons.check_circle_outline_rounded,
+                iconColor: Color(0xFF4FC3F7),
+              ),
+              const SizedBox(height: 8),
+              const _FeatureItem(
+                text: 'Local Code Execution & Terminal',
+                icon: Icons.check_circle_outline_rounded,
+                iconColor: Color(0xFF4FC3F7),
+              ),
+              const SizedBox(height: 8),
+              const _FeatureItem(
+                text: '2 GitHub Cloud Builds per day',
+                icon: Icons.check_circle_outline_rounded,
+                iconColor: Color(0xFF4FC3F7),
+              ),
+              const SizedBox(height: 8),
+              const _FeatureItem(
+                text: '5-Second Sponsor Break before runtime downloads',
+                icon: Icons.timer_outlined,
+                iconColor: Colors.white54,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FeatureItem extends StatelessWidget {
+  final String text;
+  final IconData? icon;
+  final Color? iconColor;
+
+  const _FeatureItem({
+    required this.text,
+    this.icon,
+    this.iconColor,
   });
 
   @override
@@ -906,37 +1070,18 @@ class _FeatureRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: iconColor.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: iconColor, size: 20),
-        ),
-        const SizedBox(width: 12),
+        if (icon != null) ...[
+          Icon(icon, color: iconColor ?? const Color(0xFF00E676), size: 16),
+          const SizedBox(width: 8),
+        ],
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.65),
-                  fontSize: 12,
-                  height: 1.3,
-                ),
-              ),
-            ],
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              height: 1.3,
+            ),
           ),
         ),
       ],

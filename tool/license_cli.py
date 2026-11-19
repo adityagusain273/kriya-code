@@ -4,6 +4,7 @@ import sys
 import argparse
 import base64
 import uuid
+import time
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
@@ -58,10 +59,14 @@ def main():
 
     issue_p = subparsers.add_parser("issue", help="Issue a license key for a user")
     issue_p.add_argument("user", help="User email, UPI UTR, or identifier")
+    issue_p.add_argument("--months", type=int, default=6, help="Validity duration in months (default: 6)")
+    issue_p.add_argument("--lifetime", action="store_true", help="Issue a lifetime license without expiration")
 
     batch_p = subparsers.add_parser("batch", help="Generate a CSV batch for Gumroad / Lemon Squeezy")
     batch_p.add_argument("--count", type=int, default=100, help="Number of keys to generate")
     batch_p.add_argument("--out", type=str, default="gumroad_keys.csv", help="Output CSV filename")
+    batch_p.add_argument("--months", type=int, default=6, help="Validity duration in months (default: 6)")
+    batch_p.add_argument("--lifetime", action="store_true", help="Issue lifetime licenses without expiration")
 
     args = parser.parse_args()
     priv_key = load_or_generate_key()
@@ -73,7 +78,12 @@ def main():
         print(modulus_hex)
         print(f"\nPrivate key saved to: {KEY_PATH}")
     elif args.command == "issue":
-        key_str = sign_license(priv_key, f"pro:{args.user}")
+        if args.lifetime:
+            payload = f"pro:{args.user}"
+        else:
+            expiry_epoch = int(time.time()) + (args.months * 30 * 86400)
+            payload = f"pro:{args.user}:{expiry_epoch}"
+        key_str = sign_license(priv_key, payload)
         print(f"License Key for '{args.user}':\n")
         print(key_str)
     elif args.command == "batch":
@@ -83,7 +93,12 @@ def main():
             f.write("License Key\n")
             for _ in range(count):
                 batch_id = uuid.uuid4().hex[:12]
-                k = sign_license(priv_key, f"pro:{batch_id}")
+                if args.lifetime:
+                    payload = f"pro:{batch_id}"
+                else:
+                    expiry_epoch = int(time.time()) + (args.months * 30 * 86400)
+                    payload = f"pro:{batch_id}:{expiry_epoch}"
+                k = sign_license(priv_key, payload)
                 f.write(f"{k}\n")
         print(f"Generated {count} license keys in {out_path.resolve()}")
     else:

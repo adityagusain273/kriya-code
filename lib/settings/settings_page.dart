@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,12 +9,47 @@ import '../core/constants.dart';
 import '../core/crash_reporter.dart';
 import '../core/di.dart';
 import '../core/haptics.dart';
+import '../core/update_service.dart';
 import '../editor/highlighting/syntax_themes.dart';
 import '../editor/keyboard_help_page.dart';
 import '../execution/termux_runner.dart';
 import '../monetization/entitlement_service.dart';
 import '../monetization/pro_paywall_sheet.dart';
 import 'settings_store.dart';
+
+bool _customLicensesRegistered = false;
+
+void _registerCustomLicenses() {
+  if (_customLicensesRegistered) return;
+  _customLicensesRegistered = true;
+
+  LicenseRegistry.addLicense(() async* {
+    yield const LicenseEntryWithLineBreaks(
+      ['libgit2'],
+      'libgit2 is licensed under the GNU General Public License v2 with a Linking Exception (GPLv2 with linking exception).\n\n'
+      'As a special exception, the copyright holders of libgit2 grant you permission to link '
+      'this library with independent modules to produce an executable, regardless of the license '
+      'terms of these independent modules, and to copy and distribute the resulting executable under '
+      'terms of your choice, provided that you also meet, for each linked independent module, the '
+      'terms and conditions of the license of that module.',
+    );
+    yield const LicenseEntryWithLineBreaks(
+      ['GCC / Termux packages'],
+      'GCC and related compiler packages distributed via Termux / Open Source repositories are licensed '
+      'under the GNU General Public License v3 (GPLv3) and other Open Source licenses.\n\n'
+      'GNU General Public License v3:\n'
+      'Everyone is permitted to copy and distribute verbatim copies of this license document, '
+      'but changing it is not allowed. Software is distributed under the terms of GPLv3 or other compatible '
+      'free/libre open source licenses.',
+    );
+    yield const LicenseEntryWithLineBreaks(
+      ['Python Software Foundation License'],
+      'Python Software Foundation License Version 2\n\n'
+      '1. This LICENSE AGREEMENT is between the Python Software Foundation ("PSF"), and the Individual or Organization ("Licensee") accessing and otherwise using this software ("Python") in source or binary form and its associated documentation.\n\n'
+      '2. Subject to the terms and conditions of this License Agreement, PSF hereby grants Licensee a nonexclusive, royalty-free, world-wide license to reproduce, analyze, test, perform and/or display publicly, prepare derivative works, distribute, and otherwise use Python alone or in any derivative version, provided, however, that PSF\'s License Agreement and PSF\'s notice of copyright, i.e., "Copyright (c) 2001-2026 Python Software Foundation; All Rights Reserved" are retained in Python alone or in any derivative version prepared by Licensee.',
+    );
+  });
+}
 
 class SettingsPage extends StatefulWidget {
   final SettingsStore store;
@@ -43,6 +79,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    _registerCustomLicenses();
     _checkTermux();
     _loadVersion();
   }
@@ -393,7 +430,28 @@ class _SettingsPageState extends State<SettingsPage> {
 
   List<Widget> _aboutSection() => [
           _sectionHeader('About'),
-          ListTile(title: const Text('B Code'), subtitle: Text('Version ${_version.isEmpty ? '' : _version.split('+').first} · com.bcode.editor')),
+          ListTile(
+            title: const Text('B Code'),
+            subtitle: Text('Version ${_version.isEmpty ? '' : _version.split('+').first} · com.bcode.editor'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.system_update_alt_rounded),
+            title: const Text('Check for Updates'),
+            subtitle: const Text('Check GitHub for latest release'),
+            onTap: () => const UpdateService().checkAndPrompt(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Third-Party Licenses'),
+            subtitle: const Text('Open source licenses and attributions'),
+            onTap: () {
+              _registerCustomLicenses();
+              showLicensePage(
+                context: context,
+                applicationName: 'B Code',
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.keyboard),
             title: const Text('Keyboard shortcuts'),
@@ -416,8 +474,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: const Text('B Code Pro'),
                 subtitle: Text(
                   isPro
-                      ? 'Lifetime Pass Active ⚡'
-                      : '₹49 Lifetime — Ad-free & all runtimes unlocked',
+                      ? 'Semester Pass Active ⚡'
+                      : '₹49 / 6 Months (Semester Pass) — Ad-free & all runtimes unlocked',
                 ),
                 trailing: isPro
                     ? Container(
@@ -452,8 +510,19 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: const Text('Optional tip via UPI — no features unlocked'),
             onTap: () => _showSupportDevDialog(context),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+            child: Text(
+              'B Code is an independent software application developed for mobile devices. '
+              'It is not affiliated with, sponsored by, or endorsed by Microsoft Corporation.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                    fontSize: 11,
+                  ),
+            ),
+          ),
           const SizedBox(height: 24),
-
   ];
   void _setTheme(ThemeMode mode) {
     setState(() => _themeMode = mode);

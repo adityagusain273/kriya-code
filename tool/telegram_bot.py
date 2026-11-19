@@ -734,8 +734,9 @@ class TelegramBot:
             buyer_chat_id = req["chat_id"]
             buyer_user = req["username"]
 
-            # Generate RSA-2048 device-locked key
-            license_key = sign_license(self.priv_key, f"pro:{device_id}")
+            # Generate RSA-2048 device-locked 6-month license key
+            expiry_epoch = int(time.time()) + 180 * 86400
+            license_key = sign_license(self.priv_key, f"pro:{device_id}:{expiry_epoch}")
 
             # Send to buyer
             buyer_msg = (
@@ -743,7 +744,7 @@ class TelegramBot:
                 f"Your license key for device `{device_id}`:\n\n"
                 f"`{license_key}`\n\n"
                 "*(Tap the code above to copy)*\n\n"
-                "👉 Open B Code → Tap *Enter License Key* → Paste and activate Pro offline forever!"
+                "👉 Open B Code → Tap *Enter License Key* → Paste and activate your 6-Month Semester Pass!"
             )
             self.send_message(buyer_chat_id, buyer_msg)
 

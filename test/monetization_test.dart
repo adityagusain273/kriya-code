@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:b_code/core/di.dart';
@@ -128,8 +130,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('B CODE PRO'), findsOneWidget);
-      expect(find.text('No ads'), findsOneWidget);
-      expect(find.text('All compilers unlocked'), findsOneWidget);
+      expect(find.text('Pro Semester Pass (₹49 / 6 Months)'), findsOneWidget);
+      expect(find.text('Free Forever (Student Guarantee)'), findsOneWidget);
+      expect(find.text('⚡ 100% Zero Ads across the entire app'), findsOneWidget);
+      expect(find.text('All Languages: C, C++, Python, Java, Web'), findsOneWidget);
+      expect(find.text('₹49 / 6 MONTHS'), findsOneWidget);
+      expect(find.text('The Semester Pass (~₹8/month)'), findsOneWidget);
       expect(find.text('Scan QR Code & Pay ₹49'), findsOneWidget);
       expect(find.text('Enter License Key'), findsOneWidget);
 
@@ -172,6 +178,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(find.text('Scan QR Code & Pay ₹49'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Scan QR Code & Pay ₹49'));
       await tester.pumpAndSettle();
 
@@ -217,6 +225,30 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(entitlements.isRuntimeUnlocked(''), isFalse);
+    });
+
+    testWidgets('ProPaywallSheet shows Semester Pass active state for 6-month license',
+        (tester) async {
+      final payload = base64Url.encode('pro:BCODE-DEV-LOCAL:1893456000'.codeUnits).replaceAll('=', '');
+      final semesterKey = 'BCODE.$payload.${base64Url.encode(List.filled(256, 1)).replaceAll('=', '')}';
+      SharedPreferences.setMockInitialValues({'bcode_license_key': semesterKey});
+      final prefs = await SharedPreferences.getInstance();
+      final entitlements = LocalEntitlementService(prefs);
+      sl.registerSingleton<EntitlementService>(entitlements);
+
+      await entitlements.unlockRuntime('');
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ProPaywallSheet(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('B Code Pro Active (Semester Pass)'), 100);
+      expect(find.text('B Code Pro Active (Semester Pass)'), findsOneWidget);
     });
   });
 

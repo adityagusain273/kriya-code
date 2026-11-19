@@ -69,8 +69,14 @@ Execution architecture relies on local binaries: `LocalRunner` talks to `ExecPlu
 
 ## Docs
 
+- [`docs/privacy-policy.html`](docs/privacy-policy.html) — Store privacy policy
 - [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md) — store-submission placeholder
 - [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md) — extension package format, creation and publishing
 - [`docs/ACODE_COMPARISON.md`](docs/ACODE_COMPARISON.md) — competitor comparison and post-launch roadmap
 - [`docs/PRE_DEPLOY.md`](docs/PRE_DEPLOY.md) — launch blockers, ordered work and the performance decision
 - [`docs/PHASES.md`](docs/PHASES.md) — roadmap and out-of-scope log
+
+## Legal Disclaimer
+
+B Code is an independent software application developed for mobile devices. It is not affiliated with, sponsored by, or endorsed by Microsoft Corporation.
+
