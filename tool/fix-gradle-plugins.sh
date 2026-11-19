@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Works around google_mobile_ads 5.3.1 failing to configure on Gradle 9:
+# Works around google_mobile_ads 5.3.1 failing to configure on Gradle 9 and
+# requiring compileSdkVersion 36 to satisfy webview_flutter_android AAR metadata:
 #
 #   google_mobile_ads-5.3.1/android/build.gradle:58
 #   > Could not get unknown property 'all' for configuration container
@@ -26,35 +27,42 @@ fi
 
 patched=0
 while IFS= read -r build_gradle; do
-    grep -q 'configurations\.all' "$build_gradle" || continue
-
     python3 - "$build_gradle" <<'PY'
 import sys
+import re
 
 path = sys.argv[1]
-lines = open(path).read().splitlines(keepends=True)
+content = open(path).read()
+modified = False
 
-try:
-    start = next(i for i, line in enumerate(lines)
-                 if line.startswith('afterEvaluate {'))
-except StopIteration:
-    print(f'no afterEvaluate block in {path}')
-    raise SystemExit(0)
+if 'configurations.all' in content:
+    lines = content.splitlines(keepends=True)
+    try:
+        start = next(i for i, line in enumerate(lines)
+                     if line.startswith('afterEvaluate {'))
+        depth = 0
+        end = len(lines) - 1
+        for i in range(start, len(lines)):
+            depth += lines[i].count('{') - lines[i].count('}')
+            if i > start and depth == 0:
+                end = i
+                break
+        content = ''.join(lines[:start] + lines[end + 1:])
+        modified = True
+    except StopIteration:
+        pass
 
-depth = 0
-end = len(lines) - 1
-for i in range(start, len(lines)):
-    depth += lines[i].count('{') - lines[i].count('}')
-    if i > start and depth == 0:
-        end = i
-        break
+# Ensure compileSdkVersion is at least 36 to satisfy webview_flutter_android AAR metadata
+new_content = re.sub(r'(compileSdk(?:Version)?\s*=?\s*)(?:[1-2][0-9]|3[0-5])\b', r'\g<1>36', content)
+if new_content != content:
+    content = new_content
+    modified = True
 
-open(path, 'w').write(''.join(lines[:start] + lines[end + 1:]))
-print(f'patched {path}')
+if modified:
+    open(path, 'w').write(content)
+    print(f'patched {path}')
+else:
+    print(f'already up to date: {path}')
 PY
     patched=1
 done <<< "$files"
-
-if [ "$patched" -eq 0 ]; then
-    echo "google_mobile_ads already patched; nothing to do"
-fi

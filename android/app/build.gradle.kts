@@ -80,7 +80,7 @@ if (!allowDebugKeyForRelease &&
 
 android {
     namespace = "com.bcode.editor"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
