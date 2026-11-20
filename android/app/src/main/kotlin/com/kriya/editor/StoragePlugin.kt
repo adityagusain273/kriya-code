@@ -1,4 +1,4 @@
-package com.bcode.editor
+package com.kriya.editor
 
 import android.os.StatFs
 import io.flutter.plugin.common.BinaryMessenger
