@@ -1,4 +1,4 @@
-package com.bcode.editor
+package com.kriya.editor
 
 import android.content.Context
 import android.content.Intent
@@ -820,6 +820,13 @@ object ExecPlugin {
         val file = File(target)
         if (!file.isFile) return argv
         if (isSystemPath(target)) return argv
+
+        // Compiler drivers that fork sub-tools (like clang / clang++) must retain
+        // their executable path as argv[0] rather than the dynamic linker path,
+        // otherwise internal invocations (-cc1) fail when passed to linker64.
+        if (file.name.startsWith("clang")) {
+            return argv
+        }
 
         if (isElf(file)) return listOf(systemLinker(), target) + argv.drop(1)
         // Not an ELF, so a `#!` script: exec'ing it needs the kernel to run the

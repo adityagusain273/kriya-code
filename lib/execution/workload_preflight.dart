@@ -25,7 +25,7 @@ class WorkloadAssessment {
       'Cloud Tier recommended: this project looks heavy (${reasons.join(', ')}). '
       'A dev server or build here competes with the editor for memory, and '
       'Android will kill it under load. Deploy it instead — GitHub Actions, '
-      'Vercel or Netlify — and keep B Code for editing. '
+      'Vercel or Netlify — and keep Kriya for editing. '
       'Single-file scripts are unaffected.';
 }
 

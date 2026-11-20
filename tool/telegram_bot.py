@@ -34,7 +34,7 @@ from license_cli import load_or_generate_key, sign_license
 STATE_FILE = Path(__file__).parent / "bot_state.json"
 ENV_FILE = Path(__file__).parent / ".env"
 
-DEVICE_REGEX = re.compile(r"BCODE-[A-Z0-9]{8}", re.IGNORECASE)
+DEVICE_REGEX = re.compile(r"(?:KRIYA|BCODE)-[A-Z0-9]{8}", re.IGNORECASE)
 UTR_REGEX = re.compile(r"\b\d{8,18}\b")
 
 def load_env():
@@ -240,7 +240,7 @@ class BotHttpHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"B Code Pro Telegram Bot is online and healthy!\n")
+        self.wfile.write(b"Kriya Code Pro Telegram Bot is online and healthy!\n")
 
     def do_POST(self):
         if self.path != "/webhook":
@@ -388,10 +388,10 @@ class TelegramBot:
             f"Payment details received for device `{device_id}`.\n"
             f"UTR / Ref: `{clean_utr}`\n\n"
             "I have forwarded your request to Aditya for manual verification. "
-            "Because B Code is built and maintained by an individual developer, please allow up to 6 hours for approval. "
+            "Because Kriya is built and maintained by an individual developer, please allow up to 6 hours for approval. "
             "The developer is human too and might be in class, working, or asleep.\n\n"
             "As soon as the transaction is confirmed, your offline Pro key will arrive right here in this chat.\n\n"
-            "Thank you for your patience and for supporting B Code."
+            "Thank you for your patience and for supporting Kriya."
         )
         self.send_message(chat_id, buyer_confirmation)
 
@@ -576,7 +576,7 @@ class TelegramBot:
                 save_state(self.state)
 
                 welcome = (
-                    "👋 *Welcome to B Code Pro Activation!*\n\n"
+                    "👋 *Welcome to Kriya Pro Activation!*\n\n"
                     f"📱 *Device ID Detected:* `{dev_id}`\n\n"
                     "━━━━━━━━━━━━━━━━━━\n"
                     "📌 *STEP 1: Pay ₹49*\n"
@@ -594,7 +594,7 @@ class TelegramBot:
                 save_state(self.state)
 
                 welcome = (
-                    "👋 *Welcome to B Code Pro Activation!*\n\n"
+                    "👋 *Welcome to Kriya Pro Activation!*\n\n"
                     "Get lifetime offline access to all compilers & remove ads for just *₹49*.\n\n"
                     "━━━━━━━━━━━━━━━━━━\n"
                     "📌 *STEP 1: Pay ₹49*\n"
@@ -681,9 +681,9 @@ class TelegramBot:
                 "📌 *STEP 2: Send Your Device ID*\n"
                 "━━━━━━━━━━━━━━━━━━\n"
                 "Now please send your **Device ID** so your license key can be locked to your phone:\n\n"
-                "1️⃣ Open **B Code** on your phone\n"
+                "1️⃣ Open **Kriya** on your phone\n"
                 "2️⃣ Go to **Settings → Upgrade to Pro**\n"
-                "3️⃣ Tap the 📋 copy button next to **YOUR DEVICE ID** (format: `BCODE-XXXXXXXX`)\n"
+                "3️⃣ Tap the 📋 copy button next to **YOUR DEVICE ID** (format: `KRIYA-XXXXXXXX`)\n"
                 "4️⃣ Paste it here below:",
             )
             return
@@ -703,8 +703,8 @@ class TelegramBot:
                 self.send_message(
                     chat_id,
                     "⚠️ *Device ID not recognized.*\n\n"
-                    "Please paste the exact Device ID displayed in B Code (format: `BCODE-XXXXXXXX`).\n\n"
-                    "👉 Find it inside **B Code → Settings → Upgrade to Pro**.\n"
+                    "Please paste the exact Device ID displayed in Kriya (format: `KRIYA-XXXXXXXX`).\n\n"
+                    "👉 Find it inside **Kriya → Settings → Upgrade to Pro**.\n"
                     "_(Send /reset if you want to start over)_",
                 )
                 return
@@ -740,11 +740,11 @@ class TelegramBot:
 
             # Send to buyer
             buyer_msg = (
-                "🎉 *Payment Approved! B Code Pro is Ready!*\n\n"
+                "🎉 *Payment Approved! Kriya Pro is Ready!*\n\n"
                 f"Your license key for device `{device_id}`:\n\n"
                 f"`{license_key}`\n\n"
                 "*(Tap the code above to copy)*\n\n"
-                "👉 Open B Code → Tap *Enter License Key* → Paste and activate your 6-Month Semester Pass!"
+                "👉 Open Kriya → Tap *Enter License Key* → Paste and activate your 6-Month Semester Pass!"
             )
             self.send_message(buyer_chat_id, buyer_msg)
 

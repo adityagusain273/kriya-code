@@ -69,7 +69,7 @@ class _ExitDialog extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               Text(
-                dirty ? 'Save before you leave?' : 'Leave B Code?',
+                dirty ? 'Save before you leave?' : 'Leave Kriya?',
                 textAlign: TextAlign.center,
                 style: text.titleLarge?.copyWith(
                   fontWeight: FontWeight.w600,

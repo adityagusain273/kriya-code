@@ -1,4 +1,4 @@
-package com.bcode.editor
+package com.kriya.editor
 
 import android.content.Context
 import android.content.pm.PackageManager
@@ -37,7 +37,7 @@ object IntegrityPlugin {
                         val brand = Build.BRAND ?: ""
                         val model = Build.MODEL ?: ""
                         val hash = sha256Hex("$androidId:$brand:$model".toByteArray())
-                        val shortId = "BCODE-" + hash.substring(0, 8).uppercase()
+                        val shortId = "KRIYA-" + hash.substring(0, 8).uppercase()
                         result.success(shortId)
                     } catch (e: Exception) {
                         result.error("DEVICE_ID_UNAVAILABLE", e.message, null)

@@ -324,7 +324,7 @@ class _CloudBuildSheetState extends State<CloudBuildSheet> {
         _downloading = null;
         _message = opened
             ? 'Installer opened for ${p.basename(apk.path)}.'
-            : 'Android refused the installer. Allow "install unknown apps" for B Code.';
+            : 'Android refused the installer. Allow "install unknown apps" for Kriya.';
       });
     } catch (e) {
       if (_disposed) return;

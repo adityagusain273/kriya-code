@@ -1,9 +1,9 @@
-# B Code
+# Kriya (Kriya Code)
 
 A full-featured code editor for Android — edit, run, and ship code entirely from your phone.
 Built with Flutter for a future path to iOS and desktop.
 
-**Package:** `com.bcode.editor` · **Version:** 1.0.0 · **License:** proprietary (TBD)
+**Package:** `com.kriya.editor` · **Version:** 1.0.0 · **License:** proprietary (TBD)
 
 ## Phase 1 feature set
 
@@ -14,7 +14,7 @@ Built with Flutter for a future path to iOS and desktop.
 | Extension system | Stable extension API with a central registry; 10 builtin language packs: Python, C, C++, Java, JavaScript, TypeScript, HTML, CSS, JSON, Markdown. Installable `.bcext` packages add languages, snippets and themes from a file, URL or static index — no code execution |
 | Code execution | Local-first runner. Runtimes are installed on demand like a VS Code extension, SHA256-verified, with version and size shown first. Termux is an optional fallback. See [docs/ON_DEVICE_EXECUTION.md](docs/ON_DEVICE_EXECUTION.md). |
 | GitHub | OAuth Device Flow login (no secret embedded), repo browser, commit history, clone → edit → pull / commit / push / view diffs via `git2dart` (libgit2) |
-| Shared workspace | Optional: `/storage/emulated/0/BCode` so Termux and other apps can edit the same files. Off by default, no permission on first launch, app-private workspace otherwise |
+| Shared workspace | Optional: `/storage/emulated/0/Kriya` so Termux and other apps can edit the same files. Off by default, no permission on first launch, app-private workspace otherwise |
 | Deploy-readiness | Release signing config (`android/key.properties.example`), minSdk 24, targetSdk 36, store-compliant, execution via the system linker, privacy policy placeholder, monetization seam (`EntitlementService`) with no paid SDKs |
 
 ## Architecture
@@ -78,5 +78,5 @@ Execution architecture relies on local binaries: `LocalRunner` talks to `ExecPlu
 
 ## Legal Disclaimer
 
-B Code is an independent software application developed for mobile devices. It is not affiliated with, sponsored by, or endorsed by Microsoft Corporation.
+Kriya is an independent software application developed for mobile devices. It is not affiliated with, sponsored by, or endorsed by Microsoft Corporation.
 

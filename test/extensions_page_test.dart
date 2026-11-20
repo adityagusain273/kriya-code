@@ -181,7 +181,7 @@ void main() {
     await tester.pump();
 
     // Mission banner is visible for free users
-    expect(find.text('Advertising helps keep B Code free 🥺'), findsOneWidget);
+    expect(find.text('Advertising helps keep Kriya free 🥺'), findsOneWidget);
     expect(find.text('GO AD FREE'), findsOneWidget);
 
     // Locked extensions in Explore show Unlock button
@@ -210,7 +210,7 @@ void main() {
     await tester.pump();
 
     // Mission banner is hidden for Pro users
-    expect(find.text('Advertising helps keep B Code free 🥺'), findsNothing);
+    expect(find.text('Advertising helps keep Kriya free 🥺'), findsNothing);
 
     // Pro users have all extensions unlocked, so no 'Unlock' buttons
     expect(find.text('Unlock'), findsNothing);

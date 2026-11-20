@@ -85,7 +85,7 @@ class DeviceFlowAuth {
           '${detail.isEmpty ? '' : 'GitHub said "$detail". '}'
           'This usually means the network is filtering GitHub\'s sign-in endpoints, '
           'such as a work or school network or a VPN. Try a different network. '
-          'Everything else in B Code works without signing in.';
+          'Everything else in Kriya works without signing in.';
     }
 
     final suffix = detail.isEmpty ? '' : ': $detail';

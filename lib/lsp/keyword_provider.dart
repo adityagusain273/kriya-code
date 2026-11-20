@@ -126,6 +126,48 @@ class KeywordProvider {
       'none', 'auto', 'inherit', 'initial', 'unset', 'block', 'inline',
       'inline-block', 'relative', 'absolute', 'fixed', 'sticky',
     ],
+    'ruby': [
+      'alias', 'and', 'BEGIN', 'begin', 'break', 'case', 'class', 'def',
+      'defined?', 'do', 'else', 'elsif', 'END', 'end', 'ensure', 'false',
+      'for', 'if', 'in', 'module', 'next', 'nil', 'not', 'or', 'redo',
+      'rescue', 'retry', 'return', 'self', 'super', 'then', 'true',
+      'undef', 'unless', 'until', 'when', 'while', 'yield',
+      'puts', 'print', 'p', 'attr_reader', 'attr_writer', 'attr_accessor',
+      'initialize', 'include', 'extend', 'require', 'require_relative',
+      'raise', 'fail', 'loop', 'lambda', 'proc',
+    ],
+    'go': [
+      'break', 'case', 'chan', 'const', 'continue', 'default', 'defer',
+      'else', 'fallthrough', 'for', 'func', 'go', 'goto', 'if', 'import',
+      'interface', 'map', 'package', 'range', 'return', 'select', 'struct',
+      'switch', 'type', 'var', 'true', 'false', 'iota', 'nil',
+      'append', 'cap', 'close', 'complex', 'copy', 'delete', 'imag', 'len',
+      'make', 'new', 'panic', 'print', 'println', 'real', 'recover',
+      'string', 'int', 'int64', 'float64', 'bool', 'byte', 'rune', 'error',
+    ],
+    'rust': [
+      'as', 'async', 'await', 'break', 'const', 'continue', 'crate', 'dyn',
+      'else', 'enum', 'extern', 'false', 'fn', 'for', 'if', 'impl', 'in',
+      'let', 'loop', 'match', 'mod', 'move', 'mut', 'pub', 'ref', 'return',
+      'self', 'Self', 'static', 'struct', 'super', 'trait', 'true', 'type',
+      'unsafe', 'use', 'where', 'while',
+      'println!', 'print!', 'vec!', 'format!', 'panic!', 'assert!',
+      'Option', 'Some', 'None', 'Result', 'Ok', 'Err', 'String', 'Vec',
+    ],
+    'kotlin': [
+      'as', 'break', 'class', 'continue', 'do', 'else', 'false', 'for',
+      'fun', 'if', 'in', 'interface', 'is', 'null', 'object', 'package',
+      'return', 'super', 'this', 'throw', 'true', 'try', 'typealias',
+      'val', 'var', 'when', 'while',
+      'println', 'print', 'listOf', 'mutableListOf', 'mapOf', 'setOf',
+      'String', 'Int', 'Double', 'Boolean', 'List', 'Map', 'Set',
+    ],
+    'bash': [
+      'if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while',
+      'until', 'do', 'done', 'in', 'function', 'select', 'time',
+      'echo', 'read', 'cd', 'pwd', 'export', 'unset', 'local', 'return',
+      'exit', 'test', 'exec', 'trap', 'source', 'shift',
+    ],
   };
 
   static const _snippets = <String, List<_Snippet>>{

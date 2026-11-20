@@ -221,7 +221,7 @@ void main() {
     expect(find.text('Terminal'), findsOneWidget);
 
     // Initial position without keyboard inset
-    final sheetFinder = find.byType(DraggableScrollableSheet);
+    final sheetFinder = find.byKey(const Key('console_sheet_container'));
     expect(sheetFinder, findsOneWidget);
     final initialBottom = tester.getBottomLeft(sheetFinder).dy;
 

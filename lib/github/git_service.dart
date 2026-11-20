@@ -31,7 +31,7 @@ class GitIdentityProvider {
     final name = store.gitName.trim();
     final email = store.gitEmail.trim();
     return GitIdentity(
-      name: name.isNotEmpty ? name : 'B Code User',
+      name: name.isNotEmpty ? name : 'Kriya User',
       email: email.isNotEmpty ? email : 'user@bcode.local',
     );
   }

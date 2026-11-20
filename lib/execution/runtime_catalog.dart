@@ -44,8 +44,8 @@ const runtimeCatalog = <String, RuntimeSpec>{
     title: 'C / C++ Runtime',
     description: 'Compile and run .c and .cpp files offline',
     extensionIds: ['bcode.lang.c', 'bcode.lang.cpp'],
-    packages: ['clang', 'binutils', 'ncurses', 'zlib', 'libc++'],
-    defaultSizeMb: 42,
+    packages: ['clang', 'binutils', 'ncurses', 'zlib', 'libc++', 'ndk-sysroot'],
+    defaultSizeMb: 52,
     approxVersion: '18',
   ),
   'openjdk': RuntimeSpec(

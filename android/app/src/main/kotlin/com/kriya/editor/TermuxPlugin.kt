@@ -1,4 +1,4 @@
-package com.bcode.editor
+package com.kriya.editor
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver

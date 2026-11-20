@@ -161,7 +161,7 @@ class CrashReporter {
     List<String> screenshotNames = const [],
   }) async {
     final buffer = StringBuffer();
-    buffer.writeln('=== B Code Bug Report ===');
+    buffer.writeln('=== Kriya Bug Report ===');
     buffer.writeln('Time: ${DateTime.now().toIso8601String()}');
     buffer.writeln();
 
@@ -207,7 +207,7 @@ class CrashReporter {
     final Uri emailLaunchUri = Uri(
       scheme: 'mailto',
       path: 'adityagusain273@gmail.com',
-      query: 'subject=B Code Bug Report / Feedback&body=${Uri.encodeComponent(reportBody)}\n\n(Please attach any screenshots here if applicable)',
+      query: 'subject=Kriya Bug Report / Feedback&body=${Uri.encodeComponent(reportBody)}\n\n(Please attach any screenshots here if applicable)',
     );
 
     try {

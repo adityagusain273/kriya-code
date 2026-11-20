@@ -21,6 +21,13 @@ class CppExtension extends BCodeExtension {
         buildArgv: [
           '{runtimePath}/bin/clang++',
           '-std=c++17',
+          '-isystem',
+          '{runtimePath}/include/c++/v1',
+          '-isystem',
+          '{runtimePath}/include',
+          '-isystem',
+          '{runtimePath}/include/aarch64-linux-android',
+          '-L{runtimePath}/lib',
           '{file}',
           '-o',
           '{outDir}/{name}.out',

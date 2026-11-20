@@ -107,7 +107,7 @@ Future<bool?> showLicenseInputDialog(BuildContext context) async {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('🎉 B Code Pro activated! All features unlocked.'),
+                            content: Text('🎉 Kriya Pro activated! All features unlocked.'),
                             duration: Duration(seconds: 4),
                           ),
                         );
@@ -150,13 +150,13 @@ Future<String> _getProActiveTitle() async {
         final payload = utf8.decode(payloadBytes);
         final components = payload.split(':');
         if (components.length >= 3 && components[2].isNotEmpty) {
-          return 'B Code Pro Active (Semester Pass)';
+          return 'Kriya Pro Active (Semester Pass)';
         }
-        return 'B Code Pro Active (Lifetime Pass)';
+        return 'Kriya Pro Active (Lifetime Pass)';
       }
     }
   } catch (_) {}
-  return 'B Code Pro Active (Semester Pass)';
+  return 'Kriya Pro Active (Semester Pass)';
 }
 
 class ProPaywallSheet extends StatefulWidget {
@@ -345,7 +345,7 @@ class _ProPaywallSheetState extends State<ProPaywallSheet> {
                 FutureBuilder<String>(
                   future: _proTitleFuture,
                   builder: (context, snapshot) {
-                    final title = snapshot.data ?? 'B Code Pro Active (Semester Pass)';
+                    final title = snapshot.data ?? 'Kriya Pro Active (Semester Pass)';
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
@@ -501,7 +501,7 @@ class _ProPaywallSheetState extends State<ProPaywallSheet> {
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
                 child: Text(
-                  'Keep B Code free with ads',
+                  'Keep Kriya free with ads',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
@@ -537,7 +537,7 @@ class UpiScanPaySheet extends StatelessWidget {
     Haptics.light();
     final deviceId = await DeviceIdProvider.getDeviceId();
     final message = Uri.encodeComponent(
-      'Hi Aditya, I paid ₹49 for B Code Pro (6-Month Semester Pass).\n'
+      'Hi Aditya, I paid ₹49 for Kriya Pro (6-Month Semester Pass).\n'
       '- UPI UTR: [paste your 12-digit UTR here]\n'
       '- Device ID: $deviceId',
     );

@@ -9,7 +9,7 @@ class DeviceIdProvider {
     if (_cachedId != null) return _cachedId!;
     try {
       if (Platform.environment.containsKey('FLUTTER_TEST')) {
-        return 'BCODE-DEV-LOCAL';
+        return 'KRIYA-DEV-LOCAL';
       }
       final id = await _channel.invokeMethod<String>('deviceId');
       if (id != null && id.isNotEmpty) {
@@ -17,7 +17,7 @@ class DeviceIdProvider {
         return id;
       }
     } catch (_) {}
-    return 'BCODE-DEV-LOCAL';
+    return 'KRIYA-DEV-LOCAL';
   }
 
   static void setMockDeviceId(String? id) {

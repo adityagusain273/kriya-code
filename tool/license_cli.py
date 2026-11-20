@@ -48,10 +48,10 @@ def sign_license(priv_key: rsa.RSAPrivateKey, payload: str) -> str:
     sig = priv_key.sign(data, padding.PKCS1v15(), hashes.SHA256())
     b64_payload = base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
     b64_sig = base64.urlsafe_b64encode(sig).decode("utf-8").rstrip("=")
-    return f"BCODE.{b64_payload}.{b64_sig}"
+    return f"KRIYA.{b64_payload}.{b64_sig}"
 
 def main():
-    parser = argparse.ArgumentParser(description="B Code Pro License Key Generator")
+    parser = argparse.ArgumentParser(description="Kriya Pro License Key Generator")
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("init", help="Generate private key and show public modulus")

@@ -31,7 +31,7 @@ class BCodeApp extends StatelessWidget {
     return AnimatedBuilder(
       animation: settings,
       builder: (context, _) => MaterialApp(
-        title: 'B Code',
+        title: 'Kriya',
         debugShowCheckedModeBanner: false,
         themeMode: settings.themeMode,
         theme: _lightTheme,

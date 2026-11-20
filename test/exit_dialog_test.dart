@@ -65,7 +65,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Leave B Code?'), findsOneWidget);
+    expect(find.text('Leave Kriya?'), findsOneWidget);
     expect(find.text('Discard changes and exit'), findsNothing);
 
     await tester.tap(find.text('Exit'));

@@ -712,7 +712,23 @@ class _EditorPageState extends State<EditorPage>
   }
 
   String _langName(String? id, String ext) {
-    if (id != null && id.isNotEmpty) return id;
+    if (id != null && id.isNotEmpty) {
+      switch (id.toLowerCase()) {
+        case 'ruby':
+          return 'Ruby';
+        case 'rust':
+          return 'Rust';
+        case 'go':
+          return 'Go';
+        case 'kotlin':
+          return 'Kotlin';
+        case 'bash':
+        case 'shell':
+          return 'Shell Script';
+        default:
+          return id;
+      }
+    }
     switch (ext) {
       case 'c':
       case 'h':
@@ -739,6 +755,18 @@ class _EditorPageState extends State<EditorPage>
         return 'JSON';
       case 'md':
         return 'Markdown';
+      case 'rb':
+        return 'Ruby';
+      case 'go':
+        return 'Go';
+      case 'rs':
+        return 'Rust';
+      case 'kt':
+      case 'kts':
+        return 'Kotlin';
+      case 'sh':
+      case 'bash':
+        return 'Shell Script';
       default:
         return 'Plain Text';
     }
@@ -1562,7 +1590,7 @@ class _EditorPageState extends State<EditorPage>
         key: _scaffoldKey,
       appBar: AppBar(
         title: Text(
-          tab == null ? 'B Code' : '${tab.name}${tab.dirty ? " •" : ""}',
+          tab == null ? 'Kriya' : '${tab.name}${tab.dirty ? " •" : ""}',
           style: const TextStyle(fontSize: 16),
         ),
         actions: [
@@ -2243,7 +2271,7 @@ class _EmptyStateState extends State<_EmptyState> {
             Icon(Icons.code_rounded, size: 72, color: cs.onSurface.withValues(alpha: 0.12)),
             const SizedBox(height: 20),
             Text(
-              'B Code',
+              'Kriya',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: cs.onSurface.withValues(alpha: 0.5),

@@ -79,7 +79,7 @@ if (!allowDebugKeyForRelease &&
 }
 
 android {
-    namespace = "com.bcode.editor"
+    namespace = "com.kriya.editor"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -89,7 +89,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.bcode.editor"
+        applicationId = "com.kriya.editor"
         minSdk = 24
         targetSdk = resolvedTargetSdk
         versionCode = flutter.versionCode

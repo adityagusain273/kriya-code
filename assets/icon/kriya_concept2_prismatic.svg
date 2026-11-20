@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090D16" />
+      <stop offset="100%" stop-color="#121829" />
+    </linearGradient>
+
+    <!-- Stem: Electric Indigo -->
+    <linearGradient id="stem2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#312E81" />
+    </linearGradient>
+
+    <!-- Upper Chevron: Tech Saffron / Solar Flare -->
+    <linearGradient id="saffronGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#F97316" />
+    </linearGradient>
+
+    <!-- Lower Chevron: Cyber Violet / Cyan Glow -->
+    <linearGradient id="violetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle Base -->
+  <rect width="512" height="512" rx="112" fill="url(#bg2)" />
+  <rect x="2" y="2" width="508" height="508" rx="110" fill="none" stroke="#1E293B" stroke-width="2" />
+
+  <!-- Ambient light -->
+  <circle cx="340" cy="180" r="90" fill="#F97316" opacity="0.12" filter="blur(30px)" />
+  <circle cx="330" cy="350" r="90" fill="#06B6D4" opacity="0.12" filter="blur(30px)" />
+
+  <!-- Vector Folded K -->
+  <g transform="translate(16, 0)">
+    <!-- Stem -->
+    <rect x="130" y="128" width="50" height="256" rx="25" fill="url(#stem2)" />
+    
+    <!-- Upper Diagonal: Angular Code Vector (Folded Saffron) -->
+    <path d="M 195 240 
+             L 325 130 
+             C 338 120 358 126 364 142 
+             C 370 156 364 172 350 184 
+             L 248 266 
+             Z" 
+          fill="url(#saffronGrad)" />
+
+    <!-- Lower Diagonal: Forward Terminal Arrow (Folded Violet to Cyan) -->
+    <path d="M 230 248 
+             L 345 345 
+             C 358 356 360 376 348 390 
+             C 336 402 316 402 304 390 
+             L 195 292 
+             Z" 
+          fill="url(#violetGrad)" />
+  </g>
+</svg>

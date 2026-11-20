@@ -11,7 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_ID=com.bcode.editor
+APP_ID=com.kriya.editor
 APK=build/app/outputs/flutter-apk/app-debug.apk
 
 defines=()

@@ -214,6 +214,22 @@ class RunnerService extends ChangeNotifier {
             _append(result.stderr, isStderr: true);
           }
           if (!result.success) {
+            // Local execution failed (e.g. clang -cc1 fork issue or missing sysroot headers).
+            // Fall back to Termux if available.
+            await TermuxRunner.checkAvailability();
+            if (TermuxRunner.isAvailable) {
+              final termuxResult =
+                  await _runViaTermux(request, config.local!, workDir);
+              if (generation != _generation || _cancelRequested) return;
+              if (termuxResult.stdout.isNotEmpty) _append(termuxResult.stdout);
+              if (termuxResult.stderr.isNotEmpty) {
+                _append(termuxResult.stderr, isStderr: true);
+              }
+              if (!termuxResult.success) {
+                lastError = 'Termux exited with code ${termuxResult.exitCode}';
+              }
+              return;
+            }
             lastError = 'Process exited with code ${result.exitCode}';
           }
           return;
@@ -240,7 +256,7 @@ class RunnerService extends ChangeNotifier {
           lastError =
               'Runtime "$runtimeId" is not installed locally.\n'
               'Termux was detected, but RUN_COMMAND permission is not granted.\n'
-              'Warning: B Code cannot execute code via Termux without this permission.\n'
+              'Warning: Kriya cannot execute code via Termux without this permission.\n'
               'Allow it in Settings → Termux Integration or Android App Info.';
         } else {
           lastError =

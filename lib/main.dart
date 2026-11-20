@@ -20,15 +20,20 @@ import 'core/security/app_integrity.dart';
 import 'editor/highlighting/highlight_engine.dart';
 import 'editor/snippets.dart';
 import 'editor/highlighting/highlight_service.dart';
+import 'editor/highlighting/packs/bash_pack.dart';
 import 'editor/highlighting/packs/css_pack.dart';
 import 'editor/highlighting/packs/c_pack.dart';
 import 'editor/highlighting/packs/cpp_pack.dart';
+import 'editor/highlighting/packs/go_pack.dart';
 import 'editor/highlighting/packs/html_pack.dart';
 import 'editor/highlighting/packs/java_pack.dart';
 import 'editor/highlighting/packs/javascript_pack.dart';
 import 'editor/highlighting/packs/json_pack.dart';
+import 'editor/highlighting/packs/kotlin_pack.dart';
 import 'editor/highlighting/packs/markdown_pack.dart';
 import 'editor/highlighting/packs/python_pack.dart';
+import 'editor/highlighting/packs/ruby_pack.dart';
+import 'editor/highlighting/packs/rust_pack.dart';
 import 'editor/highlighting/packs/typescript_pack.dart';
 import 'editor/tab_manager.dart';
 import 'execution/local/local_runner.dart';
@@ -115,7 +120,7 @@ class _BootstrapFailureApp extends StatelessWidget {
                 const Icon(Icons.error_outline, size: 48),
                 const SizedBox(height: 16),
                 const Text(
-                  'B Code could not start',
+                  'Kriya could not start',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
@@ -158,7 +163,7 @@ class _RenderFailureScreen extends StatelessWidget {
                 SizedBox(height: 12),
                 Text(
                   'This screen failed to draw.\n'
-                  'Reopen B Code. If it repeats, the details are in the crash log.',
+                  'Reopen Kriya. If it repeats, the details are in the crash log.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Color(0xFFE0E0E0), fontSize: 14),
                 ),
@@ -418,7 +423,12 @@ Future<void> _bootstrap() async {
     ..register(HtmlPack())
     ..register(CssPack())
     ..register(JsonPack())
-    ..register(MarkdownPack());
+    ..register(MarkdownPack())
+    ..register(RubyPack())
+    ..register(GoPack())
+    ..register(RustPack())
+    ..register(KotlinPack())
+    ..register(BashPack());
   final extensionLoader = ExtensionLoader(engine: engine);
   sl.registerSingleton<ExtensionLoader>(extensionLoader);
   sl.registerSingleton<HighlightEngine>(engine);

@@ -388,7 +388,7 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('Permission required'),
               subtitle: const Text(
                 'Warning: com.termux.permission.RUN_COMMAND is not granted. '
-                'B Code cannot execute code or commands in Termux without this permission.',
+                'Kriya cannot execute code or commands in Termux without this permission.',
               ),
               trailing: FilledButton.tonal(
                 onPressed: () async {
@@ -431,7 +431,7 @@ class _SettingsPageState extends State<SettingsPage> {
   List<Widget> _aboutSection() => [
           _sectionHeader('About'),
           ListTile(
-            title: const Text('B Code'),
+            title: const Text('Kriya'),
             subtitle: Text('Version ${_version.isEmpty ? '' : _version.split('+').first} · com.bcode.editor'),
           ),
           ListTile(
@@ -448,7 +448,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _registerCustomLicenses();
               showLicensePage(
                 context: context,
-                applicationName: 'B Code',
+                applicationName: 'Kriya',
               );
             },
           ),
@@ -471,7 +471,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   sl<EntitlementService>().isRuntimeUnlocked('');
               return ListTile(
                 leading: const Icon(Icons.bolt_rounded, color: Color(0xFF00E676)),
-                title: const Text('B Code Pro'),
+                title: const Text('Kriya Pro'),
                 subtitle: Text(
                   isPro
                       ? 'Semester Pass Active ⚡'
@@ -513,7 +513,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
             child: Text(
-              'B Code is an independent software application developed for mobile devices. '
+              'Kriya is an independent software application developed for mobile devices. '
               'It is not affiliated with, sponsored by, or endorsed by Microsoft Corporation.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -671,14 +671,14 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               SizedBox(height: 8),
               Text(
-                '4. Grant RUN_COMMAND permission when prompted by B Code.',
+                '4. Grant RUN_COMMAND permission when prompted by Kriya.',
                 style: TextStyle(fontSize: 13),
               ),
               SizedBox(height: 12),
               Text(
                 'Important Warnings & Consequences:\n'
-                '• If RUN_COMMAND permission is revoked, B Code cannot execute code or commands in Termux.\n'
-                '• If allow-external-apps is not enabled, Termux blocks all execution requests from B Code.\n'
+                '• If RUN_COMMAND permission is revoked, Kriya cannot execute code or commands in Termux.\n'
+                '• If allow-external-apps is not enabled, Termux blocks all execution requests from Kriya.\n'
                 '• Workspace projects are automatically synchronized into Termux cache for multi-file builds.',
                 style: TextStyle(fontSize: 12, color: Colors.orange),
               ),
@@ -783,7 +783,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'B Code is free and has no ads. This tip is voluntary and '
+                    'Kriya is free. This tip is voluntary and '
                     'does not unlock any feature.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white70, fontSize: 12),

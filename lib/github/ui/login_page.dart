@@ -235,14 +235,14 @@ class _LoginPageState extends State<LoginPage> {
                           number: '2',
                           title: 'Authorize on github.com',
                           subtitle:
-                              'Paste the code in your browser and approve B Code.',
+                              'Paste the code in your browser and approve Kriya.',
                         ),
                         const SizedBox(height: 12),
                         const _StepRow(
                           number: '3',
                           title: 'Start coding',
                           subtitle:
-                              'Return to B Code. Your repositories load automatically.',
+                              'Return to Kriya. Your repositories load automatically.',
                         ),
                       ],
                     ),

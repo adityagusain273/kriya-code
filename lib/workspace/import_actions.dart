@@ -87,7 +87,7 @@ Future<DeviceImport?> importArchiveFromDevice(BuildContext context) async {
 
   final name = p.basename(picked.path);
   if (!ArchiveExtractor.isArchiveName(name)) {
-    _toast(context, '$name is not an archive B Code can unpack.', isError: true);
+    _toast(context, '$name is not an archive Kriya can unpack.', isError: true);
     return null;
   }
 

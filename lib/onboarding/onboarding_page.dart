@@ -239,7 +239,7 @@ class _OnboardingPageState extends State<OnboardingPage>
               child: Column(
                 children: [
                   Text(
-                    'B Code',
+                    'Kriya',
                     style: Theme.of(context).textTheme.displaySmall?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -483,8 +483,8 @@ class _OnboardingPageState extends State<OnboardingPage>
       final isWeb = _selectedLanguages.contains('html') || _selectedLanguages.contains('javascript');
       final fileName = isWeb ? 'index.html' : 'main.py';
       final content = isWeb
-          ? '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="utf-8">\n  <title>B Code</title>\n</head>\n<body>\n  <h1>Hello from B Code!</h1>\n  <p>Tap Preview in the top bar to view this live.</p>\n</body>\n</html>\n'
-          : '# Welcome to B Code!\n# Tap the green Play button in the top bar to run this file.\n\ndef main():\n    print("Hello from B Code!")\n    print("Your mobile coding environment is ready.")\n\nif __name__ == "__main__":\n    main()\n';
+          ? '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="utf-8">\n  <title>Kriya</title>\n</head>\n<body>\n  <h1>Hello from Kriya!</h1>\n  <p>Tap Preview in the top bar to view this live.</p>\n</body>\n</html>\n'
+          : '# Welcome to Kriya!\n# Tap the green Play button in the top bar to run this file.\n\ndef main():\n    print("Hello from Kriya!")\n    print("Your mobile coding environment is ready.")\n\nif __name__ == "__main__":\n    main()\n';
       await fs.writeFile(fileName, content);
       await sl<TabManager>().open(fileName);
     } catch (_) {}
@@ -714,7 +714,7 @@ class _OnboardingPageState extends State<OnboardingPage>
           ),
           const SizedBox(height: 8),
           Text(
-            'B Code is configured for you. Choose how you want to start:',
+            'Kriya is configured for you. Choose how you want to start:',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: cs.onSurfaceVariant,

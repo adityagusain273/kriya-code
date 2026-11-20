@@ -14,7 +14,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_ID=com.bcode.editor
+APP_ID=com.kriya.editor
 OUT=store/screenshots
 SERIAL="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
 [ -n "$SERIAL" ] || { echo "no device connected" >&2; exit 1; }

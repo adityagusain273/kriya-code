@@ -20,6 +20,11 @@ class CExtension extends BCodeExtension {
         runtimeId: 'clang',
         buildArgv: [
           '{runtimePath}/bin/clang',
+          '-isystem',
+          '{runtimePath}/include',
+          '-isystem',
+          '{runtimePath}/include/aarch64-linux-android',
+          '-L{runtimePath}/lib',
           '{file}',
           '-o',
           '{outDir}/{name}.out',

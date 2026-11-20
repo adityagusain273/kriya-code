@@ -182,7 +182,7 @@ class FsService {
     final probe = bytes.length < 4096 ? bytes.length : 4096;
     for (var i = 0; i < probe; i++) {
       if (bytes[i] == 0) {
-        throw StateError('This looks like a binary file. B Code edits text.');
+        throw StateError('This looks like a binary file. Kriya edits text.');
       }
     }
     try {

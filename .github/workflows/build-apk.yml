@@ -232,7 +232,7 @@ jobs:
         if: ${{ always() && env.HAS_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: b-code-release-bundle
+          name: kriya-release-bundle
           path: build/app/outputs/bundle/release/*.aab
           retention-days: 14
 
@@ -240,7 +240,7 @@ jobs:
         if: ${{ always() && env.HAS_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: b-code-release-symbols
+          name: kriya-release-symbols
           path: build/symbols/
           retention-days: 90
 
@@ -248,7 +248,7 @@ jobs:
         if: ${{ always() && env.HAS_SECRETS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: b-code-release-apk
+          name: kriya-release-apk
           path: build/app/outputs/flutter-apk/*-release.apk
           retention-days: 14
 
@@ -256,7 +256,7 @@ jobs:
         if: ${{ env.HAS_SECRETS != 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: b-code-debug-apk
+          name: kriya-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 14
 

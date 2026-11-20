@@ -52,7 +52,7 @@ void main() {
     // Verify mandatory Microsoft VS Code trademark disclaimer
     expect(
       find.text(
-        'B Code is an independent software application developed for mobile devices. '
+        'Kriya is an independent software application developed for mobile devices. '
         'It is not affiliated with, sponsored by, or endorsed by Microsoft Corporation.',
       ),
       findsOneWidget,
@@ -63,7 +63,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(LicensePage), findsOneWidget);
-    expect(find.text('B Code'), findsAtLeast(1));
+    expect(find.text('Kriya'), findsAtLeast(1));
   });
 
   testWidgets('SettingsPage Pro subtitle reflects Semester Pass Active ⚡ when pro is active',

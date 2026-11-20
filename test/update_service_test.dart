@@ -115,7 +115,7 @@ void main() {
 
       expect(find.text('Update Available'), findsOneWidget);
       expect(
-        find.text('New B Code update available! Tap to download the latest compilers and fixes.'),
+        find.text('New Kriya update available! Tap to download the latest compilers and fixes.'),
         findsOneWidget,
       );
       expect(find.text('Later'), findsOneWidget);

@@ -30,7 +30,7 @@
 
     <application
         android:name="${applicationName}"
-        android:label="B Code"
+        android:label="Kriya"
         android:icon="@mipmap/launcher_icon"
         android:allowBackup="false"
         android:fullBackupContent="false"

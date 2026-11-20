@@ -272,7 +272,7 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
                 const SizedBox(width: 4),
                 const Expanded(
                   child: Text(
-                    'Advertising helps keep B Code free 🥺',
+                    'Advertising helps keep Kriya free 🥺',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white,

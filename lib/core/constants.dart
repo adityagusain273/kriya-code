@@ -1,6 +1,6 @@
 class AppConstants {
-  static const appId = 'com.bcode.editor';
-  static const appName = 'B Code';
+  static const appId = 'com.kriya.editor';
+  static const appName = 'Kriya';
 
   static const githubApiBase = 'https://api.github.com';
   static const githubDeviceCodeUrl = 'https://github.com/login/device/code';

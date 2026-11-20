@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="zenBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#07090E" />
+      <stop offset="100%" stop-color="#0F131C" />
+    </linearGradient>
+
+    <!-- Neon Glow Gradient -->
+    <linearGradient id="neonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F5A0" />
+      <stop offset="100%" stop-color="#00D9F5" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Squircle -->
+  <rect width="512" height="512" rx="112" fill="url(#zenBg)" />
+  <rect x="2" y="2" width="508" height="508" rx="110" fill="none" stroke="#1A2234" stroke-width="2" />
+
+  <!-- Central Glow -->
+  <circle cx="260" cy="256" r="140" fill="#00F5A0" opacity="0.08" filter="blur(40px)" />
+
+  <!-- Monoline Geometry of K & Code Glyphs -->
+  <g stroke="url(#neonGrad)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Left Vertical Line (Cursor Stem) -->
+    <line x1="168" y1="140" x2="168" y2="372" />
+
+    <!-- Terminal Chevron Branches forming K -->
+    <path d="M 336 148 L 204 256 L 336 364" />
+  </g>
+
+  <!-- Terminal Underscore / Execution Cursor -->
+  <line x1="330" y1="388" x2="368" y2="388" stroke="#00D9F5" stroke-width="12" stroke-linecap="round" opacity="0.8" />
+</svg>

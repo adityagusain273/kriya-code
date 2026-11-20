@@ -1,14 +1,14 @@
-# B Code — Play Store Listing
+# Kriya — Play Store Listing
 
 ## App Name
-B Code
+Kriya: Mobile Code Editor & IDE
 
 ## Short Description (80 chars max)
 Full-featured mobile code editor with syntax highlighting, terminal, and code execution.
 
 ## Full Description
 
-B Code is a powerful, full-featured code editor for Android. Edit, run, and ship code directly from your phone.
+Kriya (Kriya Code) is a powerful, native code editor and IDE for Android. Edit, run, and ship code directly from your phone with first-party compilation and Git integration.
 
 **Features:**
 
@@ -55,13 +55,13 @@ code editor, IDE, programming, python, java, javascript, terminal, developer too
 adityagusain273@gmail.com
 
 ## Website
-https://github.com/adityagusain273/b-code
+https://github.com/adityagusain273/kriya-code
 
 ## Privacy Policy URL (Play form field)
-https://adityagusain273.github.io/b-code/privacy_policy.html
+https://adityagusain273.github.io/kriya-code/privacy_policy.html
 
 ## Support / issue tracker
-https://github.com/adityagusain273/b-code/issues
+https://github.com/adityagusain273/kriya-code/issues
 
 ## Repo for the APK (sideload path)
-https://github.com/adityagusain273/b-code
+https://github.com/adityagusain273/kriya-code

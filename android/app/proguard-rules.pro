@@ -13,7 +13,7 @@
 # ---------------------------------------------------------------------------
 # MainActivity is referenced from the manifest, so R8 keeps it. The plugin classes
 # are only reached reflectively by the Flutter engine's generated registrant.
--keep class com.bcode.editor.** { *; }
+-keep class com.kriya.editor.** { *; }
 
 # Keep annotations + generic signatures. Required by anything that reflects on
 # types (commons-compress codecs, JCE provider lookup, Flutter plugin registration).

@@ -24,7 +24,7 @@ class MissionBanner extends StatelessWidget {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'Advertising helps keep B Code free 🥺',
+                  'Advertising helps keep Kriya free 🥺',
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,

@@ -53,7 +53,7 @@ class LicenseVerifier {
     try {
       final clean = keyString.replaceAll(RegExp(r'\s+'), '');
       final parts = clean.split('.');
-      if (parts.length != 3 || parts[0] != 'BCODE') {
+      if (parts.length != 3 || (parts[0] != 'KRIYA' && parts[0] != 'BCODE')) {
         return LicenseValidationResult.invalid;
       }
       final payloadBytes = base64Url.decode(base64.normalize(parts[1]));
@@ -119,7 +119,7 @@ class LicenseVerifier {
         }
       }
 
-      if (boundId != null && boundId.startsWith('BCODE-')) {
+      if (boundId != null && (boundId.startsWith('KRIYA-') || boundId.startsWith('BCODE-'))) {
         if (currentDeviceId != null && currentDeviceId.isNotEmpty) {
           if (boundId != currentDeviceId) {
             return LicenseValidationResult(

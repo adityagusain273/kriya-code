@@ -19,6 +19,7 @@ class ConsolePanel extends StatefulWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (_) => _ConsoleSheet(initialIndex: initialIndex),
     );
@@ -171,28 +172,72 @@ class _ConsoleSheet extends StatefulWidget {
 }
 
 class _ConsoleSheetState extends State<_ConsoleSheet>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final TabController _tabController;
+  late final AnimationController _animController;
+  late double _heightFraction;
+  bool _isFullScreen = false;
+
+  double get _defaultHeightFraction =>
+      widget.initialIndex == ConsolePanel.tabTerminal ? 0.75 : 0.6;
 
   @override
   void initState() {
     super.initState();
+    _heightFraction = _defaultHeightFraction;
     _tabController = TabController(
       length: 2,
       vsync: this,
       initialIndex: widget.initialIndex.clamp(0, 1),
+    );
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
     );
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _animController.dispose();
     super.dispose();
+  }
+
+  void _animateTo(double target) {
+    final start = _heightFraction;
+    final anim = CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic);
+    _animController.reset();
+    anim.addListener(() {
+      if (mounted) {
+        setState(() {
+          _heightFraction = start + (target - start) * anim.value;
+          _isFullScreen = _heightFraction >= 0.96;
+        });
+      }
+    });
+    _animController.forward();
+  }
+
+  void _toggleFullScreen() {
+    if (_isFullScreen) {
+      _animateTo(_defaultHeightFraction);
+    } else {
+      _animateTo(1.0);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final media = MediaQuery.of(context);
+    final totalHeight = media.size.height;
+    final viewInsetBottom = media.viewInsets.bottom;
+    final availableHeight = (totalHeight - viewInsetBottom).clamp(150.0, totalHeight);
+    final sheetHeight = _isFullScreen
+        ? availableHeight
+        : (availableHeight * _heightFraction).clamp(150.0, availableHeight);
+    final topInset = _isFullScreen ? media.padding.top : 0.0;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -201,72 +246,115 @@ class _ConsoleSheetState extends State<_ConsoleSheet>
         }
       },
       child: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-        child: Stack(
+        padding: EdgeInsets.only(bottom: viewInsetBottom),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).pop(),
-              child: const SizedBox.expand(),
-            ),
-            NotificationListener<DraggableScrollableNotification>(
-              onNotification: (notification) {
-                if (notification.extent <= 0.16) {
-                  Navigator.of(context).pop();
-                  return true;
-                }
-                return false;
-              },
-              child: DraggableScrollableSheet(
-                initialChildSize: 0.6,
-                minChildSize: 0.15,
-                maxChildSize: 0.9,
-                builder: (context, scrollController) => Container(
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            if (!_isFullScreen)
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            Container(
+              key: const Key('console_sheet_container'),
+              height: sheetHeight,
+              padding: EdgeInsets.only(top: topInset),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: _isFullScreen
+                    ? BorderRadius.zero
+                    : const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onVerticalDragUpdate: (details) {
+                      final delta = -details.primaryDelta! / availableHeight;
+                      setState(() {
+                        _heightFraction = (_heightFraction + delta).clamp(0.2, 1.0);
+                        _isFullScreen = _heightFraction >= 0.96;
+                      });
+                    },
+                    onVerticalDragEnd: (details) {
+                      final velocity = details.primaryVelocity ?? 0;
+                      if (velocity < -300 || _heightFraction > 0.85) {
+                        _animateTo(1.0);
+                      } else if (velocity > 300 && _heightFraction < 0.45) {
+                        Navigator.of(context).pop();
+                      } else if (_heightFraction < 0.25) {
+                        Navigator.of(context).pop();
+                      } else {
+                        _animateTo(_defaultHeightFraction);
+                      }
+                    },
+                    child: Container(
+                      height: 28,
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: 48,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.white38,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Center(
-                        child: Container(
-                          margin: const EdgeInsets.only(top: 8),
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(2),
+                  SizedBox(
+                    height: 40,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TabBar(
+                            controller: _tabController,
+                            tabs: const [
+                              Tab(text: 'Output'),
+                              Tab(text: 'Terminal'),
+                            ],
+                            labelColor: Colors.white,
+                            unselectedLabelColor: Colors.white54,
+                            indicatorColor: Colors.white,
+                            dividerColor: Colors.transparent,
                           ),
                         ),
-                      ),
-                      SizedBox(
-                        height: 40,
-                        child: TabBar(
-                          controller: _tabController,
-                          tabs: const [
-                            Tab(text: 'Output'),
-                            Tab(text: 'Terminal'),
-                          ],
-                          labelColor: Colors.white,
-                          unselectedLabelColor: Colors.white54,
-                          indicatorColor: Colors.white,
-                          dividerColor: Colors.transparent,
+                        IconButton(
+                          icon: Icon(
+                            _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                            size: 20,
+                            color: Colors.white70,
+                          ),
+                          onPressed: _toggleFullScreen,
+                          tooltip: _isFullScreen ? 'Exit full screen' : 'Full screen',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                         ),
-                      ),
-                      const Divider(height: 1),
-                      Expanded(
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _OutputTab(scrollController: scrollController),
-                            const _TerminalTab(),
-                          ],
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 20, color: Colors.white70),
+                          onPressed: () => Navigator.of(context).pop(),
+                          tooltip: 'Close',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                      ],
+                    ),
                   ),
-                ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: const [
+                        _OutputTab(),
+                        _TerminalTab(),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -277,16 +365,21 @@ class _ConsoleSheetState extends State<_ConsoleSheet>
 }
 
 class _OutputTab extends StatefulWidget {
-  final ScrollController scrollController;
-
-  const _OutputTab({required this.scrollController});
+  const _OutputTab();
 
   @override
   State<_OutputTab> createState() => _OutputTabState();
 }
 
 class _OutputTabState extends State<_OutputTab> {
+  final ScrollController _scrollController = ScrollController();
   int _lastLineCount = 0;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -296,10 +389,10 @@ class _OutputTabState extends State<_OutputTab> {
     if (runner.lines.length != _lastLineCount) {
       _lastLineCount = runner.lines.length;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (widget.scrollController.hasClients &&
-            widget.scrollController.position.maxScrollExtent > 0) {
-          widget.scrollController.animateTo(
-            widget.scrollController.position.maxScrollExtent,
+        if (_scrollController.hasClients &&
+            _scrollController.position.maxScrollExtent > 0) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
             duration: const Duration(milliseconds: 150),
             curve: Curves.easeOut,
           );
@@ -402,7 +495,7 @@ class _OutputTabState extends State<_OutputTab> {
                   ),
                 )
               : ListView.builder(
-                  controller: widget.scrollController,
+                  controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   itemCount: runner.lines.length,
                   itemBuilder: (context, i) {
@@ -428,10 +521,10 @@ class _OutputTabState extends State<_OutputTab> {
             runner: runner,
             onInputSent: () {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (widget.scrollController.hasClients &&
-                    widget.scrollController.position.maxScrollExtent > 0) {
-                  widget.scrollController.animateTo(
-                    widget.scrollController.position.maxScrollExtent,
+                if (_scrollController.hasClients &&
+                    _scrollController.position.maxScrollExtent > 0) {
+                  _scrollController.animateTo(
+                    _scrollController.position.maxScrollExtent,
                     duration: const Duration(milliseconds: 150),
                     curve: Curves.easeOut,
                   );
@@ -548,17 +641,15 @@ class _ConsoleInputBarState extends State<ConsoleInputBar> {
   }
 }
 
-class _TerminalTab extends StatefulWidget {
+class _TerminalTab extends StatelessWidget {
   const _TerminalTab();
 
   @override
-  State<_TerminalTab> createState() => _TerminalTabState();
-}
-
-class _TerminalTabState extends State<_TerminalTab> {
-  @override
   Widget build(BuildContext context) {
     final workDir = sl<FsService>().rootPath;
-    return TerminalWidget(workDir: workDir);
+    return TerminalWidget(
+      workDir: workDir,
+      showToolbar: true,
+    );
   }
 }

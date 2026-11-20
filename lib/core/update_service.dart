@@ -135,7 +135,7 @@ class UpdateService {
       builder: (ctx) => AlertDialog(
         title: const Text('Update Available'),
         content: const Text(
-          'New B Code update available! Tap to download the latest compilers and fixes.',
+          'New Kriya update available! Tap to download the latest compilers and fixes.',
         ),
         actions: [
           TextButton(
@@ -188,7 +188,7 @@ class UpdateService {
           : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('B Code is up to date$versionText.'),
+          content: Text('Kriya is up to date$versionText.'),
           duration: const Duration(seconds: 3),
         ),
       );

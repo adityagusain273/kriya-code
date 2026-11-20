@@ -217,8 +217,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.scrollUntilVisible(find.text('B Code Pro Active (Lifetime Pass)'), 100);
-      expect(find.text('B Code Pro Active (Lifetime Pass)'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Kriya Pro Active (Lifetime Pass)'), 100);
+      expect(find.text('Kriya Pro Active (Lifetime Pass)'), findsOneWidget);
       expect(find.text('Reset to Free Tier (For Testing)'), findsOneWidget);
 
       await tester.tap(find.text('Reset to Free Tier (For Testing)'));
@@ -247,8 +247,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.scrollUntilVisible(find.text('B Code Pro Active (Semester Pass)'), 100);
-      expect(find.text('B Code Pro Active (Semester Pass)'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Kriya Pro Active (Semester Pass)'), 100);
+      expect(find.text('Kriya Pro Active (Semester Pass)'), findsOneWidget);
     });
   });
 
@@ -273,7 +273,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Advertising helps keep B Code free 🥺'), findsOneWidget);
+      expect(find.text('Advertising helps keep Kriya free 🥺'), findsOneWidget);
       expect(find.text('GO AD FREE'), findsOneWidget);
 
       // Fast forward countdown
