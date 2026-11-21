@@ -2,10 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/di.dart';
 import '../../core/result.dart';
 import '../../editor/templates/ci_templates.dart';
+import '../../monetization/entitlement_service.dart';
+import '../../monetization/pro_paywall_sheet.dart';
 import '../../workspace/fs_service.dart';
 import '../api_client.dart';
 import '../artifact_installer.dart';
@@ -34,6 +37,40 @@ class CloudBuildSheet extends StatefulWidget {
     this.defaultBranch,
     this.localDir,
   });
+
+  static const String cloudBuildQuotaDateKey = 'bcode_cloud_build_quota_date';
+  static const String cloudBuildQuotaCountKey = 'bcode_cloud_build_quota_count';
+  static const int maxFreeDailyCloudBuilds = 2;
+
+  static String todayDateString([DateTime? date]) {
+    final now = date ?? DateTime.now();
+    final y = now.year.toString().padLeft(4, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  static Future<int> getDailyBuildCount(SharedPreferences prefs, [DateTime? now]) async {
+    final today = todayDateString(now);
+    final savedDate = prefs.getString(cloudBuildQuotaDateKey);
+    if (savedDate != today) {
+      await prefs.setString(cloudBuildQuotaDateKey, today);
+      await prefs.setInt(cloudBuildQuotaCountKey, 0);
+      return 0;
+    }
+    return prefs.getInt(cloudBuildQuotaCountKey) ?? 0;
+  }
+
+  static Future<void> incrementDailyBuildCount(SharedPreferences prefs, [DateTime? now]) async {
+    final today = todayDateString(now);
+    final savedDate = prefs.getString(cloudBuildQuotaDateKey);
+    int count = 0;
+    if (savedDate == today) {
+      count = prefs.getInt(cloudBuildQuotaCountKey) ?? 0;
+    }
+    await prefs.setString(cloudBuildQuotaDateKey, today);
+    await prefs.setInt(cloudBuildQuotaCountKey, count + 1);
+  }
 
   static Future<void> show(
     BuildContext context, {
@@ -158,10 +195,34 @@ class _CloudBuildSheetState extends State<CloudBuildSheet> {
     await _refreshRun();
   }
 
+  bool _isProUser() {
+    if (!sl.isRegistered<EntitlementService>()) return false;
+    return sl<EntitlementService>().isRuntimeUnlocked('');
+  }
+
   Future<void> _trigger() async {
     final workflow = _workflow;
     final branch = _branch;
     if (workflow == null || branch == null) return;
+
+    final isPro = _isProUser();
+    if (!isPro) {
+      final prefs = await SharedPreferences.getInstance();
+      final count = await CloudBuildSheet.getDailyBuildCount(prefs);
+      if (count >= CloudBuildSheet.maxFreeDailyCloudBuilds) {
+        if (!mounted) return;
+        final boughtPro = await showProPaywallSheet(context);
+        final isProNow = _isProUser();
+        if (!boughtPro && !isProNow) {
+          if (mounted) {
+            setState(() {
+              _message = 'Daily free build quota reached (2/2). Upgrade to Pro for unlimited builds.';
+            });
+          }
+          return;
+        }
+      }
+    }
 
     setState(() {
       _busy = true;
@@ -182,16 +243,25 @@ class _CloudBuildSheetState extends State<CloudBuildSheet> {
     if (_disposed) return;
 
     result.fold(
-      (_) {
-        setState(() => _message = 'Build queued. GitHub needs a few seconds to list the run.');
-        _startPolling();
+      (_) async {
+        final isProNow = _isProUser();
+        if (!isProNow) {
+          final prefs = await SharedPreferences.getInstance();
+          await CloudBuildSheet.incrementDailyBuildCount(prefs);
+        }
+        if (!_disposed) {
+          setState(() => _message = 'Build queued. GitHub needs a few seconds to list the run.');
+          _startPolling();
+        }
       },
       (error) {
-        setState(() {
-          _busy = false;
-          _requestedAt = null;
-          _message = error;
-        });
+        if (!_disposed) {
+          setState(() {
+            _busy = false;
+            _requestedAt = null;
+            _message = error;
+          });
+        }
       },
     );
   }

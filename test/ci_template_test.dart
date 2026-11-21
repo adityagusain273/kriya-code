@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:b_code/editor/templates/ci_templates.dart';
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/editor/templates/ci_templates.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 

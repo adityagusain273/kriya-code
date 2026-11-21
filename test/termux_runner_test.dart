@@ -2,12 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
-import 'package:b_code/core/constants.dart';
-import 'package:b_code/execution/local/local_runner.dart';
-import 'package:b_code/execution/models.dart';
-import 'package:b_code/execution/runner_service.dart';
-import 'package:b_code/execution/termux_runner.dart';
-import 'package:b_code/plugins/api/run_config.dart';
+import 'package:kriya_code/core/constants.dart';
+import 'package:kriya_code/execution/local/local_runner.dart';
+import 'package:kriya_code/execution/models.dart';
+import 'package:kriya_code/execution/runner_service.dart';
+import 'package:kriya_code/execution/termux_runner.dart';
+import 'package:kriya_code/plugins/api/run_config.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;

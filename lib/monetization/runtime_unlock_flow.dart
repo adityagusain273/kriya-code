@@ -110,6 +110,10 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
   }
 
   void _startCountdown() {
+    if (_remainingSeconds <= 0) {
+      _onRewardEarned();
+      return;
+    }
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -127,12 +131,14 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
   }
 
   Future<void> _onRewardEarned() async {
-    final entitlements = sl<EntitlementService>();
-    if (widget.runtimeId != null) {
-      await entitlements.unlockRuntime(widget.runtimeId!);
-    }
-    if (widget.extensionId != null) {
-      await entitlements.unlockExtension(widget.extensionId!);
+    if (_isAdLoaded && !_adFailed && sl.isRegistered<EntitlementService>()) {
+      final entitlements = sl<EntitlementService>();
+      if (widget.runtimeId != null) {
+        await entitlements.unlockRuntime(widget.runtimeId!);
+      }
+      if (widget.extensionId != null) {
+        await entitlements.unlockExtension(widget.extensionId!);
+      }
     }
     if (!mounted) return;
     setState(() {
@@ -143,6 +149,10 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
 
   void _loadBannerAd() {
     try {
+      if (!sl.isRegistered<AdService>()) {
+        _setAdFailed();
+        return;
+      }
       final adService = sl<AdService>();
       final banner = adService.createMediumRectangleAd(
         onAdLoaded: () {
@@ -154,14 +164,7 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
           }
         },
         onAdFailedToLoad: (error) {
-          if (mounted) {
-            setState(() {
-              _isAdLoaded = false;
-              _adFailed = true;
-            });
-            // Fail open: grant unlock if ad cannot load offline
-            _onRewardEarned();
-          }
+          _setAdFailed();
         },
       );
 
@@ -169,18 +172,23 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
         _bannerAd = banner;
         banner.load();
       } else {
-        // Non-mobile or test environment
-        setState(() {
-          _adFailed = true;
-        });
-        _onRewardEarned();
+        _setAdFailed();
       }
     } catch (e) {
       debugPrint('Ad load exception: $e');
+      _setAdFailed();
+    }
+  }
+
+  void _setAdFailed() {
+    if (mounted) {
       setState(() {
+        _isAdLoaded = false;
         _adFailed = true;
       });
-      _onRewardEarned();
+    } else {
+      _isAdLoaded = false;
+      _adFailed = true;
     }
   }
 
@@ -195,7 +203,7 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
       builder: (ctx) => AlertDialog(
         title: const Text('Leave without unlocking?'),
         content: Text(
-          'Wait $_remainingSeconds more seconds to unlock ${widget.runtimeTitle} offline permanently 🥺',
+          'Wait $_remainingSeconds more seconds to unlock ${widget.runtimeTitle} 🥺',
         ),
         actions: [
           TextButton(
@@ -418,7 +426,9 @@ class _DuolingoAdUnlockSheetState extends State<DuolingoAdUnlockSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Sponsored ads offline. ${widget.title} unlocked for free so you keep building!',
+              _isUnlocked
+                  ? 'Sponsored ads offline. ${widget.title} unlocked for this download!'
+                  : 'Sponsored ads offline. ${widget.title} unlocks for this download once timer ends.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white70,

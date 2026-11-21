@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:b_code/editor/highlighting/async_highlighter.dart';
-import 'package:b_code/editor/highlighting/bcode_controller.dart';
+import 'package:kriya_code/editor/highlighting/async_highlighter.dart';
+import 'package:kriya_code/editor/highlighting/bcode_controller.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:highlight/highlight_core.dart';

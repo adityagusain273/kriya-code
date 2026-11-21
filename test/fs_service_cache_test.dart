@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

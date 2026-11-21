@@ -1,5 +1,5 @@
-import 'package:b_code/execution/runner_service.dart';
-import 'package:b_code/lsp/runtime_error_parser.dart';
+import 'package:kriya_code/execution/runner_service.dart';
+import 'package:kriya_code/lsp/runtime_error_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

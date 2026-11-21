@@ -6,7 +6,7 @@
 // Usage: dart run tool/check_cert_pins.dart
 import 'dart:io';
 
-import 'package:b_code/core/pinned_http.dart';
+import 'package:kriya_code/core/pinned_http.dart';
 
 Future<void> main() async {
   final client = PinnedHttpClient.create();

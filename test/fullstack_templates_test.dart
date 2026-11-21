@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:b_code/editor/templates/template_service.dart';
+import 'package:kriya_code/editor/templates/template_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

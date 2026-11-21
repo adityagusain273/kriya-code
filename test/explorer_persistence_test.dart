@@ -2,11 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_code/core/di.dart';
-import 'package:b_code/plugins/host/extension_install_store.dart';
-import 'package:b_code/workspace/explorer_prefs.dart';
-import 'package:b_code/workspace/file_explorer.dart';
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/plugins/host/extension_install_store.dart';
+import 'package:kriya_code/workspace/explorer_prefs.dart';
+import 'package:kriya_code/workspace/file_explorer.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Pumps several frames to flush chained futures without requiring

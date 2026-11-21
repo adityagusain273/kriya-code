@@ -1,6 +1,6 @@
-import 'package:b_code/core/archive_extractor.dart';
-import 'package:b_code/core/constants.dart';
-import 'package:b_code/workspace/device_import_service.dart';
+import 'package:kriya_code/core/archive_extractor.dart';
+import 'package:kriya_code/core/constants.dart';
+import 'package:kriya_code/workspace/device_import_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

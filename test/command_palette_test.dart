@@ -1,4 +1,4 @@
-import 'package:b_code/editor/command_palette.dart';
+import 'package:kriya_code/editor/command_palette.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 

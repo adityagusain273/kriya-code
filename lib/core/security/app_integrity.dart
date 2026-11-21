@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// What the runtime integrity check concluded.
@@ -66,10 +70,9 @@ class IntegrityReport {
 ///
 /// Enforcement
 /// ----------
-/// Nothing here blocks the user. A verdict is data for the caller to record
-/// and to act on; the app keeps working on an untrusted build, because bricking
-/// the editor is a worse outcome for a legitimate user than a cracked copy
-/// being alive.
+/// Enforceable in release builds when a certificate is configured. If repackaging
+/// is detected, a blocking/warning dialog is displayed on app launch. Debug
+/// builds and unconfigured builds remain unaffected.
 class AppIntegrity {
   static const MethodChannel _channel = MethodChannel('bcode.integrity');
 
@@ -82,6 +85,21 @@ class AppIntegrity {
 
   /// Parses [configuredCertificates] into a list of uppercase hex digests.
   static List<String> get expectedCertificates => _parse(configuredCertificates);
+
+  /// Whether repackaging detection is enforceable on this build:
+  /// true only in release mode when a certificate is configured.
+  static bool get isEnforceable => isEnforceableBuild();
+
+  /// Helper to evaluate enforceability across release modes and certificate sets.
+  static bool isEnforceableBuild({
+    bool releaseMode = kReleaseMode,
+    List<String>? expected,
+  }) {
+    final certs = expected != null
+        ? _parse(expected.join(','))
+        : expectedCertificates;
+    return releaseMode && certs.isNotEmpty;
+  }
 
   /// Reads the signing certificates of the installed APK and compares them
   /// against [expected], or against [expectedCertificates] when no list is
@@ -153,4 +171,96 @@ class AppIntegrity {
       .map((e) => e.trim().toUpperCase())
       .where((e) => e.isNotEmpty)
       .toList();
+}
+
+class RepackagedDialog extends StatelessWidget {
+  final IntegrityReport? report;
+  final VoidCallback? onExit;
+
+  const RepackagedDialog({
+    super.key,
+    this.report,
+    this.onExit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      icon: const Icon(
+        Icons.warning_amber_rounded,
+        color: Colors.redAccent,
+        size: 48,
+      ),
+      title: const Text('App Tampering Detected'),
+      content: Text(
+        'This build of Kriya Code has been modified or repackaged by an untrusted source. '
+        'The signing certificate does not match the official release certificate.\n\n'
+        '${report?.reason ?? 'Untrusted build signature.'}',
+      ),
+      actions: [
+        TextButton(
+          onPressed: onExit ?? () => exit(0),
+          child: const Text('Exit App'),
+        ),
+      ],
+    );
+  }
+}
+
+class RepackagedApp extends StatelessWidget {
+  final IntegrityReport? report;
+  final VoidCallback? onExit;
+
+  const RepackagedApp({
+    super.key,
+    this.report,
+    this.onExit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFFE53935),
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      home: Scaffold(
+        backgroundColor: const Color(0xFF1A1C1E),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: PopScope(
+              canPop: false,
+              child: RepackagedDialog(
+                report: report,
+                onExit: onExit,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> showRepackagedDialog(
+  BuildContext context, {
+  IntegrityReport? report,
+  VoidCallback? onExit,
+}) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => PopScope(
+      canPop: false,
+      child: RepackagedDialog(
+        report: report,
+        onExit: onExit,
+      ),
+    ),
+  );
 }

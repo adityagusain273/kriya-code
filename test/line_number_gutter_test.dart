@@ -1,4 +1,4 @@
-import 'package:b_code/editor/line_number_gutter.dart';
+import 'package:kriya_code/editor/line_number_gutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

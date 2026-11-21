@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_code/core/di.dart';
-import 'package:b_code/execution/runtime_download_service.dart';
-import 'package:b_code/execution/ui/downloads_page.dart';
-import 'package:b_code/monetization/entitlement_service.dart';
-import 'package:b_code/plugins/host/extension_install_store.dart';
-import 'package:b_code/plugins/ui/extensions_page.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/execution/runtime_download_service.dart';
+import 'package:kriya_code/execution/ui/downloads_page.dart';
+import 'package:kriya_code/monetization/entitlement_service.dart';
+import 'package:kriya_code/plugins/host/extension_install_store.dart';
+import 'package:kriya_code/plugins/ui/extensions_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 

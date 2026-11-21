@@ -1,8 +1,8 @@
-import 'package:b_code/core/di.dart';
-import 'package:b_code/execution/console_panel.dart';
-import 'package:b_code/execution/local/local_runner.dart';
-import 'package:b_code/execution/runner_service.dart';
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/execution/console_panel.dart';
+import 'package:kriya_code/execution/local/local_runner.dart';
+import 'package:kriya_code/execution/runner_service.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';

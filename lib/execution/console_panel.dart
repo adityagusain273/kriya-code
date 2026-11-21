@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../core/di.dart';
 import '../terminal/terminal_widget.dart' show TerminalWidget;
 import '../workspace/fs_service.dart';
+import '../ai/ui/ai_assist_sheet.dart';
 import 'runner_service.dart';
 
 class ConsolePanel extends StatefulWidget {
@@ -454,6 +455,21 @@ class _OutputTabState extends State<_OutputTab> {
                   tooltip: 'Stop execution',
                 ),
               IconButton(
+                icon: const Icon(Icons.auto_awesome, size: 18, color: Color(0xFF00E676)),
+                onPressed: () {
+                  final text = runner.lines.map((l) => l.text).join('\n');
+                  final err = runner.lastError;
+                  final content = err != null ? 'Error: $err\nOutput:\n$text' : text;
+                  AiAssistSheet.show(
+                    context,
+                    initialCode: content.isNotEmpty ? content : null,
+                    contextDescription: 'Execution Output / Error',
+                    defaultPrompt: 'Explain this output or error and show how to fix any issues.',
+                  );
+                },
+                tooltip: 'Explain with AI',
+              ),
+              IconButton(
                 icon: const Icon(Icons.content_copy, size: 18),
                 onPressed: () {
                   final text = runner.lines.map((l) => l.text).join('\n');
@@ -477,11 +493,35 @@ class _OutputTabState extends State<_OutputTab> {
         const Divider(height: 1),
         if (runner.lastError != null)
           Container(
-            padding: const EdgeInsets.all(8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             color: theme.colorScheme.errorContainer,
-            child: Text(
-              runner.lastError!,
-              style: TextStyle(color: theme.colorScheme.onErrorContainer, fontSize: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    runner.lastError!,
+                    style: TextStyle(color: theme.colorScheme.onErrorContainer, fontSize: 12),
+                  ),
+                ),
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: const Color(0xFF00E676),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: const Icon(Icons.auto_awesome, size: 14),
+                  label: const Text('Explain', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    final text = runner.lines.map((l) => l.text).join('\n');
+                    AiAssistSheet.show(
+                      context,
+                      initialCode: 'Error: ${runner.lastError!}\nOutput:\n$text',
+                      contextDescription: 'Execution Error',
+                      defaultPrompt: 'Why did this error occur and how do I fix it?',
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         Expanded(

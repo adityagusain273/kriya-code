@@ -1,4 +1,4 @@
-import 'package:b_code/editor/preview/preview_navigation.dart';
+import 'package:kriya_code/editor/preview/preview_navigation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -15,6 +15,8 @@ import '../editor/keyboard_help_page.dart';
 import '../execution/termux_runner.dart';
 import '../monetization/entitlement_service.dart';
 import '../monetization/pro_paywall_sheet.dart';
+import '../ai/ai_service.dart';
+import '../ai/ui/ai_assist_sheet.dart';
 import 'settings_store.dart';
 
 bool _customLicensesRegistered = false;
@@ -264,6 +266,59 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+
+          _sectionHeader('AI Assistant'),
+          SwitchListTile(
+            secondary: const Icon(Icons.smart_toy_outlined, color: Color(0xFF00E676)),
+            title: const Text('Floating AI Bot'),
+            subtitle: const Text('Interactive copilot badge in editor; waves on syntax errors'),
+            value: widget.store.showAiBot,
+            onChanged: (v) {
+              setState(() {});
+              widget.store.showAiBot = v;
+            },
+          ),
+          FutureBuilder<String?>(
+            future: sl.isRegistered<AiService>() ? sl<AiService>().getApiKey() : Future.value(null),
+            builder: (context, snapshot) {
+              final key = snapshot.data;
+              final hasKey = key != null && key.isNotEmpty;
+              final provider = hasKey ? detectAiProvider(key) : null;
+              return ListTile(
+                leading: const Icon(Icons.key_rounded, color: Color(0xFF00E676)),
+                title: const Text('AI API Key & Provider'),
+                subtitle: Text(
+                  hasKey
+                      ? 'Connected: ${provider?.displayName ?? "Custom Key"}'
+                      : 'Configure Gemini, Groq, Claude, OpenAI API key',
+                ),
+                trailing: hasKey
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFF00E676).withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Text(
+                          provider?.displayName.toUpperCase() ?? 'ACTIVE',
+                          style: const TextStyle(
+                            color: Color(0xFF00E676),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      )
+                    : const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await AiAssistSheet.show(context);
+                  if (mounted) setState(() {});
+                },
+              );
+            },
+          ),
   ];
 
   List<Widget> _appearanceSection() => [

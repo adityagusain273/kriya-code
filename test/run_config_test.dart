@@ -1,11 +1,11 @@
-import 'package:b_code/execution/runtime_catalog.dart';
-import 'package:b_code/plugins/api/extension.dart';
-import 'package:b_code/plugins/api/language_contribution.dart';
-import 'package:b_code/plugins/builtin/builtin_extensions.dart';
-import 'package:b_code/plugins/host/command_registry.dart';
-import 'package:b_code/plugins/host/event_bus.dart';
-import 'package:b_code/plugins/host/language_registry.dart';
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/execution/runtime_catalog.dart';
+import 'package:kriya_code/plugins/api/extension.dart';
+import 'package:kriya_code/plugins/api/language_contribution.dart';
+import 'package:kriya_code/plugins/builtin/builtin_extensions.dart';
+import 'package:kriya_code/plugins/host/command_registry.dart';
+import 'package:kriya_code/plugins/host/event_bus.dart';
+import 'package:kriya_code/plugins/host/language_registry.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Placeholders `LocalRunner` knows how to substitute.

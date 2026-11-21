@@ -1,4 +1,4 @@
-import 'package:b_code/execution/exec_events.dart';
+import 'package:kriya_code/execution/exec_events.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

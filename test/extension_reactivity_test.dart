@@ -1,7 +1,7 @@
-import 'package:b_code/core/di.dart';
-import 'package:b_code/editor/zoom_viewer.dart';
-import 'package:b_code/plugins/host/extension_install_store.dart';
-import 'package:b_code/settings/settings_store.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/editor/zoom_viewer.dart';
+import 'package:kriya_code/plugins/host/extension_install_store.dart';
+import 'package:kriya_code/settings/settings_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
-import 'package:b_code/core/archive_extractor.dart';
+import 'package:kriya_code/core/archive_extractor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 ArchiveFile _symlink(String name, String target) {

@@ -1,5 +1,5 @@
-import 'package:b_code/editor/editor_page.dart';
-import 'package:b_code/editor/find_replace.dart';
+import 'package:kriya_code/editor/editor_page.dart';
+import 'package:kriya_code/editor/find_replace.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 

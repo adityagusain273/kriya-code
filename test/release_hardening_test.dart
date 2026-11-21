@@ -102,7 +102,7 @@ void main() {
 
     test('keeps the app classes the Flutter engine reaches', () {
       final rules = readRepoFile('android/app/proguard-rules.pro');
-      expect(rules, contains('com.bcode.editor.'));
+      expect(rules, anyOf(contains('com.kriya.editor.'), contains('com.bcode.editor.')));
     });
   });
 

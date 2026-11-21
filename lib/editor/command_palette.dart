@@ -9,6 +9,7 @@ import '../github/ui/github_page.dart';
 import '../plugins/ui/extensions_page.dart';
 import '../settings/settings_page.dart';
 import '../settings/settings_store.dart';
+import '../ai/ui/ai_assist_sheet.dart';
 import 'quick_open.dart';
 import 'tab_manager.dart';
 
@@ -129,6 +130,57 @@ class _CommandPaletteState extends State<CommandPalette> {
     final tabs = sl<TabManager>();
     final tab = tabs.active;
     return [
+      CommandPaletteAction(
+        label: 'AI: Code Assistant & Explainer',
+        category: 'AI',
+        icon: Icons.auto_awesome,
+        shortcut: 'Ctrl+Shift+A',
+        onExecute: () {
+          String? initialCode;
+          if (tab != null && tab.isLoaded) {
+            final sel = tab.controller.selection;
+            if (!sel.isCollapsed) {
+              initialCode = sel.textInside(tab.controller.text);
+            } else {
+              initialCode = tab.controller.text;
+            }
+          }
+          AiAssistSheet.show(
+            context,
+            initialCode: initialCode,
+            contextDescription: tab?.filePath,
+            onApplyCode: (newCode) {
+              if (tab != null && tab.isLoaded) {
+                tab.controller.text = newCode;
+                tab.checkDirty();
+              }
+            },
+            onInsert: (replacement) {
+              if (tab != null && tab.isLoaded) {
+                final sel = tab.controller.selection;
+                if (!sel.isCollapsed) {
+                  final text = tab.controller.text;
+                  final newText = text.replaceRange(sel.start, sel.end, replacement);
+                  tab.controller.text = newText;
+                } else {
+                  tab.controller.text = tab.controller.text.isEmpty
+                      ? replacement
+                      : '${tab.controller.text}\n$replacement';
+                }
+              }
+            },
+          );
+        },
+      ),
+      CommandPaletteAction(
+        label: 'AI: Toggle Floating Assistant Bot',
+        category: 'AI',
+        icon: Icons.smart_toy_outlined,
+        onExecute: () {
+          final store = sl<SettingsStore>();
+          store.showAiBot = !store.showAiBot;
+        },
+      ),
       CommandPaletteAction(
         label: 'Save',
         category: 'File',

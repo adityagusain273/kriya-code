@@ -53,6 +53,7 @@ import 'global_search.dart';
 import 'quick_open.dart';
 import 'shortcut_bar.dart';
 import 'symbol_outline.dart';
+import '../ai/ui/floating_ai_bot.dart';
 
 class EditorPage extends StatefulWidget {
   const EditorPage({super.key});
@@ -1682,6 +1683,20 @@ class _EditorPageState extends State<EditorPage>
                 case 'dev_servers':
                   ServerPanel.show(context);
                   break;
+                case 'ai_bot':
+                  final store = sl<SettingsStore>();
+                  store.showAiBot = !store.showAiBot;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        store.showAiBot
+                            ? 'AI Assistant Bot enabled'
+                            : 'AI Assistant Bot hidden',
+                      ),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                  break;
               }
             },
             itemBuilder: (_) => [
@@ -1695,6 +1710,16 @@ class _EditorPageState extends State<EditorPage>
                 value: 'global_search',
                 child: _MenuItem(
                     icon: Icons.manage_search, label: 'Search in all files'),
+              ),
+              PopupMenuItem(
+                height: 40,
+                value: 'ai_bot',
+                child: _MenuItem(
+                  icon: Icons.smart_toy_outlined,
+                  label: sl<SettingsStore>().showAiBot
+                      ? 'Hide AI Assistant Bot'
+                      : 'Show AI Assistant Bot',
+                ),
               ),
               const PopupMenuDivider(),
               const PopupMenuItem(
@@ -1807,92 +1832,129 @@ class _EditorPageState extends State<EditorPage>
           activeFile: tab?.filePath,
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          if (tabs.tabs.isNotEmpty)
-            TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              tabs: [
-                for (var i = 0; i < tabs.tabs.length; i++)
-                  Tab(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _tabIcon(tabs.tabs[i].filePath),
-                        const SizedBox(width: 4),
-                        Text(tabs.tabs[i].name),
-                        if (tabs.tabs[i].dirty) const Text(' •'),
-                        Semantics(
-                          button: true,
-                          label: 'Close tab ${tabs.tabs[i].name}',
-                          child: Tooltip(
-                            message: 'Close tab',
-                            child: InkWell(
-                              onTap: () => _closeTabWithConfirm(i),
-                              borderRadius: BorderRadius.circular(13),
-                              child: Container(
-                                width: 26,
-                                height: 26,
-                                alignment: Alignment.center,
-                                child: const Icon(Icons.close, size: 16),
+          Column(
+            children: [
+              if (tabs.tabs.isNotEmpty)
+                TabBar(
+                  controller: _tabController,
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  tabs: [
+                    for (var i = 0; i < tabs.tabs.length; i++)
+                      Tab(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _tabIcon(tabs.tabs[i].filePath),
+                            const SizedBox(width: 4),
+                            Text(tabs.tabs[i].name),
+                            if (tabs.tabs[i].dirty) const Text(' •'),
+                            Semantics(
+                              button: true,
+                              label: 'Close tab ${tabs.tabs[i].name}',
+                              child: Tooltip(
+                                message: 'Close tab',
+                                child: InkWell(
+                                  onTap: () => _closeTabWithConfirm(i),
+                                  borderRadius: BorderRadius.circular(13),
+                                  child: Container(
+                                    width: 26,
+                                    height: 26,
+                                    alignment: Alignment.center,
+                                    child: const Icon(Icons.close, size: 16),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          if (_showFind && tab != null)
-            FindReplaceBar(controller: tab.findController),
-          Expanded(
-            child: tab == null
-                ? _EmptyState(
-                    onOpenFile: _importAndOpenFile,
-                    onOpenFolder: _importFolder,
-                    onExtractArchive: _importAndExtractArchive,
-                    onExportProject: _exportProject,
-                  )
-                : Focus(
-                    onKeyEvent: _onKeyEvent,
-                    child: _buildCodeView(tab),
-                  ),
-          ),
-          if (tab != null && _diagnostics.isNotEmpty)
-            DiagnosticsBar(
-              diagnostics: _diagnostics,
-              onSelect: (diagnostic) {
-                tab.revealAt(diagnostic.offset);
-                _editorFocus.requestFocus();
-              },
-            ),
-          if (tab != null)
-            _StatusBar(
-              tab: tab,
-              langName: _langName(tab.languageId, tab.name.contains('.') ? tab.name.split('.').last.toLowerCase() : ''),
-              showShortcuts: sl<SettingsStore>().showShortcutBar,
-              onToggleShortcuts: () =>
-                  sl<SettingsStore>().showShortcutBar = !sl<SettingsStore>().showShortcutBar,
-            ),
-          if (tab != null)
-            AutocompleteBar(
-              engine: _autocomplete,
-              controller: tab.controller,
-            ),
-          if (tab != null && sl<SettingsStore>().showShortcutBar)
-            FutureBuilder<int>(
-              future: _indentFutureFor(tab.languageId),
-              builder: (context, snapshot) => EditorShortcutBar(
-                controller: tab.controller,
-                indentWidth: snapshot.data ?? 2,
-                onFind: () => setState(() => _showFind = true),
-                onSave: tabs.save,
-                onToggle: () => sl<SettingsStore>().showShortcutBar = false,
-                languageId: tab.languageId,
+                      ),
+                  ],
+                ),
+              if (_showFind && tab != null)
+                FindReplaceBar(controller: tab.findController),
+              Expanded(
+                child: tab == null
+                    ? _EmptyState(
+                        onOpenFile: _importAndOpenFile,
+                        onOpenFolder: _importFolder,
+                        onExtractArchive: _importAndExtractArchive,
+                        onExportProject: _exportProject,
+                      )
+                    : Focus(
+                        onKeyEvent: _onKeyEvent,
+                        child: _buildCodeView(tab),
+                      ),
               ),
+              if (tab != null && _diagnostics.isNotEmpty)
+                DiagnosticsBar(
+                  diagnostics: _diagnostics,
+                  onSelect: (diagnostic) {
+                    tab.revealAt(diagnostic.offset);
+                    _editorFocus.requestFocus();
+                  },
+                ),
+              if (tab != null)
+                _StatusBar(
+                  tab: tab,
+                  langName: _langName(tab.languageId, tab.name.contains('.') ? tab.name.split('.').last.toLowerCase() : ''),
+                  showShortcuts: sl<SettingsStore>().showShortcutBar,
+                  onToggleShortcuts: () =>
+                      sl<SettingsStore>().showShortcutBar = !sl<SettingsStore>().showShortcutBar,
+                ),
+              if (tab != null)
+                AutocompleteBar(
+                  engine: _autocomplete,
+                  controller: tab.controller,
+                ),
+              if (tab != null && sl<SettingsStore>().showShortcutBar)
+                FutureBuilder<int>(
+                  future: _indentFutureFor(tab.languageId),
+                  builder: (context, snapshot) => EditorShortcutBar(
+                    controller: tab.controller,
+                    indentWidth: snapshot.data ?? 2,
+                    onFind: () => setState(() => _showFind = true),
+                    onSave: tabs.save,
+                    onToggle: () => sl<SettingsStore>().showShortcutBar = false,
+                    languageId: tab.languageId,
+                  ),
+                ),
+            ],
+          ),
+          if (sl<SettingsStore>().showAiBot)
+            FloatingAiBot(
+              tab: tab,
+              diagnostics: _diagnostics,
+              workspaceRoot: sl<FsService>().rootPath,
+              onApplyCode: (newCode) {
+                if (tab != null) {
+                  tab.controller.text = newCode;
+                  tab.checkDirty();
+                }
+              },
+              onDismiss: () {
+                setState(() {
+                  sl<SettingsStore>().showAiBot = false;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'AI Assistant Bot hidden. Restore from menu (⋮).',
+                    ),
+                    action: SnackBarAction(
+                      label: 'Restore',
+                      onPressed: () {
+                        setState(() {
+                          sl<SettingsStore>().showAiBot = true;
+                        });
+                      },
+                    ),
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              },
             ),
         ],
       ),

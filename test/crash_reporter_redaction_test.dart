@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:b_code/core/crash_reporter.dart';
+import 'package:kriya_code/core/crash_reporter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

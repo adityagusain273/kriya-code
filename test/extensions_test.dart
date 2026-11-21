@@ -1,13 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_code/core/di.dart';
-import 'package:b_code/core/result.dart';
-import 'package:b_code/plugins/builtin/builtin_extensions.dart';
-import 'package:b_code/plugins/host/extension_registry.dart';
-import 'package:b_code/plugins/host/command_registry.dart';
-import 'package:b_code/plugins/host/event_bus.dart';
-import 'package:b_code/plugins/host/language_registry.dart';
-import 'package:b_code/plugins/api/extension.dart';
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/core/result.dart';
+import 'package:kriya_code/plugins/builtin/builtin_extensions.dart';
+import 'package:kriya_code/plugins/host/extension_registry.dart';
+import 'package:kriya_code/plugins/host/command_registry.dart';
+import 'package:kriya_code/plugins/host/event_bus.dart';
+import 'package:kriya_code/plugins/host/language_registry.dart';
+import 'package:kriya_code/plugins/api/extension.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'dart:io';
 
 void main() {

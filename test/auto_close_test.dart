@@ -1,4 +1,4 @@
-import 'package:b_code/editor/highlighting/bcode_controller.dart';
+import 'package:kriya_code/editor/highlighting/bcode_controller.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:highlight/languages/plaintext.dart';

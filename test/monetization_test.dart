@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_code/core/di.dart';
-import 'package:b_code/monetization/entitlement_service.dart';
-import 'package:b_code/monetization/ad_service.dart';
-import 'package:b_code/monetization/pro_paywall_sheet.dart';
-import 'package:b_code/monetization/runtime_unlock_flow.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/monetization/entitlement_service.dart';
+import 'package:kriya_code/monetization/ad_service.dart';
+import 'package:kriya_code/monetization/pro_paywall_sheet.dart';
+import 'package:kriya_code/monetization/runtime_unlock_flow.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/test_license.dart';
@@ -253,7 +253,8 @@ void main() {
   });
 
   group('DuolingoAdUnlockSheet', () {
-    testWidgets('shows mission title with watery eyes emoji and counts down', (tester) async {
+    testWidgets('requires countdown before granting single-action unlock when offline',
+        (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final entitlements = LocalEntitlementService(prefs);
@@ -275,17 +276,23 @@ void main() {
 
       expect(find.text('Advertising helps keep Kriya free 🥺'), findsOneWidget);
       expect(find.text('GO AD FREE'), findsOneWidget);
+      expect(find.text('Unlocked'), findsNothing);
+      expect(entitlements.isRuntimeUnlocked('clang'), isFalse);
 
-      // Fast forward countdown
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Unlocked'), findsNothing);
+      expect(entitlements.isRuntimeUnlocked('clang'), isFalse);
+
+      await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
 
-      expect(entitlements.isRuntimeUnlocked('clang'), isTrue);
       expect(find.text('Unlocked'), findsOneWidget);
       expect(find.textContaining('Continue & Download C / C++'), findsOneWidget);
+      expect(entitlements.isRuntimeUnlocked('clang'), isFalse);
     });
 
-    testWidgets('unlocks extension and shows install action label', (tester) async {
+    testWidgets('unlocks extension with action label after countdown when ad fails offline',
+        (tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final entitlements = LocalEntitlementService(prefs);
@@ -307,11 +314,61 @@ void main() {
         ),
       );
       await tester.pump();
+      expect(find.text('Unlocked'), findsNothing);
+
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
 
-      expect(entitlements.isExtensionUnlocked('bcode.lang.rust'), isTrue);
+      expect(find.text('Unlocked'), findsOneWidget);
       expect(find.textContaining('Continue & Install Rust'), findsOneWidget);
+      expect(entitlements.isExtensionUnlocked('bcode.lang.rust'), isFalse);
+    });
+
+    testWidgets('ensureRuntimeUnlocked returns true for single download without persistent unlock',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final entitlements = LocalEntitlementService(prefs);
+      sl.registerSingleton<EntitlementService>(entitlements);
+      sl.registerSingleton<AdService>(AdMobAdService());
+
+      bool? unlocked;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) => ElevatedButton(
+                onPressed: () async {
+                  unlocked = await ensureRuntimeUnlocked(
+                    ctx,
+                    runtimeId: 'clang',
+                    runtimeTitle: 'C / C++',
+                  );
+                },
+                child: const Text('Download'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Download'));
+      await tester.pumpAndSettle();
+
+      expect(entitlements.isRuntimeUnlocked('clang'), isFalse);
+      expect(find.text('Unlocked'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 7));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unlocked'), findsOneWidget);
+      expect(entitlements.isRuntimeUnlocked('clang'), isFalse);
+
+      await tester.tap(find.textContaining('Continue & Download C / C++'));
+      await tester.pumpAndSettle();
+
+      expect(unlocked, isTrue);
+      expect(entitlements.isRuntimeUnlocked('clang'), isFalse);
     });
   });
 }

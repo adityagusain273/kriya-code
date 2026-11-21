@@ -1,12 +1,12 @@
 import 'dart:io';
 
-import 'package:b_code/core/di.dart';
-import 'package:b_code/editor/highlighting/highlight_engine.dart';
-import 'package:b_code/editor/highlighting/highlight_service.dart';
-import 'package:b_code/editor/tab_manager.dart';
-import 'package:b_code/plugins/host/language_registry.dart';
-import 'package:b_code/settings/settings_store.dart';
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/editor/highlighting/highlight_engine.dart';
+import 'package:kriya_code/editor/highlighting/highlight_service.dart';
+import 'package:kriya_code/editor/tab_manager.dart';
+import 'package:kriya_code/plugins/host/language_registry.dart';
+import 'package:kriya_code/settings/settings_store.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -1,5 +1,5 @@
-name: b_code
-description: "B Code — a full-featured mobile code editor: edit, run, and ship code from your phone."
+name: kriya_code
+description: "Kriya Code — a full-featured mobile code editor: edit, run, and ship code from your phone."
 publish_to: "none"
 version: 1.0.0+10
 

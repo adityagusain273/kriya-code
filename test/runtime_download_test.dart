@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_code/execution/runtime_catalog.dart';
-import 'package:b_code/execution/runtime_download_service.dart';
+import 'package:kriya_code/execution/runtime_catalog.dart';
+import 'package:kriya_code/execution/runtime_download_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 

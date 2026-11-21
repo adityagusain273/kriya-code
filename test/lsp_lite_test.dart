@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:b_code/editor/diagnostics_bar.dart';
-import 'package:b_code/lsp/definition_provider.dart';
-import 'package:b_code/lsp/diagnostics.dart';
-import 'package:b_code/lsp/outline_parser.dart';
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/editor/diagnostics_bar.dart';
+import 'package:kriya_code/lsp/definition_provider.dart';
+import 'package:kriya_code/lsp/diagnostics.dart';
+import 'package:kriya_code/lsp/outline_parser.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

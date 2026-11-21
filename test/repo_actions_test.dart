@@ -1,7 +1,7 @@
-import 'package:b_code/core/di.dart';
-import 'package:b_code/github/models.dart';
-import 'package:b_code/github/ui/repo_actions.dart';
-import 'package:b_code/workspace/fs_service.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/github/models.dart';
+import 'package:kriya_code/github/ui/repo_actions.dart';
+import 'package:kriya_code/workspace/fs_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

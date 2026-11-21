@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
-import 'package:b_code/github/api_client.dart';
-import 'package:b_code/github/models.dart';
+import 'package:kriya_code/github/api_client.dart';
+import 'package:kriya_code/github/models.dart';
 
 void main() {
   group('GitHubApiClient', () {

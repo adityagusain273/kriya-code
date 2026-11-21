@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
-import 'package:b_code/core/archive_extractor.dart';
+import 'package:kriya_code/core/archive_extractor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

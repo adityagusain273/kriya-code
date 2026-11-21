@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-import 'package:b_code/core/di.dart';
-import 'package:b_code/github/auth/device_flow_auth.dart';
-import 'package:b_code/github/ui/login_page.dart';
-import 'package:b_code/workspace/mdi.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/github/auth/device_flow_auth.dart';
+import 'package:kriya_code/github/ui/login_page.dart';
+import 'package:kriya_code/workspace/mdi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;

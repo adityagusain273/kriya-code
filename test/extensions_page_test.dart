@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_code/core/di.dart';
-import 'package:b_code/plugins/host/extension_install_store.dart';
-import 'package:b_code/plugins/packages/extension_installer.dart';
-import 'package:b_code/plugins/packages/extension_manifest.dart';
-import 'package:b_code/plugins/packages/extension_source.dart';
-import 'package:b_code/plugins/ui/extensions_page.dart';
-import 'package:b_code/execution/runtime_download_service.dart';
-import 'package:b_code/monetization/ad_service.dart';
-import 'package:b_code/monetization/entitlement_service.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/plugins/host/extension_install_store.dart';
+import 'package:kriya_code/plugins/packages/extension_installer.dart';
+import 'package:kriya_code/plugins/packages/extension_manifest.dart';
+import 'package:kriya_code/plugins/packages/extension_source.dart';
+import 'package:kriya_code/plugins/ui/extensions_page.dart';
+import 'package:kriya_code/execution/runtime_download_service.dart';
+import 'package:kriya_code/monetization/ad_service.dart';
+import 'package:kriya_code/monetization/entitlement_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 

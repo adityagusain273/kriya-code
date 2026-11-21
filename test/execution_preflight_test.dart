@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_code/execution/storage_preflight.dart';
-import 'package:b_code/execution/workload_preflight.dart';
+import 'package:kriya_code/execution/storage_preflight.dart';
+import 'package:kriya_code/execution/workload_preflight.dart';
 
 void main() {
   group('StoragePreflight', () {

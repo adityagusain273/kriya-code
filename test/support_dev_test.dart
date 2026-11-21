@@ -1,6 +1,6 @@
-import 'package:b_code/core/constants.dart';
-import 'package:b_code/settings/settings_page.dart';
-import 'package:b_code/settings/settings_store.dart';
+import 'package:kriya_code/core/constants.dart';
+import 'package:kriya_code/settings/settings_page.dart';
+import 'package:kriya_code/settings/settings_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

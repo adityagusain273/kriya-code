@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:b_code/github/git_service.dart';
+import 'package:kriya_code/github/git_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:git2dart/git2dart.dart';
 

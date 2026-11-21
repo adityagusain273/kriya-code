@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:highlight/highlight_core.dart';
 
-import 'package:b_code/editor/highlighting/async_highlighter.dart';
-import 'package:b_code/editor/highlighting/bcode_controller.dart';
+import 'package:kriya_code/editor/highlighting/async_highlighter.dart';
+import 'package:kriya_code/editor/highlighting/bcode_controller.dart';
 
 String _lines(int count, {int width = 20}) =>
     List.generate(count, (i) => 'x' * width + '$i').join('\n');

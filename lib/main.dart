@@ -58,6 +58,7 @@ import 'workspace/explorer_prefs.dart';
 import 'workspace/fs_root.dart';
 import 'workspace/workspace_service.dart';
 import 'workspace/fs_service.dart';
+import 'ai/ai_service.dart';
 
 Future<void> main() async {
   runZonedGuarded(() async {
@@ -67,6 +68,23 @@ Future<void> main() async {
     // and send the user to the crash log instead of leaving a dead screen.
     if (kReleaseMode) {
       ErrorWidget.builder = (_) => const _RenderFailureScreen();
+    }
+
+    if (AppIntegrity.isEnforceable) {
+      try {
+        final report = await AppIntegrity.check();
+        if (report.isRepackaged) {
+          CrashReporter.recordZoneError(
+            'App integrity: this build is signed by ${report.signers.join(', ')}, '
+            'which this release does not expect. ${report.reason ?? ''}',
+            StackTrace.current,
+          );
+          runApp(RepackagedApp(report: report));
+          return;
+        }
+      } catch (error, stack) {
+        CrashReporter.recordZoneError(error, stack);
+      }
     }
 
     try {
@@ -254,6 +272,7 @@ Future<void> _initRasp() async {
 /// run would brick the editor for a legitimate user on a re-signed build, which
 /// is a worse outcome than a cracked copy staying alive.
 Future<void> _recordRepackaging() async {
+  if (!AppIntegrity.isEnforceable) return;
   final IntegrityReport report;
   try {
     report = await AppIntegrity.check();
@@ -268,6 +287,7 @@ Future<void> _recordRepackaging() async {
     'which this release does not expect. ${report.reason ?? ''}',
     StackTrace.current,
   );
+  runApp(RepackagedApp(report: report));
 }
 
 Future<bool> _initCrashReporter() async {
@@ -448,6 +468,8 @@ Future<void> _bootstrap() async {
   final entitlementService = LocalEntitlementService(prefs);
   await entitlementService.restore();
   sl.registerSingleton<EntitlementService>(entitlementService);
+
+  sl.registerSingleton<AiService>(AiService(prefs: prefs));
 
   final adService = AdMobAdService();
   sl.registerSingleton<AdService>(adService);

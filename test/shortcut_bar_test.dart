@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_code/editor/shortcut_bar.dart';
+import 'package:kriya_code/editor/shortcut_bar.dart';
 
 Widget wrap(CodeController controller, {int indentWidth = 4}) => MaterialApp(
       home: Scaffold(

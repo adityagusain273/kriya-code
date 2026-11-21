@@ -1,11 +1,17 @@
-# AGENTS.md — b_code (mobile code editor)
-B code is an mobile based code editor app supporting all languages and perfoming web dev too. 
+# AGENTS.md — Kriya Code (mobile code editor)
+Kriya Code is a mobile-based code editor app supporting all languages and performing web dev too. 
 Guidance for AI coding agents working in this repository. Read this fully before running any commands.
+
+## 🧠 Agent OS Shared Memory Vault
+This repository is connected to the central Agent OS memory vault at `/home/advaiti/Vaults/AgentOS`.
+- **Pre-flight Check**: Review `00_Brain/MEMORY.md` and `00_Brain/FEEDBACK.md` before starting tasks.
+- **Parallel Session File Lock**: Check and register active locks in `00_Brain/ACTIVE_SESSIONS.md` with timestamps before modifying files, and release when complete.
+- **End-of-Session Protocol**: Append achievements, blockers, and learnings into `00_Brain/Daily_Logs/YYYY-MM-DD.md`.
 
 ## Project
 
 Flutter app (Dart 3.13.1, Flutter 3.47.1 stable) — a VS Code-like code editor for Android.
-- App package: `com.bcode.editor` (`android/app/src/main/kotlin/com/bcode/editor/MainActivity.kt`)
+- App package: `com.kriya.editor` (`android/app/src/main/kotlin/com/kriya/editor/MainActivity.kt`)
 - Key areas: `lib/workspace/` (file explorer + FsService), `lib/plugins/` (extensions system), `lib/execution/` (runtime downloads), `lib/editor/` (editor page/home)
 
 ## One-time environment — ALREADY INSTALLED, NEVER RE-DOWNLOAD

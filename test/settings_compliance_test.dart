@@ -1,8 +1,8 @@
-import 'package:b_code/core/di.dart';
-import 'package:b_code/monetization/entitlement_service.dart';
-import 'package:b_code/monetization/license_service.dart';
-import 'package:b_code/settings/settings_page.dart';
-import 'package:b_code/settings/settings_store.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/monetization/entitlement_service.dart';
+import 'package:kriya_code/monetization/license_service.dart';
+import 'package:kriya_code/settings/settings_page.dart';
+import 'package:kriya_code/settings/settings_store.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

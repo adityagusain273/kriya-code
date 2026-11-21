@@ -1,4 +1,4 @@
-import 'package:b_code/workspace/mdi.dart';
+import 'package:kriya_code/workspace/mdi.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

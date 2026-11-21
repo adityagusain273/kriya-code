@@ -1,4 +1,4 @@
-import 'package:b_code/editor/exit_dialog.dart';
+import 'package:kriya_code/editor/exit_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

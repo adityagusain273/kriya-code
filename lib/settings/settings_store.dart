@@ -96,4 +96,28 @@ class SettingsStore extends ChangeNotifier {
     prefs.setStringList('primary_languages', v);
     notifyListeners();
   }
+
+  bool get showAiBot => prefs.getBool('show_ai_bot') ?? true;
+  set showAiBot(bool v) {
+    prefs.setBool('show_ai_bot', v);
+    notifyListeners();
+  }
+
+  double? get aiBotX => prefs.getDouble('ai_bot_pos_x');
+  set aiBotX(double? v) {
+    if (v == null) {
+      prefs.remove('ai_bot_pos_x');
+    } else {
+      prefs.setDouble('ai_bot_pos_x', v);
+    }
+  }
+
+  double? get aiBotY => prefs.getDouble('ai_bot_pos_y');
+  set aiBotY(double? v) {
+    if (v == null) {
+      prefs.remove('ai_bot_pos_y');
+    } else {
+      prefs.setDouble('ai_bot_pos_y', v);
+    }
+  }
 }

@@ -1,4 +1,4 @@
-import 'package:b_code/terminal/terminal_widget.dart';
+import 'package:kriya_code/terminal/terminal_widget.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

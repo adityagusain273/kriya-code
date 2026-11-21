@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
-import 'package:b_code/github/auth/device_flow_auth.dart';
+import 'package:kriya_code/github/auth/device_flow_auth.dart';
 
 void main() {
   group('DeviceFlowAuth', () {

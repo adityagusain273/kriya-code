@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "dart-mcp-server": {
+      "command": "/home/advaiti/.pub-cache/bin/dart_mcp_server"
+    }
+  }
+}

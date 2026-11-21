@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:b_code/core/di.dart';
-import 'package:b_code/editor/preview/live_server.dart';
-import 'package:b_code/editor/preview/preview_server.dart';
-import 'package:b_code/servers/server_monitor.dart';
+import 'package:kriya_code/core/di.dart';
+import 'package:kriya_code/editor/preview/live_server.dart';
+import 'package:kriya_code/editor/preview/preview_server.dart';
+import 'package:kriya_code/servers/server_monitor.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
