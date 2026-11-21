@@ -24,7 +24,7 @@ void main() {
     sl.reset();
   });
 
-  testWidgets('FloatingAiBot renders in normal state when no diagnostics', (tester) async {
+  testWidgets('FloatingAiBot does not render floating AI button when no diagnostics (Requirement 2)', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -44,12 +44,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(FloatingAiBot), findsOneWidget);
-    expect(find.byIcon(Icons.auto_awesome_rounded), findsOneWidget);
-    // No error bubble
-    expect(find.textContaining('Syntax Issue'), findsNothing);
+    // User requirement: No floating AI logo when there's no error
+    expect(find.byIcon(Icons.auto_awesome_rounded), findsNothing);
+    expect(find.byIcon(Icons.smart_toy_rounded), findsNothing);
   });
 
-  testWidgets('FloatingAiBot displays waving error bubble when diagnostics are present', (tester) async {
+  testWidgets('FloatingAiBot displays waving robotic hand error bot when diagnostics are present', (tester) async {
     const errorDiag = Diagnostic(
       offset: 10,
       length: 5,
@@ -77,14 +77,19 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byIcon(Icons.smart_toy_rounded), findsOneWidget);
-    expect(find.textContaining('Syntax Issue • Tap to fix'), findsOneWidget);
+    expect(find.byIcon(Icons.waving_hand_rounded), findsOneWidget);
+    expect(find.textContaining('Click me to fix this'), findsOneWidget);
     expect(find.textContaining('L3: Unexpected semicolon'), findsOneWidget);
   });
 
-  testWidgets('FloatingAiBot dismiss target triggers onDismiss when dragged to bottom', (tester) async {
-    tester.view.physicalSize = const Size(800, 1200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
+  testWidgets('FloatingAiBot dismiss button hides the bot', (tester) async {
+    const errorDiag = Diagnostic(
+      offset: 10,
+      length: 5,
+      line: 3,
+      column: 4,
+      message: 'Unexpected semicolon',
+    );
 
     bool dismissed = false;
 
@@ -95,7 +100,7 @@ void main() {
             children: [
               FloatingAiBot(
                 tab: null,
-                diagnostics: const [],
+                diagnostics: const [errorDiag],
                 workspaceRoot: '/test/workspace',
                 onDismiss: () {
                   dismissed = true;
@@ -106,14 +111,15 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    final botFinder = find.byKey(const ValueKey('bot_button'));
-    expect(botFinder, findsOneWidget);
+    final closeIcon = find.byIcon(Icons.close_rounded);
+    expect(closeIcon, findsOneWidget);
 
-    await tester.drag(botFinder, const Offset(-334, 100));
-    await tester.pumpAndSettle();
+    await tester.tap(closeIcon);
+    await tester.pump();
 
     expect(dismissed, isTrue);
+    expect(find.byIcon(Icons.smart_toy_rounded), findsNothing);
   });
 }

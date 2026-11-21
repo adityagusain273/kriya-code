@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-B Code Pro Activation Telegram Bot
+Kriya Pro Activation Telegram Bot
 Handles buyer payment submissions in a simple, foolproof 2-step conversational flow:
   Step 1: Ask for UPI UTR / Reference number (or payment screenshot)
-  Step 2: Ask for B Code Device ID
+  Step 2: Ask for Kriya Device ID
 Once submitted, it sends a high-priority approval notification to the admin with
 [✅ Approve & Send Key] and [❌ Reject] buttons.
 
@@ -34,7 +34,7 @@ from license_cli import load_or_generate_key, sign_license
 STATE_FILE = Path(__file__).parent / "bot_state.json"
 ENV_FILE = Path(__file__).parent / ".env"
 
-DEVICE_REGEX = re.compile(r"(?:KRIYA|BCODE)-[A-Z0-9]{8}", re.IGNORECASE)
+DEVICE_REGEX = re.compile(r"(?:KRIYA|BCODE)[-_][A-Z0-9]{8}", re.IGNORECASE)
 UTR_REGEX = re.compile(r"\b\d{8,18}\b")
 
 def load_env():
@@ -435,7 +435,7 @@ class TelegramBot:
             self.send_message(admin_id, admin_text, reply_markup=buttons, disable_notification=False)
 
     def run_polling(self):
-        print("🤖 B Code Pro Bot started. Polling Telegram...")
+        print("🤖 Kriya Pro Bot started. Polling Telegram...")
         admin = self.state.get("admin_id")
         if admin:
             print(f"👑 Admin ID set to: {admin}")
@@ -621,7 +621,7 @@ class TelegramBot:
 
         # FAST PATH: If message contains BOTH a valid Device ID and a UTR/Screenshot
         if device_match and (utr_match or photo_id or session.get("utr")):
-            device_id = device_match.group(0).upper()
+            device_id = device_match.group(0).upper().replace('_', '-')
             utr = utr_match.group(0) if utr_match else (session.get("utr") or ("Screenshot attached" if photo_id else text.strip()))
             p_id = photo_id or session.get("photo_id")
             self.submit_request(chat_id, username, device_id, utr, p_id)
@@ -636,7 +636,7 @@ class TelegramBot:
         if current_step == "AWAITING_UTR":
             # If user sent Device ID first instead of UTR
             if device_match and not utr_match and not photo_id:
-                dev_id = device_match.group(0).upper()
+                dev_id = device_match.group(0).upper().replace('_', '-')
                 session["device_id"] = dev_id
                 save_state(self.state)
                 self.send_message(
@@ -691,7 +691,7 @@ class TelegramBot:
         # STEP 2: Awaiting Device ID
         elif current_step == "AWAITING_DEVICE_ID":
             if device_match:
-                device_id = device_match.group(0).upper()
+                device_id = device_match.group(0).upper().replace('_', '-')
                 utr = session.get("utr", "Payment verified")
                 p_id = photo_id or session.get("photo_id")
                 self.submit_request(chat_id, username, device_id, utr, p_id)
@@ -837,7 +837,7 @@ class TelegramBot:
 
 def main():
     load_env()
-    parser = argparse.ArgumentParser(description="B Code Pro Telegram Bot")
+    parser = argparse.ArgumentParser(description="Kriya Pro Telegram Bot")
     parser.add_argument("--token", default=os.environ.get("TELEGRAM_BOT_TOKEN"), help="Bot API token")
     parser.add_argument("--admin", type=int, default=os.environ.get("ADMIN_CHAT_ID"), help="Admin chat ID")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="HTTP health/webhook port")

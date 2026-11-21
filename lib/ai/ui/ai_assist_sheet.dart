@@ -9,6 +9,22 @@ import '../../monetization/pro_paywall_sheet.dart';
 import '../ai_service.dart';
 import '../kriya_ai_context.dart';
 
+class AiChatMessage {
+  final String role; // 'user' or 'assistant'
+  final String content;
+  final DateTime timestamp;
+  final bool isError;
+  bool codeApplied;
+
+  AiChatMessage({
+    required this.role,
+    required this.content,
+    DateTime? timestamp,
+    this.isError = false,
+    this.codeApplied = false,
+  }) : timestamp = timestamp ?? DateTime.now();
+}
+
 class AiAssistSheet extends StatefulWidget {
   final String? initialCode;
   final String? contextDescription;
@@ -62,30 +78,20 @@ class AiAssistSheet extends StatefulWidget {
 class _AiAssistSheetState extends State<AiAssistSheet> {
   final TextEditingController _promptController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  final List<AiChatMessage> _messages = [];
 
   bool _loading = false;
-  bool _codeApplied = false;
-  String? _response;
   String? _error;
   String? _configuredKey;
   AiProvider _detectedProvider = AiProvider.unknown;
   bool _validatingKey = false;
   String? _verifiedModel;
 
-  String? _extractCodeBlock(String response) {
-    final match = RegExp(r'```(?:\w+)?\s*\n([\s\S]*?)\n```', multiLine: true).firstMatch(response);
-    if (match != null && match.group(1) != null) {
-      return match.group(1)!.trim();
-    }
-    return null;
-  }
-
   @override
   void initState() {
     super.initState();
-    if (widget.defaultPrompt != null && widget.defaultPrompt!.isNotEmpty) {
-      _promptController.text = widget.defaultPrompt!;
-    }
     _checkKey();
   }
 
@@ -93,6 +99,7 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
   void dispose() {
     _promptController.dispose();
     _apiKeyController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -102,7 +109,8 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
     final key = await ai.getApiKey();
     if (mounted) {
       String? model;
-      final provider = (key != null && key.isNotEmpty) ? detectAiProvider(key) : AiProvider.unknown;
+      final provider =
+          (key != null && key.isNotEmpty) ? detectAiProvider(key) : AiProvider.unknown;
       if (provider == AiProvider.gemini && key != null) {
         try {
           model = await ai.resolveActiveGeminiModel(key);
@@ -113,8 +121,11 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
         _detectedProvider = provider;
         _verifiedModel = model;
       });
-      if (key != null && widget.defaultPrompt != null && widget.defaultPrompt!.isNotEmpty) {
-        _executePrompt(widget.defaultPrompt!);
+
+      if (key != null &&
+          widget.defaultPrompt != null &&
+          widget.defaultPrompt!.isNotEmpty) {
+        _sendPrompt(widget.defaultPrompt!);
       }
     }
   }
@@ -122,6 +133,27 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
   bool _isProUser() {
     if (!sl.isRegistered<EntitlementService>()) return false;
     return sl<EntitlementService>().isRuntimeUnlocked('');
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  String? _extractCodeBlock(String response) {
+    final match =
+        RegExp(r'```(?:\w+)?\s*\n([\s\S]*?)\n```', multiLine: true).firstMatch(response);
+    if (match != null && match.group(1) != null) {
+      return match.group(1)!.trim();
+    }
+    return null;
   }
 
   Future<void> _saveApiKey() async {
@@ -158,7 +190,7 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
           _error = null;
         });
         if (widget.defaultPrompt != null && widget.defaultPrompt!.isNotEmpty) {
-          _executePrompt(widget.defaultPrompt!);
+          _sendPrompt(widget.defaultPrompt!);
         }
       }
     } catch (e) {
@@ -171,7 +203,7 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
     }
   }
 
-  Future<void> _executePrompt(String promptText) async {
+  Future<void> _sendPrompt(String promptText) async {
     final cleanPrompt = promptText.trim();
     if (cleanPrompt.isEmpty) return;
     Haptics.light();
@@ -183,37 +215,22 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
       if (mounted) {
         final boughtPro = await showProPaywallSheet(context);
         if (boughtPro && mounted) {
-          _executePrompt(promptText);
+          _sendPrompt(promptText);
         }
       }
       return;
     }
 
+    // Immediately clear input and append user bubble so it pops up
+    _promptController.clear();
     setState(() {
+      _messages.add(AiChatMessage(role: 'user', content: cleanPrompt));
       _loading = true;
       _error = null;
-      _response = null;
-      _codeApplied = false;
     });
+    _scrollToBottom();
 
-    final fullPrompt = StringBuffer();
-    if (widget.workspaceFolder != null && widget.workspaceFolder!.isNotEmpty) {
-      fullPrompt.writeln('Workspace Folder: ${widget.workspaceFolder}');
-    }
-    if (widget.contextDescription != null && widget.contextDescription!.isNotEmpty) {
-      fullPrompt.writeln('File: ${widget.contextDescription}');
-    }
-    if (widget.diagnosticsSummary != null && widget.diagnosticsSummary!.isNotEmpty) {
-      fullPrompt.writeln('Current Syntax/Runtime Diagnostics:');
-      for (final d in widget.diagnosticsSummary!) {
-        fullPrompt.writeln('- $d');
-      }
-    }
-    if (widget.initialCode != null && widget.initialCode!.isNotEmpty) {
-      fullPrompt.writeln('Code:\n```\n${widget.initialCode}\n```\n');
-    }
-    fullPrompt.writeln(cleanPrompt);
-
+    // Build background context for system prompt
     final lang = KriyaAiContext.inferLanguage(widget.contextDescription);
     final systemPrompt = KriyaAiContext.buildSystemPrompt(
       filePath: widget.contextDescription,
@@ -222,9 +239,33 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
       diagnosticsSummary: widget.diagnosticsSummary,
     );
 
+    // Prepare multi-turn messages
+    final apiMessages = <Map<String, String>>[];
+
+    // Include code context in the first turn if related to code
+    final isGreeting = RegExp(r'^(hi|hello|hlo|hey|greetings|sup|hola)\b', caseSensitive: false)
+        .hasMatch(cleanPrompt);
+
+    if (!isGreeting &&
+        widget.initialCode != null &&
+        widget.initialCode!.isNotEmpty &&
+        _messages.length <= 1) {
+      apiMessages.add({
+        'role': 'user',
+        'content': 'Here is my current code for reference:\n```\n${widget.initialCode}\n```\n\n$cleanPrompt',
+      });
+    } else {
+      for (final m in _messages) {
+        apiMessages.add({
+          'role': m.role,
+          'content': m.content,
+        });
+      }
+    }
+
     try {
-      final res = await ai.complete(
-        prompt: fullPrompt.toString(),
+      final res = await ai.chat(
+        messages: apiMessages,
         systemPrompt: systemPrompt,
         isPro: isPro,
       );
@@ -236,121 +277,39 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
           } catch (_) {}
         }
         setState(() {
-          _response = res;
+          _messages.add(AiChatMessage(role: 'assistant', content: res));
           _loading = false;
           _verifiedModel = activeModel;
         });
+        _scrollToBottom();
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _messages.add(
+            AiChatMessage(
+              role: 'assistant',
+              content: 'Error: ${e.toString()}',
+              isError: true,
+            ),
+          );
           _loading = false;
         });
+        _scrollToBottom();
       }
     }
   }
 
-  Widget _buildKeySetup(ThemeData theme) {
-    final previewProvider = detectAiProvider(_apiKeyController.text);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF161B22),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF30363D)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.key_rounded, color: Color(0xFF00E676), size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Paste your AI API key once to activate. Supports Gemini, Groq, OpenAI, Claude, OpenRouter, and GitHub Models.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _apiKeyController,
-            style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'monospace'),
-            decoration: InputDecoration(
-              hintText: 'Paste key (AIzaSy..., gsk_..., sk-...)',
-              hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
-              filled: true,
-              fillColor: const Color(0xFF0D1117),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFF30363D)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFF00E676)),
-              ),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          if (_apiKeyController.text.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.bolt, color: Color(0xFF00E676), size: 14),
-                const SizedBox(width: 4),
-                Text(
-                  previewProvider != AiProvider.unknown
-                      ? 'Detected: ${previewProvider.displayName} (${previewProvider.description})'
-                      : 'Unrecognized prefix (will use standard OpenAI format)',
-                  style: const TextStyle(color: Color(0xFF00E676), fontSize: 11),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.open_in_new, size: 14),
-                  label: const Text('Get Free Gemini Key', style: TextStyle(fontSize: 12)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF4FC3F7),
-                    side: const BorderSide(color: Color(0xFF4FC3F7)),
-                  ),
-                  onPressed: () => launchUrl(
-                    Uri.parse('https://aistudio.google.com/app/apikey'),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF00E676),
-                  foregroundColor: Colors.black,
-                ),
-                onPressed: (_apiKeyController.text.trim().isEmpty || _validatingKey) ? null : _saveApiKey,
-                child: _validatingKey
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                      )
-                    : const Text('Save Key', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+  void _applyCode(AiChatMessage message, String code) {
+    Haptics.medium();
+    if (widget.onApplyCode != null) {
+      widget.onApplyCode!(code);
+    } else if (widget.onInsert != null) {
+      widget.onInsert!(code);
+    }
+    setState(() {
+      message.codeApplied = true;
+    });
   }
 
   Widget _buildQuotaBadge() {
@@ -364,7 +323,11 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
         ),
         child: const Text(
           '⚡ PRO UNLIMITED',
-          style: TextStyle(color: Color(0xFF00E676), fontSize: 10, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: Color(0xFF00E676),
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       );
     }
@@ -394,67 +357,70 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: media.size.height * 0.88,
+        maxHeight: media.size.height * 0.90,
       ),
-      decoration: BoxDecoration(
-        color: const Color(0xFF10141D),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        border: Border.all(color: const Color(0xFF263342)),
+      decoration: const BoxDecoration(
+        color: Color(0xFF0B0F17),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
       child: SafeArea(
+        top: false,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Drag handle
             Center(
               child: Container(
-                width: 38,
+                width: 36,
                 height: 4,
-                margin: const EdgeInsets.only(top: 8, bottom: 8),
+                margin: const EdgeInsets.only(top: 10, bottom: 8),
                 decoration: BoxDecoration(
                   color: Colors.white24,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
+            // Header: Sparkle + Title + Quota + Close (No file name banner!)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
                 children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF00E676).withValues(alpha: 0.15),
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: Color(0xFF00E676),
+                      size: 16,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.auto_awesome, color: Color(0xFF00E676), size: 16),
-                            const SizedBox(width: 6),
-                            const Flexible(
-                              child: Text(
-                                'Kriya AI Assistant',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                            ),
-                          ],
+                        const Text(
+                          'Kriya AI Assistant',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
-                        if (_configuredKey != null && _detectedProvider != AiProvider.unknown)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2, left: 22),
-                            child: Text(
-                              _verifiedModel != null
-                                  ? '${_detectedProvider.displayName} • $_verifiedModel'
-                                  : _detectedProvider.displayName,
-                              style: const TextStyle(
-                                color: Color(0xFF00E676),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                        if (_configuredKey != null &&
+                            _detectedProvider != AiProvider.unknown)
+                          Text(
+                            _verifiedModel != null
+                                ? '${_detectedProvider.displayName} • $_verifiedModel'
+                                : _detectedProvider.displayName,
+                            style: const TextStyle(
+                              color: Color(0xFF00E676),
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                       ],
@@ -465,241 +431,500 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
                     const SizedBox(width: 8),
                   ],
                   IconButton(
-                    icon: const Icon(Icons.close, size: 18, color: Colors.white60),
+                    icon: const Icon(Icons.close_rounded, size: 20, color: Colors.white70),
                     padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
             ),
-            const Divider(height: 1, color: Color(0xFF263342)),
-            if (_configuredKey == null)
-              _buildKeySetup(theme)
-            else
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+            const Divider(height: 1, color: Color(0xFF1E293B)),
+            // Body: Key setup or ChatGPT-style Chat Stream
+            Expanded(
+              child: _configuredKey == null
+                  ? SingleChildScrollView(child: _buildKeySetup(theme))
+                  : _buildChatStream(),
+            ),
+            // Bottom Input Bar (Pinned at bottom, ChatGPT style)
+            if (_configuredKey != null) _buildBottomInputBar(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKeySetup(ThemeData theme) {
+    final previewProvider = detectAiProvider(_apiKeyController.text);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF111827),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF1F2937)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.key_rounded, color: Color(0xFF00E676), size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Paste your AI API key once to activate. Supports Gemini, Groq, OpenAI, Claude, OpenRouter, and GitHub Models.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.white70),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _apiKeyController,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontFamily: 'monospace',
+            ),
+            decoration: InputDecoration(
+              hintText: 'Paste key (AIzaSy..., gsk_..., sk-...)',
+              hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
+              filled: true,
+              fillColor: const Color(0xFF111827),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFF1F2937)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFF00E676)),
+              ),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          if (_apiKeyController.text.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.bolt, color: Color(0xFF00E676), size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  previewProvider != AiProvider.unknown
+                      ? 'Detected: ${previewProvider.displayName} (${previewProvider.description})'
+                      : 'Unrecognized prefix (will use standard OpenAI format)',
+                  style: const TextStyle(color: Color(0xFF00E676), fontSize: 11),
+                ),
+              ],
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.open_in_new, size: 14),
+                  label: const Text('Get Free Gemini Key', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF4FC3F7),
+                    side: const BorderSide(color: Color(0xFF4FC3F7)),
+                  ),
+                  onPressed: () => launchUrl(
+                    Uri.parse('https://aistudio.google.com/app/apikey'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF00E676),
+                  foregroundColor: Colors.black,
+                ),
+                onPressed:
+                    (_apiKeyController.text.trim().isEmpty || _validatingKey)
+                        ? null
+                        : _saveApiKey,
+                child: _validatingKey
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Text('Save Key', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatStream() {
+    if (_messages.isEmpty) {
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF00E676).withValues(alpha: 0.12),
+                  border: Border.all(
+                    color: const Color(0xFF00E676).withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Color(0xFF00E676),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'How can I help you today?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Ask questions, solve syntax errors, or explain code.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  _buildQuickChip('Explain Code', 'Explain what this code does clearly and concisely.'),
+                  _buildQuickChip('Find & Fix Bugs', 'Analyze this code for bugs or edge cases and show the corrected code.'),
+                  _buildQuickChip('Add Comments', 'Add clear, helpful comments to this code without changing its logic.'),
+                  _buildQuickChip('Optimize', 'Optimize this code for better performance and readability.'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      itemCount: _messages.length + (_loading ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index == _messages.length && _loading) {
+          return _buildThinkingBubble();
+        }
+        final msg = _messages[index];
+        return msg.role == 'user'
+            ? _buildUserMessage(msg)
+            : _buildAssistantMessage(msg);
+      },
+    );
+  }
+
+  Widget _buildQuickChip(String label, String prompt) {
+    return ActionChip(
+      backgroundColor: const Color(0xFF161F2E),
+      side: const BorderSide(color: Color(0xFF1E293B)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      label: Text(
+        label,
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      onPressed: () => _sendPrompt(prompt),
+    );
+  }
+
+  Widget _buildUserMessage(AiChatMessage message) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14, left: 48),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1D4ED8), Color(0xFF2563EB)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  topRight: Radius.circular(18),
+                  bottomLeft: Radius.circular(18),
+                  bottomRight: Radius.circular(4),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: SelectableText(
+                message.content,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAssistantMessage(AiChatMessage message) {
+    final codeBlock = _extractCodeBlock(message.content);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16, right: 24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            margin: const EdgeInsets.only(top: 2, right: 10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF00E676).withValues(alpha: 0.15),
+              border: Border.all(
+                color: const Color(0xFF00E676).withValues(alpha: 0.35),
+                width: 1,
+              ),
+            ),
+            child: const Icon(
+              Icons.auto_awesome,
+              color: Color(0xFF00E676),
+              size: 14,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: message.isError
+                        ? const Color(0xFF321313)
+                        : const Color(0xFF131A26),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(4),
+                      topRight: Radius.circular(18),
+                      bottomLeft: Radius.circular(18),
+                      bottomRight: Radius.circular(18),
+                    ),
+                    border: Border.all(
+                      color: message.isError
+                          ? Colors.redAccent.withValues(alpha: 0.4)
+                          : const Color(0xFF1E293B),
+                    ),
+                  ),
+                  child: SelectableText(
+                    message.content,
+                    style: TextStyle(
+                      color: message.isError ? Colors.redAccent : Colors.white,
+                      fontSize: 13.5,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+                // Action Buttons below Assistant Message
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (widget.initialCode != null && widget.initialCode!.isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF161B22),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFF30363D)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.code, size: 14, color: Colors.white60),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    widget.contextDescription ?? 'Selected Code',
-                                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                widget.initialCode!.length > 300
-                                    ? '${widget.initialCode!.substring(0, 300)}…'
-                                    : widget.initialCode!,
-                                maxLines: 4,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.white54, fontSize: 11, fontFamily: 'monospace'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: [
-                          ActionChip(
-                            label: const Text('Explain Code', style: TextStyle(fontSize: 11)),
-                            avatar: const Icon(Icons.help_outline, size: 14),
-                            onPressed: () => _executePrompt('Explain what this code does clearly and concisely.'),
-                          ),
-                          ActionChip(
-                            label: const Text('Find & Fix Bugs', style: TextStyle(fontSize: 11)),
-                            avatar: const Icon(Icons.bug_report_outlined, size: 14),
-                            onPressed: () => _executePrompt('Analyze this code for bugs or edge cases and show the corrected code.'),
-                          ),
-                          ActionChip(
-                            label: const Text('Add Comments', style: TextStyle(fontSize: 11)),
-                            avatar: const Icon(Icons.comment_outlined, size: 14),
-                            onPressed: () => _executePrompt('Add clear, helpful comments to this code without changing its logic.'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _promptController,
-                              style: const TextStyle(color: Colors.white, fontSize: 13),
-                              decoration: InputDecoration(
-                                hintText: 'Ask Kriya AI anything...',
-                                hintStyle: const TextStyle(color: Colors.white30, fontSize: 12),
-                                filled: true,
-                                fillColor: const Color(0xFF161B22),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: const BorderSide(color: Color(0xFF30363D)),
-                                ),
-                              ),
-                              onSubmitted: _executePrompt,
+                      InkWell(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: message.content));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Copied response to clipboard'),
+                              duration: Duration(seconds: 1),
                             ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.copy_rounded, size: 14, color: Colors.white54),
+                              SizedBox(width: 4),
+                              Text('Copy', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          IconButton.filled(
-                            style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFF00E676),
-                              foregroundColor: Colors.black,
-                            ),
-                            icon: const Icon(Icons.send_rounded, size: 16),
-                            onPressed: _loading ? null : () => _executePrompt(_promptController.text),
-                          ),
-                        ],
+                        ),
                       ),
-                      if (_loading) ...[
-                        const SizedBox(height: 24),
-                        const Center(
-                          child: Column(
-                            children: [
-                              SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF00E676)),
-                              ),
-                              SizedBox(height: 8),
-                              Text('Thinking…', style: TextStyle(color: Colors.white60, fontSize: 12)),
-                            ],
+                      if (codeBlock != null && (widget.onApplyCode != null || widget.onInsert != null)) ...[
+                        const SizedBox(width: 10),
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: message.codeApplied
+                                ? const Color(0xFF1B5E20)
+                                : const Color(0xFF00E676),
+                            foregroundColor: message.codeApplied ? Colors.white : Colors.black,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                           ),
-                        ),
-                      ],
-                      if (_error != null) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+                          icon: Icon(
+                            message.codeApplied
+                                ? Icons.check_circle_rounded
+                                : Icons.bolt_rounded,
+                            size: 14,
                           ),
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                          label: Text(
+                            message.codeApplied
+                                ? 'Applied to Editor'
+                                : 'Apply to Editor (Real-time)',
                           ),
-                        ),
-                      ],
-                      if (_response != null) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF161B22),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFF30363D)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SelectableText(
-                                _response!,
-                                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.4),
-                              ),
-                              if (_codeApplied) ...[
-                                const SizedBox(height: 10),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF00E676).withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: const Color(0xFF00E676).withValues(alpha: 0.5)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF00E676)),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Applied changes to ${widget.contextDescription ?? "editor"} in real-time!',
-                                        style: const TextStyle(color: Color(0xFF00E676), fontSize: 11, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 12),
-                              Wrap(
-                                alignment: WrapAlignment.end,
-                                spacing: 8,
-                                runSpacing: 6,
-                                children: [
-                                  TextButton.icon(
-                                    icon: const Icon(Icons.copy_rounded, size: 14),
-                                    label: const Text('Copy'),
-                                    onPressed: () {
-                                      Haptics.light();
-                                      Clipboard.setData(ClipboardData(text: _response!));
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Copied to clipboard')),
-                                      );
-                                    },
-                                  ),
-                                  if (widget.onApplyCode != null) ...[
-                                    FilledButton.icon(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: const Color(0xFF00E676),
-                                        foregroundColor: Colors.black,
-                                      ),
-                                      icon: const Icon(Icons.bolt_rounded, size: 16),
-                                      label: const Text('Apply to Editor (Real-time)', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      onPressed: () {
-                                        Haptics.medium();
-                                        final code = _extractCodeBlock(_response!) ?? _response!;
-                                        widget.onApplyCode!(code);
-                                        setState(() {
-                                          _codeApplied = true;
-                                        });
-                                      },
-                                    ),
-                                  ] else if (widget.onInsert != null) ...[
-                                    FilledButton.icon(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: const Color(0xFF00E676),
-                                        foregroundColor: Colors.black,
-                                      ),
-                                      icon: const Icon(Icons.input_rounded, size: 14),
-                                      label: const Text('Insert Code'),
-                                      onPressed: () {
-                                        final code = _extractCodeBlock(_response!) ?? _response!;
-                                        widget.onInsert!(code);
-                                        Navigator.of(context).pop();
-                                      },
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ),
+                          onPressed: () => _applyCode(message, codeBlock),
                         ),
                       ],
                     ],
                   ),
                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThinkingBubble() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14, right: 48),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            margin: const EdgeInsets.only(right: 10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF00E676).withValues(alpha: 0.15),
+            ),
+            child: const Icon(
+              Icons.auto_awesome,
+              color: Color(0xFF00E676),
+              size: 14,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF131A26),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF1E293B)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00E676)),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Kriya AI is thinking…',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomInputBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: const BoxDecoration(
+        color: Color(0xFF0B0F17),
+        border: Border(top: BorderSide(color: Color(0xFF1E293B))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _promptController,
+              minLines: 1,
+              maxLines: 4,
+              style: const TextStyle(color: Colors.white, fontSize: 13.5),
+              decoration: InputDecoration(
+                hintText: 'Message Kriya AI...',
+                hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+                filled: true,
+                fillColor: const Color(0xFF161F2E),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: const BorderSide(color: Color(0xFF1E293B)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: const BorderSide(color: Color(0xFF1E293B)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(22),
+                  borderSide: const BorderSide(color: Color(0xFF00E676)),
+                ),
               ),
-          ],
-        ),
+              onSubmitted: (text) => _sendPrompt(text),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filled(
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFF00E676),
+              foregroundColor: Colors.black,
+              shape: const CircleBorder(),
+              padding: const EdgeInsets.all(10),
+            ),
+            icon: const Icon(Icons.arrow_upward_rounded, size: 20),
+            onPressed: _loading ? null : () => _sendPrompt(_promptController.text),
+          ),
+        ],
       ),
     );
   }

@@ -152,6 +152,20 @@ class AiService {
     required String prompt,
     String? systemPrompt,
     bool isPro = false,
+  }) {
+    return chat(
+      messages: [
+        {'role': 'user', 'content': prompt}
+      ],
+      systemPrompt: systemPrompt,
+      isPro: isPro,
+    );
+  }
+
+  Future<String> chat({
+    required List<Map<String, String>> messages,
+    String? systemPrompt,
+    bool isPro = false,
   }) async {
     final apiKey = await getApiKey();
     if (apiKey == null || apiKey.isEmpty) {
@@ -163,10 +177,10 @@ class AiService {
     }
 
     final provider = detectAiProvider(apiKey);
-    final responseText = await _dispatch(
+    final responseText = await _dispatchMessages(
       provider: provider,
       apiKey: apiKey,
-      prompt: prompt,
+      messages: messages,
       systemPrompt: systemPrompt,
     );
 
@@ -174,21 +188,21 @@ class AiService {
     return responseText;
   }
 
-  Future<String> _dispatch({
+  Future<String> _dispatchMessages({
     required AiProvider provider,
     required String apiKey,
-    required String prompt,
+    required List<Map<String, String>> messages,
     String? systemPrompt,
   }) async {
     switch (provider) {
       case AiProvider.gemini:
-        return _callGemini(apiKey, prompt, systemPrompt);
+        return _callGemini(apiKey, messages, systemPrompt);
       case AiProvider.groq:
         return _callOpenAiCompatible(
           url: 'https://api.groq.com/openai/v1/chat/completions',
           model: 'llama-3.3-70b-versatile',
           apiKey: apiKey,
-          prompt: prompt,
+          messages: messages,
           systemPrompt: systemPrompt,
         );
       case AiProvider.openRouter:
@@ -196,7 +210,7 @@ class AiService {
           url: 'https://openrouter.ai/api/v1/chat/completions',
           model: 'google/gemini-2.0-flash-exp:free',
           apiKey: apiKey,
-          prompt: prompt,
+          messages: messages,
           systemPrompt: systemPrompt,
         );
       case AiProvider.github:
@@ -204,7 +218,7 @@ class AiService {
           url: 'https://models.inference.ai.azure.com/chat/completions',
           model: 'gpt-4o-mini',
           apiKey: apiKey,
-          prompt: prompt,
+          messages: messages,
           systemPrompt: systemPrompt,
         );
       case AiProvider.openAi:
@@ -212,7 +226,7 @@ class AiService {
           url: 'https://api.openai.com/v1/chat/completions',
           model: 'gpt-4o-mini',
           apiKey: apiKey,
-          prompt: prompt,
+          messages: messages,
           systemPrompt: systemPrompt,
         );
       case AiProvider.unknown:
@@ -226,7 +240,7 @@ class AiService {
           '• GitHub Models (ghp_...)',
         );
       case AiProvider.anthropic:
-        return _callAnthropic(apiKey, prompt, systemPrompt);
+        return _callAnthropic(apiKey, messages, systemPrompt);
     }
   }
 
@@ -353,7 +367,7 @@ class AiService {
     return verifyAndResolveActiveGeminiModel(apiKey);
   }
 
-  Future<String> _callGemini(String apiKey, String prompt, String? systemPrompt) async {
+  Future<String> _callGemini(String apiKey, List<Map<String, String>> messages, String? systemPrompt) async {
     const preferredPriority = [
       'gemini-3.5-flash-lite',
       'gemini-flash-lite-latest',
@@ -374,10 +388,12 @@ class AiService {
       'contents': contents,
     };
 
-    contents.add({
-      'role': 'user',
-      'parts': [{'text': prompt}],
-    });
+    for (final m in messages) {
+      contents.add({
+        'role': m['role'] == 'assistant' ? 'model' : 'user',
+        'parts': [{'text': m['content'] ?? ''}],
+      });
+    }
 
     final headers = {
       'Content-Type': 'application/json',
@@ -469,14 +485,15 @@ class AiService {
     required String url,
     required String model,
     required String apiKey,
-    required String prompt,
+    required List<Map<String, String>> messages,
     String? systemPrompt,
   }) async {
     final uri = Uri.parse(url);
-    final messages = <Map<String, String>>[
+    final formattedMessages = <Map<String, String>>[
       if (systemPrompt != null && systemPrompt.isNotEmpty)
         {'role': 'system', 'content': systemPrompt},
-      {'role': 'user', 'content': prompt},
+      for (final m in messages)
+        {'role': m['role'] ?? 'user', 'content': m['content'] ?? ''},
     ];
 
     try {
@@ -488,7 +505,7 @@ class AiService {
         },
         body: jsonEncode({
           'model': model,
-          'messages': messages,
+          'messages': formattedMessages,
           'temperature': 0.2,
         }),
       );
@@ -512,8 +529,13 @@ class AiService {
     }
   }
 
-  Future<String> _callAnthropic(String apiKey, String prompt, String? systemPrompt) async {
+  Future<String> _callAnthropic(String apiKey, List<Map<String, String>> messages, String? systemPrompt) async {
     final uri = Uri.parse('https://api.anthropic.com/v1/messages');
+    final formattedMessages = <Map<String, String>>[
+      for (final m in messages)
+        {'role': m['role'] == 'assistant' ? 'assistant' : 'user', 'content': m['content'] ?? ''},
+    ];
+
     try {
       final res = await _client.post(
         uri,
@@ -526,9 +548,7 @@ class AiService {
           'model': 'claude-3-5-haiku-20241022',
           'max_tokens': 2048,
           if (systemPrompt != null && systemPrompt.isNotEmpty) 'system': systemPrompt,
-          'messages': [
-            {'role': 'user', 'content': prompt},
-          ],
+          'messages': formattedMessages,
         }),
       );
 

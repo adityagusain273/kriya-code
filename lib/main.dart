@@ -56,6 +56,7 @@ import 'servers/server_monitor.dart';
 import 'settings/settings_store.dart';
 import 'workspace/explorer_prefs.dart';
 import 'workspace/fs_root.dart';
+import 'splash/kriya_splash_screen.dart';
 import 'workspace/workspace_service.dart';
 import 'workspace/fs_service.dart';
 import 'ai/ai_service.dart';
@@ -70,46 +71,48 @@ Future<void> main() async {
       ErrorWidget.builder = (_) => const _RenderFailureScreen();
     }
 
-    if (AppIntegrity.isEnforceable) {
-      try {
-        final report = await AppIntegrity.check();
-        if (report.isRepackaged) {
-          CrashReporter.recordZoneError(
-            'App integrity: this build is signed by ${report.signers.join(', ')}, '
-            'which this release does not expect. ${report.reason ?? ''}',
-            StackTrace.current,
-          );
-          runApp(RepackagedApp(report: report));
-          return;
-        }
-      } catch (error, stack) {
-        CrashReporter.recordZoneError(error, stack);
-      }
-    }
+    runApp(
+      KriyaSplashScreen(
+        onBootstrap: () async {
+          if (AppIntegrity.isEnforceable) {
+            try {
+              final report = await AppIntegrity.check();
+              if (report.isRepackaged) {
+                CrashReporter.recordZoneError(
+                  'App integrity: this build is signed by ${report.signers.join(', ')}, '
+                  'which this release does not expect. ${report.reason ?? ''}',
+                  StackTrace.current,
+                );
+                runApp(RepackagedApp(report: report));
+                return;
+              }
+            } catch (error, stack) {
+              CrashReporter.recordZoneError(error, stack);
+            }
+          }
 
-    try {
-      await _initCrashReporterAndRasp().timeout(const Duration(seconds: 10));
-    } catch (error, stack) {
-      CrashReporter.recordZoneError(error, stack);
-    }
-    try {
-      await _bootstrap();
-    } catch (error, stack) {
-      // Without this, a bootstrap failure left the process alive with no widget
-      // tree at all: a black screen and a log line nobody reads. Show the error
-      // instead, and keep the details in the crash log.
-      CrashReporter.recordZoneError(error, stack);
-      runApp(_BootstrapFailureApp(error: error.toString()));
-      return;
-    }
-    runApp(const RootWidget());
-    // Cold start: the first frame draws the shell, then the native git library
-    // and the installed-extension scan run. Both were on the critical path.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_finishBootstrap().catchError((Object error) {
-        CrashReporter.recordZoneError(error, StackTrace.current);
-      }));
-    });
+          try {
+            await _initCrashReporterAndRasp().timeout(const Duration(seconds: 10));
+          } catch (error, stack) {
+            CrashReporter.recordZoneError(error, stack);
+          }
+
+          await _bootstrap();
+        },
+        builder: (context) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            unawaited(_finishBootstrap().catchError((Object error) {
+              CrashReporter.recordZoneError(error, StackTrace.current);
+            }));
+          });
+          return const RootWidget();
+        },
+        onErrorBuilder: (context, error) {
+          CrashReporter.recordZoneError(error, StackTrace.current);
+          return _BootstrapFailureApp(error: error);
+        },
+      ),
+    );
   }, (error, stack) {
     CrashReporter.recordZoneError(error, stack);
   });

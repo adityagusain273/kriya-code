@@ -491,39 +491,33 @@ class _OutputTabState extends State<_OutputTab> {
           ),
         ),
         const Divider(height: 1),
-        if (runner.lastError != null)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            color: theme.colorScheme.errorContainer,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    runner.lastError!,
-                    style: TextStyle(color: theme.colorScheme.onErrorContainer, fontSize: 12),
-                  ),
-                ),
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    foregroundColor: const Color(0xFF00E676),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  icon: const Icon(Icons.auto_awesome, size: 14),
-                  label: const Text('Explain', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    final text = runner.lines.map((l) => l.text).join('\n');
-                    AiAssistSheet.show(
-                      context,
-                      initialCode: 'Error: ${runner.lastError!}\nOutput:\n$text',
-                      contextDescription: 'Execution Error',
-                      defaultPrompt: 'Why did this error occur and how do I fix it?',
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
+        Builder(
+          builder: (context) {
+            ConsoleLine? stderrError;
+            for (final l in runner.lines) {
+              if (l.isStderr && (l.text.contains('Error') || l.text.contains('Exception') || l.text.contains('Traceback') || l.text.contains('SyntaxError'))) {
+                stderrError = l;
+                break;
+              }
+            }
+            final errorText = runner.lastError ?? stderrError?.text;
+            if (errorText == null) return const SizedBox.shrink();
+
+            return _OutputErrorBot(
+              errorText: errorText,
+              onFix: () {
+                final text = runner.lines.map((l) => l.text).join('\n');
+                AiAssistSheet.show(
+                  context,
+                  initialCode: text.isNotEmpty ? text : null,
+                  contextDescription: 'Execution Output / Error',
+                  diagnosticsSummary: [errorText],
+                  defaultPrompt: 'Fix this error:\n$errorText\nExplain the cause and provide the corrected working code.',
+                );
+              },
+            );
+          },
+        ),
         Expanded(
           child: runner.lines.isEmpty
               ? Center(
@@ -690,6 +684,182 @@ class _TerminalTab extends StatelessWidget {
     return TerminalWidget(
       workDir: workDir,
       showToolbar: true,
+    );
+  }
+}
+
+class _OutputErrorBot extends StatefulWidget {
+  final String errorText;
+  final VoidCallback onFix;
+
+  const _OutputErrorBot({required this.errorText, required this.onFix});
+
+  @override
+  State<_OutputErrorBot> createState() => _OutputErrorBotState();
+}
+
+class _OutputErrorBotState extends State<_OutputErrorBot>
+    with TickerProviderStateMixin {
+  late final AnimationController _slideController;
+  late final Animation<Offset> _slideAnimation;
+  late final AnimationController _waveController;
+  late final Animation<double> _waveAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _slideController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(1.2, 0.0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOutBack));
+
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+    _waveAnimation = Tween<double>(begin: -0.25, end: 0.25).animate(
+      CurvedAnimation(parent: _waveController, curve: Curves.easeInOutSine),
+    );
+
+    _slideController.forward();
+    _waveController.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _slideController.dispose();
+    _waveController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: _slideAnimation,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2E1903), Color(0xFF161F2E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFFFB300), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFFB300).withValues(alpha: 0.25),
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onFix,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF372005), Color(0xFF1E1303)],
+                            ),
+                            border: Border.all(
+                              color: const Color(0xFFFFB300),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.smart_toy_rounded,
+                            size: 18,
+                            color: Color(0xFFFFB300),
+                          ),
+                        ),
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: AnimatedBuilder(
+                            animation: _waveAnimation,
+                            builder: (context, _) => Transform.rotate(
+                              angle: _waveAnimation.value,
+                              alignment: Alignment.bottomLeft,
+                              child: const Icon(
+                                Icons.waving_hand_rounded,
+                                size: 14,
+                                color: Color(0xFFFFD54F),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Row(
+                          children: [
+                            Text(
+                              'Click me to fix this',
+                              style: TextStyle(
+                                color: Color(0xFFFFB300),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 13,
+                              color: Color(0xFFFFB300),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.errorText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.auto_awesome,
+                    color: Color(0xFFFFB300),
+                    size: 16,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

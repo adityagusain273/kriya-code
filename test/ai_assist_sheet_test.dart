@@ -77,11 +77,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Kriya AI Assistant'), findsOneWidget);
-    expect(find.text('test.c'), findsOneWidget);
-    expect(find.text('int x = 10;'), findsOneWidget);
+    // Requirement 4: File name removed from UI of assistant
+    expect(find.text('test.c'), findsNothing);
     expect(find.text('Explain Code'), findsOneWidget);
     expect(find.text('Find & Fix Bugs'), findsOneWidget);
     expect(find.text('Add Comments'), findsOneWidget);
     expect(find.textContaining('Free: 3/3 left today'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
   });
 }
