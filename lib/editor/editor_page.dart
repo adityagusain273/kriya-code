@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../core/di.dart';
 import '../core/haptics.dart';
 import '../core/network_helper.dart';
+import '../ai/ui/ai_assist_sheet.dart';
 import 'autocomplete_bar.dart';
 import 'highlighting/syntax_themes.dart';
 import 'highlighting/highlight_service.dart';
@@ -1358,6 +1359,43 @@ class _EditorPageState extends State<EditorPage>
     );
   }
 
+  void _openAiAssistant() {
+    final tab = sl<TabManager>().active;
+    final folder = p.basename(sl<FsService>().rootPath);
+    String? relPath;
+    if (tab != null) {
+      try {
+        relPath = p.relative(tab.filePath, from: sl<FsService>().rootPath);
+      } catch (_) {
+        relPath = tab.filePath;
+      }
+    }
+    AiAssistSheet.show(
+      context,
+      initialCode: tab?.controller.text,
+      contextDescription: relPath,
+      workspaceFolder: folder,
+      onApplyCode: (newCode) {
+        if (tab != null && tab.isLoaded) {
+          tab.controller.text = newCode;
+          tab.checkDirty();
+        }
+      },
+      onInsert: (code) {
+        if (tab != null && tab.isLoaded) {
+          final sel = tab.controller.selection;
+          if (sel.isValid) {
+            tab.controller.text =
+                tab.controller.text.replaceRange(sel.start, sel.end, code);
+          } else {
+            tab.controller.text += code;
+          }
+          tab.checkDirty();
+        }
+      },
+    );
+  }
+
   Future<void> _toggleLiveServer() async {
     if (_liveServer?.isRunning == true) {
       await _liveServer!.stop();
@@ -1613,6 +1651,26 @@ class _EditorPageState extends State<EditorPage>
               onLongPress: _showRunWithArgsDialog,
             ),
           IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                  width: 1,
+                ),
+              ),
+              child: const Icon(
+                Icons.smart_toy_rounded,
+                color: Color(0xFF00E676),
+                size: 20,
+              ),
+            ),
+            tooltip: 'Kriya AI Assistant',
+            onPressed: _openAiAssistant,
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
             onPressed: () => Navigator.push(
@@ -1683,20 +1741,6 @@ class _EditorPageState extends State<EditorPage>
                 case 'dev_servers':
                   ServerPanel.show(context);
                   break;
-                case 'ai_bot':
-                  final store = sl<SettingsStore>();
-                  store.showAiBot = !store.showAiBot;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        store.showAiBot
-                            ? 'AI Assistant Bot enabled'
-                            : 'AI Assistant Bot hidden',
-                      ),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                  break;
               }
             },
             itemBuilder: (_) => [
@@ -1710,16 +1754,6 @@ class _EditorPageState extends State<EditorPage>
                 value: 'global_search',
                 child: _MenuItem(
                     icon: Icons.manage_search, label: 'Search in all files'),
-              ),
-              PopupMenuItem(
-                height: 40,
-                value: 'ai_bot',
-                child: _MenuItem(
-                  icon: Icons.smart_toy_outlined,
-                  label: sl<SettingsStore>().showAiBot
-                      ? 'Hide AI Assistant Bot'
-                      : 'Show AI Assistant Bot',
-                ),
               ),
               const PopupMenuDivider(),
               const PopupMenuItem(

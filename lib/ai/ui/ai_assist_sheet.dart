@@ -4,8 +4,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/di.dart';
 import '../../core/haptics.dart';
+import '../../editor/tab_manager.dart';
 import '../../monetization/entitlement_service.dart';
 import '../../monetization/pro_paywall_sheet.dart';
+import '../../workspace/fs_service.dart';
 import '../ai_service.dart';
 import '../kriya_ai_context.dart';
 
@@ -89,10 +91,65 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
   bool _validatingKey = false;
   String? _verifiedModel;
 
+  List<EditorTab> _openTabs = [];
+  EditorTab? _selectedTab;
+  String? _activeFilePath;
+  String? _activeCode;
+  String? _activeWorkspaceFolder;
+
   @override
   void initState() {
     super.initState();
+    _initWorkspaceContext();
     _checkKey();
+  }
+
+  void _initWorkspaceContext() {
+    if (sl.isRegistered<TabManager>()) {
+      final tabMgr = sl<TabManager>();
+      _openTabs = List.from(tabMgr.tabs);
+
+      if (widget.contextDescription != null) {
+        _selectedTab = _openTabs.cast<EditorTab?>().firstWhere(
+          (t) =>
+              t?.filePath == widget.contextDescription ||
+              t?.name == widget.contextDescription ||
+              (t?.filePath != null &&
+                  widget.contextDescription != null &&
+                  t!.filePath.endsWith(widget.contextDescription!)),
+          orElse: () => null,
+        );
+      }
+      _selectedTab ??= tabMgr.active ?? (_openTabs.isNotEmpty ? _openTabs.first : null);
+    }
+
+    if (_selectedTab != null) {
+      _activeFilePath = _selectedTab!.filePath;
+      _activeCode = _selectedTab!.isLoaded
+          ? _selectedTab!.controller.text
+          : (widget.initialCode ?? '');
+    } else {
+      _activeFilePath = widget.contextDescription;
+      _activeCode = widget.initialCode;
+    }
+
+    if (widget.workspaceFolder != null && widget.workspaceFolder!.isNotEmpty) {
+      _activeWorkspaceFolder = widget.workspaceFolder;
+    } else if (sl.isRegistered<FsService>()) {
+      final root = sl<FsService>().rootPath;
+      final parts = root.split('/').where((s) => s.isNotEmpty).toList();
+      _activeWorkspaceFolder = parts.isNotEmpty ? parts.last : 'workspace';
+    }
+  }
+
+  void _switchTargetTab(EditorTab tab) {
+    if (_selectedTab == tab) return;
+    Haptics.onTabSwitch();
+    setState(() {
+      _selectedTab = tab;
+      _activeFilePath = tab.filePath;
+      _activeCode = tab.isLoaded ? tab.controller.text : '';
+    });
   }
 
   @override
@@ -231,36 +288,28 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
     _scrollToBottom();
 
     // Build background context for system prompt
-    final lang = KriyaAiContext.inferLanguage(widget.contextDescription);
+    final currentFile = _activeFilePath ?? widget.contextDescription;
+    final currentCode = _activeCode ?? widget.initialCode;
+    final currentFolder = _activeWorkspaceFolder ?? widget.workspaceFolder;
+    final lang = KriyaAiContext.inferLanguage(currentFile);
+    final openFileNames = _openTabs.map((t) => t.name).toList();
+
     final systemPrompt = KriyaAiContext.buildSystemPrompt(
-      filePath: widget.contextDescription,
+      filePath: currentFile,
       languageId: lang != 'text' ? lang : null,
-      workspaceFolder: widget.workspaceFolder,
+      workspaceFolder: currentFolder,
       diagnosticsSummary: widget.diagnosticsSummary,
+      fileContent: currentCode,
+      openFiles: openFileNames,
     );
 
     // Prepare multi-turn messages
     final apiMessages = <Map<String, String>>[];
-
-    // Include code context in the first turn if related to code
-    final isGreeting = RegExp(r'^(hi|hello|hlo|hey|greetings|sup|hola)\b', caseSensitive: false)
-        .hasMatch(cleanPrompt);
-
-    if (!isGreeting &&
-        widget.initialCode != null &&
-        widget.initialCode!.isNotEmpty &&
-        _messages.length <= 1) {
+    for (final m in _messages) {
       apiMessages.add({
-        'role': 'user',
-        'content': 'Here is my current code for reference:\n```\n${widget.initialCode}\n```\n\n$cleanPrompt',
+        'role': m.role,
+        'content': m.content,
       });
-    } else {
-      for (final m in _messages) {
-        apiMessages.add({
-          'role': m.role,
-          'content': m.content,
-        });
-      }
     }
 
     try {
@@ -302,6 +351,10 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
 
   void _applyCode(AiChatMessage message, String code) {
     Haptics.medium();
+    if (_selectedTab != null && _selectedTab!.isLoaded) {
+      _selectedTab!.controller.text = code;
+      _selectedTab!.checkDirty();
+    }
     if (widget.onApplyCode != null) {
       widget.onApplyCode!(code);
     } else if (widget.onInsert != null) {
@@ -310,6 +363,15 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
     setState(() {
       message.codeApplied = true;
     });
+    final targetName = _selectedTab?.name ?? (_activeFilePath?.split('/').last ?? 'editor');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Applied code to $targetName in real-time!'),
+        backgroundColor: const Color(0xFF00E676),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Widget _buildQuotaBadge() {
@@ -439,6 +501,7 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
                 ],
               ),
             ),
+            if (_configuredKey != null) _buildTargetFileBar(),
             const Divider(height: 1, color: Color(0xFF1E293B)),
             // Body: Key setup or ChatGPT-style Chat Stream
             Expanded(
@@ -450,6 +513,148 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
             if (_configuredKey != null) _buildBottomInputBar(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTargetFileBar() {
+    if (_openTabs.isEmpty && (_activeFilePath == null || _activeFilePath!.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    final folder = _activeWorkspaceFolder ?? 'Project';
+
+    if (_openTabs.length > 1) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        color: const Color(0xFF0C1322),
+        child: Row(
+          children: [
+            const Icon(Icons.folder_open_rounded, size: 14, color: Color(0xFF38BDF8)),
+            const SizedBox(width: 5),
+            Text(
+              folder,
+              style: const TextStyle(
+                color: Color(0xFF38BDF8),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              '|',
+              style: TextStyle(color: Colors.white24, fontSize: 11),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _openTabs.map((tab) {
+                    final isSelected = tab == _selectedTab || tab.filePath == _activeFilePath;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: InkWell(
+                        onTap: () => _switchTargetTab(tab),
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFF2563EB).withValues(alpha: 0.25)
+                                : const Color(0xFF161F2E),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFF3B82F6)
+                                  : const Color(0xFF1E293B),
+                              width: isSelected ? 1.2 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.description_outlined,
+                                size: 12,
+                                color: isSelected ? const Color(0xFF60A5FA) : Colors.white60,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                tab.name,
+                                style: TextStyle(
+                                  color: isSelected ? const Color(0xFF60A5FA) : Colors.white70,
+                                  fontSize: 11,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              if (isSelected) ...[
+                                const SizedBox(width: 4),
+                                const Icon(Icons.check_circle_rounded, size: 11, color: Color(0xFF60A5FA)),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final fileName = _activeFilePath?.split('/').last ?? 'Current File';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      color: const Color(0xFF0C1322),
+      child: Row(
+        children: [
+          const Icon(Icons.folder_open_rounded, size: 13, color: Color(0xFF38BDF8)),
+          const SizedBox(width: 5),
+          Text(
+            folder,
+            style: const TextStyle(
+              color: Color(0xFF38BDF8),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Text('/', style: TextStyle(color: Colors.white24, fontSize: 11)),
+          const SizedBox(width: 6),
+          const Icon(Icons.description_outlined, size: 13, color: Color(0xFF00E676)),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              fileName,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00E676).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'Active Context',
+              style: TextStyle(
+                color: Color(0xFF00E676),
+                fontSize: 9.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -616,10 +821,30 @@ class _AiAssistSheetState extends State<AiAssistSheet> {
                 runSpacing: 8,
                 alignment: WrapAlignment.center,
                 children: [
-                  _buildQuickChip('Explain Code', 'Explain what this code does clearly and concisely.'),
-                  _buildQuickChip('Find & Fix Bugs', 'Analyze this code for bugs or edge cases and show the corrected code.'),
-                  _buildQuickChip('Add Comments', 'Add clear, helpful comments to this code without changing its logic.'),
-                  _buildQuickChip('Optimize', 'Optimize this code for better performance and readability.'),
+                  _buildQuickChip(
+                    'Explain Code',
+                    _selectedTab != null
+                        ? 'Explain what ${_selectedTab!.name} does clearly and concisely.'
+                        : 'Explain what this code does clearly and concisely.',
+                  ),
+                  _buildQuickChip(
+                    'Find & Fix Bugs',
+                    _selectedTab != null
+                        ? 'Analyze ${_selectedTab!.name} for bugs, edge cases, and syntax errors, and show the corrected code.'
+                        : 'Analyze this code for bugs or edge cases and show the corrected code.',
+                  ),
+                  _buildQuickChip(
+                    'Add Comments',
+                    _selectedTab != null
+                        ? 'Add clear, helpful comments to ${_selectedTab!.name} without changing its logic.'
+                        : 'Add clear, helpful comments to this code without changing its logic.',
+                  ),
+                  _buildQuickChip(
+                    'Optimize',
+                    _selectedTab != null
+                        ? 'Optimize ${_selectedTab!.name} for better performance and readability.'
+                        : 'Optimize this code for better performance and readability.',
+                  ),
                 ],
               ),
             ],

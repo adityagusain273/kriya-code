@@ -5,6 +5,8 @@ class KriyaAiContext {
     String? languageId,
     String? workspaceFolder,
     List<String>? diagnosticsSummary,
+    String? fileContent,
+    List<String>? openFiles,
   }) {
     final buffer = StringBuffer();
     buffer.writeln(
@@ -27,27 +29,34 @@ class KriyaAiContext {
     buffer.writeln('   - State the root cause in 1 concise sentence.');
     buffer.writeln('   - Immediately provide the corrected, working code block.');
     buffer.writeln('6. Practical & Educational: Keep answers accurate, standard-compliant, and easy for students and developers to learn from.');
+    buffer.writeln('7. File & Workspace Awareness: You are fully aware of the user\'s workspace folder, current target file, and open editor tabs provided in the context below. When the user asks "Explain this code", "Fix this bug", "Add comments", "Optimize", or asks questions about their code or project, you already have the file contents—refer to it directly and never ask them to paste or include the code. If multiple files are open in their editor, you know about all of them and can advise on how they interact.');
 
-    if (workspaceFolder != null && workspaceFolder.isNotEmpty ||
-        filePath != null && filePath.isNotEmpty ||
-        (diagnosticsSummary != null && diagnosticsSummary.isNotEmpty)) {
+    buffer.writeln();
+    buffer.writeln('### Active Workspace Context');
+    if (workspaceFolder != null && workspaceFolder.isNotEmpty) {
+      buffer.writeln('- Workspace Folder: $workspaceFolder');
+    }
+    if (filePath != null && filePath.isNotEmpty) {
+      buffer.writeln('- Active Target File: $filePath');
+    }
+    if (languageId != null && languageId.isNotEmpty) {
+      buffer.writeln('- Language: $languageId');
+    }
+    if (openFiles != null && openFiles.isNotEmpty) {
+      buffer.writeln('- Open Files in Editor: ${openFiles.join(', ')}');
+    }
+    if (diagnosticsSummary != null && diagnosticsSummary.isNotEmpty) {
+      buffer.writeln('- Current Syntax/Runtime Errors:');
+      for (final diag in diagnosticsSummary) {
+        buffer.writeln('  * $diag');
+      }
+    }
+    if (fileContent != null && fileContent.isNotEmpty) {
       buffer.writeln();
-      buffer.writeln('### Active Workspace Context');
-      if (workspaceFolder != null && workspaceFolder.isNotEmpty) {
-        buffer.writeln('- Workspace Folder: $workspaceFolder');
-      }
-      if (filePath != null && filePath.isNotEmpty) {
-        buffer.writeln('- Active File: $filePath');
-      }
-      if (languageId != null && languageId.isNotEmpty) {
-        buffer.writeln('- Language: $languageId');
-      }
-      if (diagnosticsSummary != null && diagnosticsSummary.isNotEmpty) {
-        buffer.writeln('- Current Syntax/Runtime Errors:');
-        for (final diag in diagnosticsSummary) {
-          buffer.writeln('  * $diag');
-        }
-      }
+      buffer.writeln('### Current Content of $filePath:');
+      buffer.writeln('```${languageId ?? ""}');
+      buffer.writeln(fileContent);
+      buffer.writeln('```');
     }
 
     return buffer.toString();

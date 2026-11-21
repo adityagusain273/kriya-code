@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kriya_code/ai/ai_service.dart';
+import 'package:kriya_code/ai/kriya_ai_context.dart';
 import 'package:kriya_code/ai/ui/ai_assist_sheet.dart';
 import 'package:kriya_code/core/di.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -77,12 +78,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Kriya AI Assistant'), findsOneWidget);
-    // Requirement 4: File name removed from UI of assistant
-    expect(find.text('test.c'), findsNothing);
+    // Active Context chip displays the target file name
+    expect(find.text('test.c'), findsOneWidget);
+    expect(find.text('Active Context'), findsOneWidget);
     expect(find.text('Explain Code'), findsOneWidget);
     expect(find.text('Find & Fix Bugs'), findsOneWidget);
     expect(find.text('Add Comments'), findsOneWidget);
     expect(find.textContaining('Free: 3/3 left today'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
+  });
+
+  test('KriyaAiContext includes fileContent, openFiles, and zero-paste instruction', () {
+    final prompt = KriyaAiContext.buildSystemPrompt(
+      filePath: 'Calculator.py',
+      languageId: 'python',
+      workspaceFolder: 'Python course',
+      openFiles: ['Calculator.py', 'utils.py'],
+      fileContent: 'num1 = float(input())\nprint(num1)',
+    );
+
+    expect(prompt, contains('Workspace Folder: Python course'));
+    expect(prompt, contains('Active Target File: Calculator.py'));
+    expect(prompt, contains('Open Files in Editor: Calculator.py, utils.py'));
+    expect(prompt, contains('num1 = float(input())'));
+    expect(prompt, contains('never ask them to paste or include the code'));
   });
 }
